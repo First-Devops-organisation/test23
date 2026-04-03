@@ -1,0 +1,41 @@
+{
+  "typeMapping": {
+    "Bug": { "issueType": "Bug", "labels": ["bug"], "color": "d73a4a" },
+    "User Story": { "issueType": "Story", "labels": ["user-story"], "color": "0075ca" },
+    "Task": { "issueType": "Task", "labels": ["task"], "color": "a2eeef" },
+    "Epic": { "issueType": "Epic", "labels": ["epic"], "color": "7057ff" },
+    "Feature": { "issueType": "Feature", "labels": ["feature"], "color": "008672" },
+    "Issue": { "issueType": "Bug", "labels": ["issue"], "color": "e4e669" },
+    "Test Case": { "issueType": "Task", "labels": ["test-case"], "color": "bfdadc" },
+    "Impediment": { "issueType": "Bug", "labels": ["impediment"], "color": "b60205" }
+  },
+  "stateMapping": {
+    "New": "open",
+    "Active": "open",
+    "Resolved": "closed",
+    "Closed": "closed",
+    "Removed": "closed",
+    "Done": "closed",
+    "To Do": "open",
+    "Doing": "open",
+    "In Progress": "open",
+    "Committed": "open"
+  },
+  "priorityMapping": {
+    "1": "critical",
+    "2": "high",
+    "3": "medium",
+    "4": "low"
+  },
+  "fieldMapping": {
+    "System.Title": "title",
+    "System.Description": "body",
+    "System.AssignedTo": "assignees",
+    "System.Tags": "labels",
+    "System.State": "state",
+    "Microsoft.VSTS.Common.Priority": "priority-label",
+    "Microsoft.VSTS.Scheduling.StoryPoints": "story-points-field",
+    "System.IterationPath": "iteration-field",
+    "System.AreaPath": "area-label"
+  }
+}
