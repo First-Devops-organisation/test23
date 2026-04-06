@@ -138,12 +138,12 @@ $results | ConvertTo-Json -Depth 5 | Out-File $jsonOut -Encoding utf8
 
 Write-Host "`n=== Size Audit Summary ===" -ForegroundColor Green
 Write-Host "  Total repos       : $($results.Count)"
-Write-Host "  OK                : $(($results | Where-Object Status -eq 'OK').Count)"
-Write-Host "  WARNING (>100MB)  : $(($results | Where-Object Status -eq 'WARNING').Count)"
-Write-Host "  BLOCKED (GEI)     : $(($results | Where-Object Status -eq 'BLOCKED').Count)"
-Write-Host "  CLONE_FAILED      : $(($results | Where-Object Status -eq 'CLONE_FAILED').Count)"
+Write-Host "  OK                : $(@($results | Where-Object Status -eq 'OK').Count)"
+Write-Host "  WARNING (>100MB)  : $(@($results | Where-Object Status -eq 'WARNING').Count)"
+Write-Host "  BLOCKED (GEI)     : $(@($results | Where-Object Status -eq 'BLOCKED').Count)"
+Write-Host "  CLONE_FAILED      : $(@($results | Where-Object Status -eq 'CLONE_FAILED').Count)"
 
-$blocked = $results | Where-Object Status -eq 'BLOCKED'
+$blocked = @($results | Where-Object Status -eq 'BLOCKED')
 if ($blocked) {
     Write-Host "`nBLOCKED repos (must resolve before migration):" -ForegroundColor Red
     $blocked | Format-Table Name, MaxBlobMB, TotalSizeGB -AutoSize
