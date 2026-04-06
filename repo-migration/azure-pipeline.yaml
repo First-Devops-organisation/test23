@@ -368,7 +368,7 @@ stages:
           - task: PowerShell@2
             displayName: '1.1 Discover Repos'
             inputs:
-              filePath: '$(Build.SourcesDirectory)/01-discover/discover-repos.ps1'
+              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/discover-repos.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"'
               pwsh: true
             env:
@@ -377,7 +377,7 @@ stages:
           - task: PowerShell@2
             displayName: '1.2 Audit Repo Sizes'
             inputs:
-              filePath: '$(Build.SourcesDirectory)/01-discover/audit-repo-sizes.ps1'
+              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/audit-repo-sizes.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"'
               pwsh: true
             env:
@@ -386,7 +386,7 @@ stages:
           - task: PowerShell@2
             displayName: '1.3 Scan for Secrets'
             inputs:
-              filePath: '$(Build.SourcesDirectory)/01-discover/scan-secrets.ps1'
+              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"'
               pwsh: true
             env:
