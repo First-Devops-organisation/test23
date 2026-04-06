@@ -55,12 +55,12 @@ foreach ($repo in $repos) {
     $clonePath = Join-Path $cloneDir "$($repo.Name).git"
 
     # Clone bare with embedded credentials (temp, cleaned up)
-    $cloneUrl = $repo.RemoteUrl -replace '://', "://$($adoPat)@"
+    $cloneUrl = $repo.RemoteUrl -replace '://', "://pat:$($adoPat)@"
     if (Test-Path $clonePath) { Remove-Item $clonePath -Recurse -Force }
 
     try {
-        git clone --bare --quiet $cloneUrl $clonePath 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "git clone exited with code $LASTEXITCODE" }
+        $cloneOutput = git clone --bare --quiet $cloneUrl $clonePath 2>&1
+        if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
     }
     catch {
         Write-Warning "  Clone failed for $($repo.Name): $_"
