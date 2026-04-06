@@ -47,7 +47,7 @@ Write-Host "=== Discovering repos in $adoOrg/$adoProj ===" -ForegroundColor Cyan
 $repoApiUrl = "$adoOrg/$adoProj/_apis/git/repositories?api-version=7.1"
 $response = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get
 
-$repos = $response.value | ForEach-Object {
+$repos = @($response.value | ForEach-Object {
     $repo = $_
     $lastCommitDate = $null
     $hasLfs = $false
@@ -99,15 +99,15 @@ $repos = $response.value | ForEach-Object {
         Url               = $repo.webUrl
         RemoteUrl         = $repo.remoteUrl
     }
-}
+})
 
 # ── Exclusion filter ─────────────────────────────────────────────────────────
 $exclusions = @()
 if ($config.exclusions -and $config.exclusions.repos) {
     $exclusions = $config.exclusions.repos
 }
-$included = $repos | Where-Object { $_.Name -notin $exclusions }
-$excluded = $repos | Where-Object { $_.Name -in $exclusions }
+$included = @($repos | Where-Object { $_.Name -notin $exclusions })
+$excluded = @($repos | Where-Object { $_.Name -in $exclusions })
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 Write-Host "`n=== Discovery Summary ===" -ForegroundColor Green
@@ -118,13 +118,13 @@ Write-Host "  Total size          : $([math]::Round(($included | Measure-Object 
 Write-Host "  Repos with LFS      : $(($included | Where-Object HasLFS).Count)"
 Write-Host "  Repos > 40 GB (GEI) : $(($included | Where-Object ExceedsGEI40GB).Count)"
 
-$oversize = $included | Where-Object { $_.ExceedsGEI40GB }
+$oversize = @($included | Where-Object { $_.ExceedsGEI40GB })
 if ($oversize) {
     Write-Warning "The following repos exceed GEI's 40 GB limit and need manual migration:"
     $oversize | Format-Table Name, SizeGB -AutoSize
 }
 
-$lfsRepos = $included | Where-Object { $_.HasLFS }
+$lfsRepos = @($included | Where-Object { $_.HasLFS })
 if ($lfsRepos) {
     Write-Warning "The following repos use Git LFS — LFS objects are NOT migrated by GEI:"
     $lfsRepos | Format-Table Name, SizeGB -AutoSize
