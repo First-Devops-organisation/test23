@@ -1,19 +1,19 @@
 {
   "source": {
     "type": "AzureDevOps",
-    "organization": "https://dev.azure.com/YOUR_ADO_ORG",
-    "project": "YOUR_ADO_PROJECT",
+    "organization": "$(ADO_ORG)",
+    "project": "$(ADO_PROJECT)",
     "pat": "$(ADO_PAT)"
   },
   "target": {
     "type": "GitHubEnterpriseCloud",
-    "organization": "YOUR_GITHUB_ORG",
+    "organization": "$(GITHUB_ORG)",
     "pat": "$(GH_PAT)"
   },
   "migration": {
     "includeTeams": true,
     "lockSourceRepo": true,
-    "targetRepoVisibility": "internal",
+    "targetRepoVisibility": "$(TARGET_REPO_VISIBILITY)",
     "queuedBehavior": "import",
     "skipReleases": false,
     "batchSize": 10,
@@ -23,22 +23,22 @@
   },
   "batches": [
     {
-      "name": "batch-1-pilot",
-      "repos": ["repo-alpha", "repo-beta", "repo-gamma"],
-      "scheduledDate": "2026-04-15"
+      "name": "$(BATCH_1_NAME)",
+      "repos": [],
+      "scheduledDate": "$(BATCH_1_DATE)"
     },
     {
-      "name": "batch-2",
-      "repos": ["repo-delta", "repo-epsilon"],
-      "scheduledDate": "2026-04-22"
+      "name": "$(BATCH_2_NAME)",
+      "repos": [],
+      "scheduledDate": "$(BATCH_2_DATE)"
     }
   ],
   "exclusions": {
-    "repos": ["archived-legacy-repo", "temp-throwaway"],
+    "repos": [],
     "branches": []
   },
   "output": {
-    "reportDir": "./reports",
-    "logDir": "./logs"
+    "reportDir": "$(REPORT_DIR)",
+    "logDir": "$(LOG_DIR)"
   }
 }
