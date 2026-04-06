@@ -50,7 +50,7 @@ $allFindings = @()
 $repoSummary = @()
 
 foreach ($repo in $repos) {
-    Write-Host "`n── $($repo.Name) ──" -ForegroundColor Yellow
+    Write-Host "`n── [$($repo.Project)] $($repo.Name) ──" -ForegroundColor Yellow
 
     $clonePath  = Join-Path $cloneDir "$($repo.Name).git"
     $reportFile = Join-Path $logDir "gitleaks-$($repo.Name).json"
@@ -66,7 +66,7 @@ foreach ($repo in $repos) {
     }
     catch {
         Write-Warning "  Clone failed: $_"
-        $repoSummary += [PSCustomObject]@{ Name = $repo.Name; FindingsCount = -1; Status = "CLONE_FAILED" }
+        $repoSummary += [PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = -1; Status = "CLONE_FAILED" }
         continue
     }
 
@@ -82,7 +82,7 @@ foreach ($repo in $repos) {
 
     if ($exitCode -eq 0) {
         Write-Host "  CLEAN — no secrets found" -ForegroundColor Green
-        $repoSummary += [PSCustomObject]@{ Name = $repo.Name; FindingsCount = 0; Status = "CLEAN" }
+        $repoSummary += [PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = 0; Status = "CLEAN" }
     }
     elseif ($exitCode -eq 1 -and (Test-Path $reportFile)) {
         $findings = Get-Content $reportFile -Raw | ConvertFrom-Json
@@ -91,6 +91,7 @@ foreach ($repo in $repos) {
 
         foreach ($f in $findings) {
             $allFindings += [PSCustomObject]@{
+                Project    = $repo.Project
                 Repo       = $repo.Name
                 RuleID     = $f.RuleID
                 Match      = ($f.Match -replace '.', '*')  # Mask the actual secret
@@ -101,11 +102,11 @@ foreach ($repo in $repos) {
                 Date       = $f.Date
             }
         }
-        $repoSummary += [PSCustomObject]@{ Name = $repo.Name; FindingsCount = $count; Status = "SECRETS_FOUND" }
+        $repoSummary += [PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = $count; Status = "SECRETS_FOUND" }
     }
     else {
         Write-Warning "  gitleaks returned exit code $exitCode"
-        $repoSummary += [PSCustomObject]@{ Name = $repo.Name; FindingsCount = -1; Status = "SCAN_ERROR" }
+        $repoSummary += [PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = -1; Status = "SCAN_ERROR" }
     }
 }
 
