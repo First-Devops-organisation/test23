@@ -395,7 +395,7 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Discovery Reports'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/reports'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/reports'
               artifact: 'discovery-reports'
               publishLocation: 'pipeline'
             condition: always()
@@ -403,7 +403,7 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Scan Logs'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/logs'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/logs'
               artifact: 'discovery-logs'
               publishLocation: 'pipeline'
             condition: always()
@@ -415,7 +415,7 @@ stages:
     displayName: '2. Prepare & Scrub Secrets'
     dependsOn: Discover
     jobs:
-      - job: InstallTools
+      - job: PrepAndScrub
         displayName: 'Install Tools & Scrub Secrets'
         timeoutInMinutes: 60
         steps:
@@ -440,14 +440,14 @@ stages:
             displayName: 'Download Discovery Reports'
             inputs:
               artifact: 'discovery-reports'
-              path: '$(Build.SourcesDirectory)/reports'
+              path: '$(Build.SourcesDirectory)/repo-migration/reports'
 
           - task: PowerShell@2
             displayName: '2.1 Scrub Secrets (if needed)'
             inputs:
               targetType: inline
               script: |
-                $reportDir = "$(Build.SourcesDirectory)/reports"
+                $reportDir = "$(Build.SourcesDirectory)/repo-migration/reports"
                 $secretReport = Join-Path $reportDir "secret-scan-summary.json"
                 if (Test-Path $secretReport) {
                     $data = Get-Content $secretReport -Raw | ConvertFrom-Json
@@ -468,7 +468,8 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Prep Reports'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/reports'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/reports'
               artifact: 'prep-reports'
               publishLocation: 'pipeline'
             condition: always()
+
