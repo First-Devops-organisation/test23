@@ -56,11 +56,12 @@ foreach ($repo in $repos) {
     $reportFile = Join-Path $logDir "gitleaks-$($repo.Name).json"
 
     # Clone
-    $cloneUrl = $repo.RemoteUrl -replace '://', "://$($adoPat)@"
+    $cloneUrl = $repo.RemoteUrl -replace '://', "://pat:$($adoPat)@"
     if (Test-Path $clonePath) { Remove-Item $clonePath -Recurse -Force }
 
     try {
-        git clone --bare --quiet $cloneUrl $clonePath 2>&1 | Out-Null
+        $cloneOutput = git clone --bare --quiet $cloneUrl $clonePath 2>&1
+        if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
     }
     catch {
         Write-Warning "  Clone failed: $_"
