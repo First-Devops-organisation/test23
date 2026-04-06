@@ -55,7 +55,7 @@ foreach ($repo in $repos) {
     $clonePath = Join-Path $cloneDir "$($repo.Name).git"
 
     # Clone bare with embedded credentials (temp, cleaned up)
-    $cloneUrl = $repo.RemoteUrl -replace '://', "://pat:$($adoPat)@"
+    $cloneUrl = $repo.RemoteUrl -replace '://[^@]+@', "://pat:$($adoPat)@"
     if (Test-Path $clonePath) { Remove-Item $clonePath -Recurse -Force }
 
     try {
