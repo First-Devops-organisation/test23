@@ -369,7 +369,7 @@ stages:
             displayName: '1.1 Discover Repos'
             inputs:
               filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/discover-repos.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
               pwsh: true
             env:
               ADO_PAT: $(ADO_PAT)
@@ -378,7 +378,7 @@ stages:
             displayName: '1.2 Audit Repo Sizes'
             inputs:
               filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/audit-repo-sizes.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
               pwsh: true
             env:
               ADO_PAT: $(ADO_PAT)
@@ -387,7 +387,7 @@ stages:
             displayName: '1.3 Scan for Secrets'
             inputs:
               filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
               pwsh: true
             env:
               ADO_PAT: $(ADO_PAT)
@@ -454,7 +454,7 @@ stages:
                     $dirty = $data | Where-Object { $_.Status -eq 'SECRETS_FOUND' }
                     if ($dirty.Count -gt 0) {
                         Write-Host "Repos with secrets found - running scrub..."
-                        & "$(Build.SourcesDirectory)/02-prep/scrub-secrets.ps1" -ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"
+                        & "$(Build.SourcesDirectory)/repo-migration/02-prep/scrub-secrets.ps1" -ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
                     } else {
                         Write-Host "No secrets found - skipping scrub."
                     }
