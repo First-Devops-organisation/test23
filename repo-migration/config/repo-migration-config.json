@@ -1,3 +1,5 @@
+
+
 {
   "source": {
     "type": "AzureDevOps",
@@ -5,40 +7,15 @@
     "project": "$(ADO_PROJECT)",
     "pat": "$(ADO_PAT)"
   },
-  "target": {
-    "type": "GitHubEnterpriseCloud",
-    "organization": "$(GITHUB_ORG)",
-    "pat": "$(GH_PAT)"
-  },
   "migration": {
-    "includeTeams": true,
-    "lockSourceRepo": true,
-    "targetRepoVisibility": "$(TARGET_REPO_VISIBILITY)",
-    "queuedBehavior": "import",
-    "skipReleases": false,
-    "batchSize": 10,
-    "retryCount": 3,
-    "retryDelaySeconds": 30,
     "cloneTempDir": "./tmp/clones"
   },
-  "batches": [
-    {
-      "name": "$(BATCH_1_NAME)",
-      "repos": [],
-      "scheduledDate": "$(BATCH_1_DATE)"
-    },
-    {
-      "name": "$(BATCH_2_NAME)",
-      "repos": [],
-      "scheduledDate": "$(BATCH_2_DATE)"
-    }
-  ],
   "exclusions": {
     "repos": [],
     "branches": []
   },
   "output": {
-    "reportDir": "$(REPORT_DIR)",
-    "logDir": "$(LOG_DIR)"
+    "reportDir": "./reports",
+    "logDir": "./logs"
   }
 }
