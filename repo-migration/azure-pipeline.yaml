@@ -366,6 +366,22 @@ stages:
             displayName: 'Install Git LFS'
 
           - task: PowerShell@2
+            displayName: 'Replace config tokens'
+            inputs:
+              targetType: inline
+              script: |
+                $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                $content = Get-Content $configFile -Raw
+                $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
+                $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
+                Set-Content -Path $configFile -Value $content
+                Write-Host "Config tokens replaced successfully."
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: PowerShell@2
             displayName: '1.1 Discover Repos'
             inputs:
               filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/discover-repos.ps1'
@@ -436,6 +452,21 @@ stages:
               git lfs install
             displayName: 'Install all tools'
 
+          - task: PowerShell@2
+            displayName: 'Replace config tokens'
+            inputs:
+              targetType: inline
+              script: |
+                $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                $content = Get-Content $configFile -Raw
+                $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
+                $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
+                Set-Content -Path $configFile -Value $content
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+
           - task: DownloadPipelineArtifact@2
             displayName: 'Download Discovery Reports'
             inputs:
@@ -472,4 +503,3 @@ stages:
               artifact: 'prep-reports'
               publishLocation: 'pipeline'
             condition: always()
-
