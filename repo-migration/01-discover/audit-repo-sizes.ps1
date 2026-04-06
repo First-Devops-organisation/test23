@@ -78,8 +78,8 @@ foreach ($repo in $repos) {
 
         $maxBlobSize   = 0
         $totalSize     = $repo.SizeMB
-        if ($sizerJson.uniqueBlobSize.maxSize) {
-            $maxBlobSize = [math]::Round($sizerJson.uniqueBlobSize.maxSize / 1MB, 2)
+        if ($sizerJson.ContainsKey('uniqueBlobSize') -and $sizerJson['uniqueBlobSize'].ContainsKey('maxSize')) {
+            $maxBlobSize = [math]::Round($sizerJson['uniqueBlobSize']['maxSize'] / 1MB, 2)
         }
 
         # Find largest blobs via git rev-list
