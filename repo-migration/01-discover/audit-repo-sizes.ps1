@@ -74,7 +74,7 @@ foreach ($repo in $repos) {
     # Run git-sizer
     try {
         Push-Location $clonePath
-        $sizerJson = git-sizer --json 2>$null | ConvertFrom-Json
+        $sizerJson = git-sizer --json 2>$null | ConvertFrom-Json -AsHashtable
 
         $maxBlobSize   = 0
         $totalSize     = $repo.SizeMB
