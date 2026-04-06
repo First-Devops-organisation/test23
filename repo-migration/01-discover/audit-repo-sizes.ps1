@@ -50,7 +50,7 @@ Write-Host "=== Auditing repo sizes for $($repos.Count) repos ===" -ForegroundCo
 $results = @()
 
 foreach ($repo in $repos) {
-    Write-Host "`n── $($repo.Name) ──" -ForegroundColor Yellow
+    Write-Host "`n── [$($repo.Project)] $($repo.Name) ──" -ForegroundColor Yellow
 
     $clonePath = Join-Path $cloneDir "$($repo.Name).git"
 
@@ -66,7 +66,7 @@ foreach ($repo in $repos) {
     catch {
         Write-Warning "  Clone failed for $($repo.Name): $_"
         $results += [PSCustomObject]@{
-            Name = $repo.Name; Status = "CLONE_FAILED"; MaxBlobMB = 0; TotalSizeMB = $repo.SizeMB
+            Project = $repo.Project; Name = $repo.Name; Status = "CLONE_FAILED"; MaxBlobMB = 0; TotalSizeMB = $repo.SizeMB
             ExceedsGEI = $false; ExceedsPushLimit = $false; LargestFiles = @()
         }
         continue
@@ -114,6 +114,7 @@ foreach ($repo in $repos) {
         }
 
         $results += [PSCustomObject]@{
+            Project          = $repo.Project
             Name             = $repo.Name
             Status           = if ($exceedsGEI) { "BLOCKED" } elseif ($exceedsPush) { "WARNING" } else { "OK" }
             MaxBlobMB        = $maxBlobSize
