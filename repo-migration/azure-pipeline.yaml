@@ -4,7 +4,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  - group: migration-config
+  - group: repo-migration-discover
 
 parameters:
   - name: startFrom
@@ -100,227 +100,227 @@ stages:
               publishLocation: 'pipeline'
             condition: always()
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # PHASE 2: PREP
-  # ═══════════════════════════════════════════════════════════════════════════
-  - stage: Prep
-    displayName: '2. Prepare & Scrub Secrets'
-    condition: |
-      or(
-        eq('${{ parameters.startFrom }}', 'discover'),
-        eq('${{ parameters.startFrom }}', 'prep')
-      )
-    dependsOn:
-      - ${{ if eq(parameters.startFrom, 'discover') }}:
-        - Discover
-    jobs:
-      - job: InstallTools
-        displayName: 'Install Tools & Scrub Secrets'
-        timeoutInMinutes: 60
-        steps:
+  # # ═══════════════════════════════════════════════════════════════════════════
+  # # PHASE 2: PREP
+  # # ═══════════════════════════════════════════════════════════════════════════
+  # - stage: Prep
+  #   displayName: '2. Prepare & Scrub Secrets'
+  #   condition: |
+  #     or(
+  #       eq('${{ parameters.startFrom }}', 'discover'),
+  #       eq('${{ parameters.startFrom }}', 'prep')
+  #     )
+  #   dependsOn:
+  #     - ${{ if eq(parameters.startFrom, 'discover') }}:
+  #       - Discover
+  #   jobs:
+  #     - job: InstallTools
+  #       displayName: 'Install Tools & Scrub Secrets'
+  #       timeoutInMinutes: 60
+  #       steps:
 
-          - script: |
-              echo "Installing tools..."
-              # git-sizer
-              curl -sL https://github.com/github/git-sizer/releases/download/v1.5.0/git-sizer-1.5.0-linux-amd64.zip -o git-sizer.zip
-              unzip git-sizer.zip -d /usr/local/bin/
-              chmod +x /usr/local/bin/git-sizer
-              # gitleaks
-              curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
-              tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
-              chmod +x /usr/local/bin/gitleaks
-              # git-filter-repo
-              pip install git-filter-repo
-              # gh CLI + GEI extension
-              gh extension install github/gh-gei || true
-              # git lfs
-              git lfs install
-            displayName: 'Install all tools'
-            env:
-              GH_TOKEN: $(GH_PAT)
+  #         - script: |
+  #             echo "Installing tools..."
+  #             # git-sizer
+  #             curl -sL https://github.com/github/git-sizer/releases/download/v1.5.0/git-sizer-1.5.0-linux-amd64.zip -o git-sizer.zip
+  #             unzip git-sizer.zip -d /usr/local/bin/
+  #             chmod +x /usr/local/bin/git-sizer
+  #             # gitleaks
+  #             curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
+  #             tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
+  #             chmod +x /usr/local/bin/gitleaks
+  #             # git-filter-repo
+  #             pip install git-filter-repo
+  #             # gh CLI + GEI extension
+  #             gh extension install github/gh-gei || true
+  #             # git lfs
+  #             git lfs install
+  #           displayName: 'Install all tools'
+  #           env:
+  #             GH_TOKEN: $(GH_PAT)
 
-          # Download discovery reports from previous stage if available
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download Discovery Reports'
-            inputs:
-              artifact: 'discovery-reports'
-              path: '$(Build.SourcesDirectory)/reports'
-            condition: |
-              and(
-                succeeded(),
-                eq('${{ parameters.startFrom }}', 'discover')
-              )
+  #         # Download discovery reports from previous stage if available
+  #         - task: DownloadPipelineArtifact@2
+  #           displayName: 'Download Discovery Reports'
+  #           inputs:
+  #             artifact: 'discovery-reports'
+  #             path: '$(Build.SourcesDirectory)/reports'
+  #           condition: |
+  #             and(
+  #               succeeded(),
+  #               eq('${{ parameters.startFrom }}', 'discover')
+  #             )
 
-          - task: PowerShell@2
-            displayName: '2.1 Scrub Secrets (if needed)'
-            inputs:
-              targetType: inline
-              script: |
-                $reportDir = "$(Build.SourcesDirectory)/reports"
-                $secretReport = Join-Path $reportDir "secret-scan-summary.json"
-                if (Test-Path $secretReport) {
-                    $data = Get-Content $secretReport -Raw | ConvertFrom-Json
-                    $dirty = $data | Where-Object { $_.Status -eq 'SECRETS_FOUND' }
-                    if ($dirty.Count -gt 0) {
-                        Write-Host "Repos with secrets found - running scrub..."
-                        & "$(Build.SourcesDirectory)/02-prep/scrub-secrets.ps1" -ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"
-                    } else {
-                        Write-Host "No secrets found - skipping scrub."
-                    }
-                } else {
-                    Write-Host "No secret scan report found - skipping scrub."
-                }
-              pwsh: true
-            env:
-              ADO_PAT: $(ADO_PAT)
+  #         - task: PowerShell@2
+  #           displayName: '2.1 Scrub Secrets (if needed)'
+  #           inputs:
+  #             targetType: inline
+  #             script: |
+  #               $reportDir = "$(Build.SourcesDirectory)/reports"
+  #               $secretReport = Join-Path $reportDir "secret-scan-summary.json"
+  #               if (Test-Path $secretReport) {
+  #                   $data = Get-Content $secretReport -Raw | ConvertFrom-Json
+  #                   $dirty = $data | Where-Object { $_.Status -eq 'SECRETS_FOUND' }
+  #                   if ($dirty.Count -gt 0) {
+  #                       Write-Host "Repos with secrets found - running scrub..."
+  #                       & "$(Build.SourcesDirectory)/02-prep/scrub-secrets.ps1" -ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"
+  #                   } else {
+  #                       Write-Host "No secrets found - skipping scrub."
+  #                   }
+  #               } else {
+  #                   Write-Host "No secret scan report found - skipping scrub."
+  #               }
+  #             pwsh: true
+  #           env:
+  #             ADO_PAT: $(ADO_PAT)
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish Prep Reports'
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/reports'
-              artifact: 'prep-reports'
-              publishLocation: 'pipeline'
-            condition: always()
+  #         - task: PublishPipelineArtifact@1
+  #           displayName: 'Publish Prep Reports'
+  #           inputs:
+  #             targetPath: '$(Build.SourcesDirectory)/reports'
+  #             artifact: 'prep-reports'
+  #             publishLocation: 'pipeline'
+  #           condition: always()
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # PHASE 3: MIGRATE
-  # ═══════════════════════════════════════════════════════════════════════════
-  - stage: Migrate
-    displayName: '3. Migrate Repos (GEI)'
-    condition: |
-      or(
-        eq('${{ parameters.startFrom }}', 'discover'),
-        eq('${{ parameters.startFrom }}', 'prep'),
-        eq('${{ parameters.startFrom }}', 'migrate')
-      )
-    dependsOn:
-      - ${{ if eq(parameters.startFrom, 'discover') }}:
-        - Prep
-      - ${{ if eq(parameters.startFrom, 'prep') }}:
-        - Prep
-    jobs:
-      - deployment: MigrateRepos
-        displayName: 'GEI Migration'
-        timeoutInMinutes: 360
-        environment: 'production-migration'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
+  # # ═══════════════════════════════════════════════════════════════════════════
+  # # PHASE 3: MIGRATE
+  # # ═══════════════════════════════════════════════════════════════════════════
+  # - stage: Migrate
+  #   displayName: '3. Migrate Repos (GEI)'
+  #   condition: |
+  #     or(
+  #       eq('${{ parameters.startFrom }}', 'discover'),
+  #       eq('${{ parameters.startFrom }}', 'prep'),
+  #       eq('${{ parameters.startFrom }}', 'migrate')
+  #     )
+  #   dependsOn:
+  #     - ${{ if eq(parameters.startFrom, 'discover') }}:
+  #       - Prep
+  #     - ${{ if eq(parameters.startFrom, 'prep') }}:
+  #       - Prep
+  #   jobs:
+  #     - deployment: MigrateRepos
+  #       displayName: 'GEI Migration'
+  #       timeoutInMinutes: 360
+  #       environment: 'production-migration'
+  #       strategy:
+  #         runOnce:
+  #           deploy:
+  #             steps:
 
-                - checkout: self
+  #               - checkout: self
 
-                - script: |
-                    gh extension install github/gh-gei || true
-                    gh gei --help > /dev/null
-                  displayName: 'Install GEI extension'
-                  env:
-                    GH_TOKEN: $(GH_PAT)
+  #               - script: |
+  #                   gh extension install github/gh-gei || true
+  #                   gh gei --help > /dev/null
+  #                 displayName: 'Install GEI extension'
+  #                 env:
+  #                   GH_TOKEN: $(GH_PAT)
 
-                # Download reports from prep stage
-                - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Prep Reports'
-                  inputs:
-                    artifact: 'prep-reports'
-                    path: '$(Build.SourcesDirectory)/reports'
-                  condition: |
-                    ne('${{ parameters.startFrom }}', 'migrate')
+  #               # Download reports from prep stage
+  #               - task: DownloadPipelineArtifact@2
+  #                 displayName: 'Download Prep Reports'
+  #                 inputs:
+  #                   artifact: 'prep-reports'
+  #                   path: '$(Build.SourcesDirectory)/reports'
+  #                 condition: |
+  #                   ne('${{ parameters.startFrom }}', 'migrate')
 
-                - task: PowerShell@2
-                  displayName: '3.1 Migrate Repos'
-                  inputs:
-                    filePath: '$(Build.SourcesDirectory)/03-migrate/migrate-repos.ps1'
-                    arguments: >
-                      -ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"
-                      ${{ if ne(parameters.batchName, '') }}:
-                        -BatchName "${{ parameters.batchName }}"
-                      ${{ if eq(parameters.dryRun, true) }}:
-                        -DryRun
-                    pwsh: true
-                  env:
-                    ADO_PAT: $(ADO_PAT)
-                    GH_PAT: $(GH_PAT)
+  #               - task: PowerShell@2
+  #                 displayName: '3.1 Migrate Repos'
+  #                 inputs:
+  #                   filePath: '$(Build.SourcesDirectory)/03-migrate/migrate-repos.ps1'
+  #                   arguments: >
+  #                     -ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"
+  #                     ${{ if ne(parameters.batchName, '') }}:
+  #                       -BatchName "${{ parameters.batchName }}"
+  #                     ${{ if eq(parameters.dryRun, true) }}:
+  #                       -DryRun
+  #                   pwsh: true
+  #                 env:
+  #                   ADO_PAT: $(ADO_PAT)
+  #                   GH_PAT: $(GH_PAT)
 
-                - task: PublishPipelineArtifact@1
-                  displayName: 'Publish Migration Reports'
-                  inputs:
-                    targetPath: '$(Build.SourcesDirectory)/reports'
-                    artifact: 'migration-reports'
-                    publishLocation: 'pipeline'
-                  condition: always()
+  #               - task: PublishPipelineArtifact@1
+  #                 displayName: 'Publish Migration Reports'
+  #                 inputs:
+  #                   targetPath: '$(Build.SourcesDirectory)/reports'
+  #                   artifact: 'migration-reports'
+  #                   publishLocation: 'pipeline'
+  #                 condition: always()
 
-                - task: PublishPipelineArtifact@1
-                  displayName: 'Publish Migration Logs'
-                  inputs:
-                    targetPath: '$(Build.SourcesDirectory)/logs'
-                    artifact: 'migration-logs'
-                    publishLocation: 'pipeline'
-                  condition: always()
+  #               - task: PublishPipelineArtifact@1
+  #                 displayName: 'Publish Migration Logs'
+  #                 inputs:
+  #                   targetPath: '$(Build.SourcesDirectory)/logs'
+  #                   artifact: 'migration-logs'
+  #                   publishLocation: 'pipeline'
+  #                 condition: always()
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # PHASE 4: VALIDATE
-  # ═══════════════════════════════════════════════════════════════════════════
-  - stage: Validate
-    displayName: '4. Validate & Reclaim'
-    condition: |
-      and(
-        eq(${{ parameters.dryRun }}, false),
-        or(
-          eq('${{ parameters.startFrom }}', 'discover'),
-          eq('${{ parameters.startFrom }}', 'prep'),
-          eq('${{ parameters.startFrom }}', 'migrate'),
-          eq('${{ parameters.startFrom }}', 'validate')
-        )
-      )
-    dependsOn:
-      - ${{ if ne(parameters.startFrom, 'validate') }}:
-        - Migrate
-    jobs:
-      - job: ValidateAndReclaim
-        displayName: 'Validate Repos & Reclaim Mannequins'
-        timeoutInMinutes: 60
-        steps:
+  # # ═══════════════════════════════════════════════════════════════════════════
+  # # PHASE 4: VALIDATE
+  # # ═══════════════════════════════════════════════════════════════════════════
+  # - stage: Validate
+  #   displayName: '4. Validate & Reclaim'
+  #   condition: |
+  #     and(
+  #       eq(${{ parameters.dryRun }}, false),
+  #       or(
+  #         eq('${{ parameters.startFrom }}', 'discover'),
+  #         eq('${{ parameters.startFrom }}', 'prep'),
+  #         eq('${{ parameters.startFrom }}', 'migrate'),
+  #         eq('${{ parameters.startFrom }}', 'validate')
+  #       )
+  #     )
+  #   dependsOn:
+  #     - ${{ if ne(parameters.startFrom, 'validate') }}:
+  #       - Migrate
+  #   jobs:
+  #     - job: ValidateAndReclaim
+  #       displayName: 'Validate Repos & Reclaim Mannequins'
+  #       timeoutInMinutes: 60
+  #       steps:
 
-          - script: |
-              gh extension install github/gh-gei || true
-            displayName: 'Install GEI extension'
-            env:
-              GH_TOKEN: $(GH_PAT)
+  #         - script: |
+  #             gh extension install github/gh-gei || true
+  #           displayName: 'Install GEI extension'
+  #           env:
+  #             GH_TOKEN: $(GH_PAT)
 
-          # Download migration reports
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download Migration Reports'
-            inputs:
-              artifact: 'migration-reports'
-              path: '$(Build.SourcesDirectory)/reports'
-            condition: ne('${{ parameters.startFrom }}', 'validate')
+  #         # Download migration reports
+  #         - task: DownloadPipelineArtifact@2
+  #           displayName: 'Download Migration Reports'
+  #           inputs:
+  #             artifact: 'migration-reports'
+  #             path: '$(Build.SourcesDirectory)/reports'
+  #           condition: ne('${{ parameters.startFrom }}', 'validate')
 
-          - task: PowerShell@2
-            displayName: '4.1 Validate Migrated Repos'
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/04-validate/validate-repos.ps1'
-              arguments: >
-                -ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"
-                ${{ if ne(parameters.batchName, '') }}:
-                  -BatchName "${{ parameters.batchName }}"
-              pwsh: true
-            env:
-              ADO_PAT: $(ADO_PAT)
-              GH_PAT: $(GH_PAT)
+  #         - task: PowerShell@2
+  #           displayName: '4.1 Validate Migrated Repos'
+  #           inputs:
+  #             filePath: '$(Build.SourcesDirectory)/04-validate/validate-repos.ps1'
+  #             arguments: >
+  #               -ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"
+  #               ${{ if ne(parameters.batchName, '') }}:
+  #                 -BatchName "${{ parameters.batchName }}"
+  #             pwsh: true
+  #           env:
+  #             ADO_PAT: $(ADO_PAT)
+  #             GH_PAT: $(GH_PAT)
 
-          - task: PowerShell@2
-            displayName: '4.2 Reclaim Mannequins'
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/04-validate/reclaim-mannequins.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"'
-              pwsh: true
-            env:
-              GH_PAT: $(GH_PAT)
+  #         - task: PowerShell@2
+  #           displayName: '4.2 Reclaim Mannequins'
+  #           inputs:
+  #             filePath: '$(Build.SourcesDirectory)/04-validate/reclaim-mannequins.ps1'
+  #             arguments: '-ConfigPath "$(Build.SourcesDirectory)/config/repo-migration-config.json"'
+  #             pwsh: true
+  #           env:
+  #             GH_PAT: $(GH_PAT)
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish Validation Reports'
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/reports'
-              artifact: 'validation-reports'
-              publishLocation: 'pipeline'
-            condition: always()
+  #         - task: PublishPipelineArtifact@1
+  #           displayName: 'Publish Validation Reports'
+  #           inputs:
+  #             targetPath: '$(Build.SourcesDirectory)/reports'
+  #             artifact: 'validation-reports'
+  #             publishLocation: 'pipeline'
+  #           condition: always()
