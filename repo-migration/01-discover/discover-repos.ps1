@@ -54,7 +54,7 @@ $repos = $response.value | ForEach-Object {
 
     # Get last commit on default branch
     try {
-        $defaultBranch = $repo.defaultBranch -replace '^refs/heads/', ''
+        $defaultBranch = if ($repo.PSObject.Properties['defaultBranch']) { $repo.defaultBranch -replace '^refs/heads/', '' } else { $null }
         if ($defaultBranch) {
             $commitUrl = "$adoOrg/$adoProj/_apis/git/repositories/$($repo.id)/commits?searchCriteria.`$top=1&searchCriteria.itemVersion.version=$defaultBranch&api-version=7.1"
             $commitResp = Invoke-RestMethod -Uri $commitUrl -Headers $headers -Method Get
