@@ -88,7 +88,7 @@ $repos = $response.value | ForEach-Object {
     [PSCustomObject]@{
         Name              = $repo.name
         Id                = $repo.id
-        DefaultBranch     = ($repo.defaultBranch -replace '^refs/heads/', '')
+        DefaultBranch     = if ($repo.PSObject.Properties['defaultBranch']) { $repo.defaultBranch -replace '^refs/heads/', '' } else { $null }
         SizeBytes         = $sizeBytes
         SizeMB            = $sizeMB
         SizeGB            = $sizeGB
