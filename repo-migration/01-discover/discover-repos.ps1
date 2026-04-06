@@ -115,8 +115,8 @@ Write-Host "  Total repos found   : $($repos.Count)"
 Write-Host "  Excluded by config  : $($excluded.Count)"
 Write-Host "  Repos to migrate    : $($included.Count)"
 Write-Host "  Total size          : $([math]::Round(($included | Measure-Object -Property SizeMB -Sum).Sum, 2)) MB"
-Write-Host "  Repos with LFS      : $(($included | Where-Object HasLFS).Count)"
-Write-Host "  Repos > 40 GB (GEI) : $(($included | Where-Object ExceedsGEI40GB).Count)"
+Write-Host "  Repos with LFS      : $(@($included | Where-Object HasLFS).Count)"
+Write-Host "  Repos > 40 GB (GEI) : $(@($included | Where-Object ExceedsGEI40GB).Count)"
 
 $oversize = @($included | Where-Object { $_.ExceedsGEI40GB })
 if ($oversize) {
