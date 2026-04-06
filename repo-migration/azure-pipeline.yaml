@@ -411,7 +411,7 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Discovery Reports'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/reports'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
               artifact: 'discovery-reports'
               publishLocation: 'pipeline'
             condition: always()
@@ -419,7 +419,7 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Scan Logs'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/logs'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/logs'
               artifact: 'discovery-logs'
               publishLocation: 'pipeline'
             condition: always()
@@ -471,14 +471,14 @@ stages:
             displayName: 'Download Discovery Reports'
             inputs:
               artifact: 'discovery-reports'
-              path: '$(Build.SourcesDirectory)/repo-migration/reports'
+              path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
 
           - task: PowerShell@2
             displayName: '2.1 Scrub Secrets (if needed)'
             inputs:
               targetType: inline
               script: |
-                $reportDir = "$(Build.SourcesDirectory)/repo-migration/reports"
+                $reportDir = "$(Build.SourcesDirectory)/repo-migration/output/reports"
                 $secretReport = Join-Path $reportDir "secret-scan-summary.json"
                 if (Test-Path $secretReport) {
                     $data = Get-Content $secretReport -Raw | ConvertFrom-Json
@@ -499,7 +499,7 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Prep Reports'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/reports'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
               artifact: 'prep-reports'
               publishLocation: 'pipeline'
             condition: always()
