@@ -60,6 +60,7 @@ foreach ($repo in $repos) {
 
     try {
         git clone --bare --quiet $cloneUrl $clonePath 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "git clone exited with code $LASTEXITCODE" }
     }
     catch {
         Write-Warning "  Clone failed for $($repo.Name): $_"
