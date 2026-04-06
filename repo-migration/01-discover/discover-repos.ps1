@@ -86,6 +86,7 @@ $repos = @($response.value | ForEach-Object {
     $exceedsFileLimit = $false  # Would need per-file check — flagged in audit-repo-sizes.ps1
 
     [PSCustomObject]@{
+        Project           = $adoProj
         Name              = $repo.name
         Id                = $repo.id
         DefaultBranch     = if ($repo.PSObject.Properties['defaultBranch']) { $repo.defaultBranch -replace '^refs/heads/', '' } else { $null }
