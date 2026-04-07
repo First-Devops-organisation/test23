@@ -390,6 +390,13 @@ stages:
             env:
               ADO_PAT: $(ADO_PAT)
 
+          - script: |
+              echo "Freeing disk space..."
+              sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache 2>/dev/null || true
+              sudo apt-get clean 2>/dev/null || true
+              df -h /
+            displayName: 'Free disk space'
+
           - task: PowerShell@2
             displayName: '1.2 Audit Repo Sizes'
             inputs:
