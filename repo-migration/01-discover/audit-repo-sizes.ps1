@@ -45,93 +45,186 @@ $repos = Get-Content $inventoryPath -Raw | ConvertFrom-Json
 $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
+# ── ADO API base + auth header ───────────────────────────────────────────────
+$adoOrg  = $config.source.organization.TrimEnd('/')
+$adoProj = $config.source.project
+$base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
+$apiHeaders = @{ Authorization = "Basic $base64Auth" }
+
+# Threshold: repos >= this size use API-only path (no clone)
+$apiOnlyThresholdMB = 1024
+
 Write-Host "=== Auditing repo sizes for $($repos.Count) repos ===" -ForegroundColor Cyan
+Write-Host "  Repos >= ${apiOnlyThresholdMB} MB will use ADO REST API (no clone)" -ForegroundColor Gray
 
 $results = @()
+
+# ── Helper: Audit via ADO REST API (no clone needed) ─────────────────────────
+function Get-RepoSizeViaApi {
+    param($repo, $adoOrg, $adoProj, $apiHeaders)
+
+    $largestBlobs = @()
+    $maxBlobSize  = 0
+
+    # Use ADO Items API to recursively list all files in the default branch
+    $defaultBranch = $repo.DefaultBranch
+    if (-not $defaultBranch) {
+        Write-Warning "  No default branch — using API size only"
+        return @{ MaxBlobMB = 0; LargestBlobs = @() }
+    }
+
+    try {
+        # Fetch file tree with sizes — ADO supports recursionLevel=Full
+        $itemsUrl = "$adoOrg/$adoProj/_apis/git/repositories/$($repo.Id)/items?recursionLevel=Full&versionDescriptor.version=$defaultBranch&api-version=7.1"
+        $itemsResp = Invoke-RestMethod -Uri $itemsUrl -Headers $apiHeaders -Method Get
+
+        if ($itemsResp.value) {
+            # Filter to blobs (files), sort by size descending, take top 10
+            $files = @($itemsResp.value | Where-Object { -not $_.isFolder -and $_.PSObject.Properties['size'] } |
+                Sort-Object { $_.size } -Descending |
+                Select-Object -First 10)
+
+            foreach ($f in $files) {
+                $sizeMB = [math]::Round($f.size / 1MB, 2)
+                $largestBlobs += [PSCustomObject]@{
+                    SizeMB = $sizeMB
+                    Hash   = $f.objectId
+                    Path   = $f.path
+                }
+            }
+
+            if ($files.Count -gt 0) {
+                $maxBlobSize = [math]::Round($files[0].size / 1MB, 2)
+            }
+        }
+    }
+    catch {
+        Write-Warning "  API items call failed: $_"
+    }
+
+    return @{ MaxBlobMB = $maxBlobSize; LargestBlobs = $largestBlobs }
+}
 
 foreach ($repo in $repos) {
     Write-Host "`n── [$($repo.Project)] $($repo.Name) ──" -ForegroundColor Yellow
 
-    $clonePath = Join-Path $cloneDir "$($repo.Name).git"
+    $maxBlobSize  = 0
+    $largestBlobs = @()
+    $totalSize    = $repo.SizeMB
+    $auditMethod  = ""
 
-    # Clone bare — use header auth to avoid URL-encoding issues with PAT
-    $cloneUrl = $repo.RemoteUrl -replace '://[^@]+@', '://'
-    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("pat:$adoPat"))
-    if (Test-Path $clonePath) { Remove-Item $clonePath -Recurse -Force }
+    # ── LARGE REPOS: API-only path (no clone, no disk usage) ─────────────
+    if ($repo.SizeMB -ge $apiOnlyThresholdMB) {
+        $auditMethod = "API"
+        Write-Host "  Using ADO REST API (repo is $($repo.SizeMB) MB — skipping clone)" -ForegroundColor Gray
 
-    try {
-        $cloneOutput = git -c http.extraHeader="Authorization: Basic $base64Auth" clone --bare --quiet $cloneUrl $clonePath 2>&1
-        if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
+        $apiResult    = Get-RepoSizeViaApi -repo $repo -adoOrg $adoOrg -adoProj $adoProj -apiHeaders $apiHeaders
+        $maxBlobSize  = $apiResult.MaxBlobMB
+        $largestBlobs = $apiResult.LargestBlobs
     }
-    catch {
-        Write-Warning "  Clone failed for $($repo.Name): $_"
-        $results += [PSCustomObject]@{
-            Project = $repo.Project; Name = $repo.Name; Status = "CLONE_FAILED"; MaxBlobMB = 0; TotalSizeMB = $repo.SizeMB
-            ExceedsGEI = $false; ExceedsPushLimit = $false; LargestFiles = @()
-        }
-        continue
-    }
+    # ── SMALL REPOS: clone + git-sizer (precise analysis) ────────────────
+    else {
+        $auditMethod = "Clone"
+        $clonePath = Join-Path $cloneDir "$($repo.Name).git"
+        $cloneUrl  = $repo.RemoteUrl -replace '://[^@]+@', '://'
+        $cloneAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("pat:$adoPat"))
+        if (Test-Path $clonePath) { Remove-Item $clonePath -Recurse -Force }
 
-    # Run git-sizer
-    try {
-        Push-Location $clonePath
-        $sizerJson = git-sizer --json 2>$null | ConvertFrom-Json -AsHashtable
-
-        $maxBlobSize   = 0
-        $totalSize     = $repo.SizeMB
-        if ($sizerJson.ContainsKey('uniqueBlobSize') -and $sizerJson['uniqueBlobSize'].ContainsKey('maxSize')) {
-            $maxBlobSize = [math]::Round($sizerJson['uniqueBlobSize']['maxSize'] / 1MB, 2)
-        }
-
-        # Find largest blobs via git rev-list
-        $largestBlobs = @()
         try {
-            $blobList = git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objectsize) %(objectname) %(rest)' | Where-Object { $_ -match '^blob' } | Sort-Object { [int64]($_ -split '\s+')[1] } -Descending | Select-Object -First 10
-            foreach ($line in $blobList) {
-                $parts = $line -split '\s+', 4
-                $largestBlobs += [PSCustomObject]@{
-                    SizeMB = [math]::Round([int64]$parts[1] / 1MB, 2)
-                    Hash   = $parts[2]
-                    Path   = $parts[3]
-                }
+            $defaultBranch = $repo.DefaultBranch
+            $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $cloneAuth", 'clone', '--bare', '--quiet')
+            if ($defaultBranch) {
+                $cloneArgs += @('--single-branch', '--branch', $defaultBranch)
             }
+            $cloneArgs += @($cloneUrl, $clonePath)
+            $cloneOutput = & git @cloneArgs 2>&1
+            if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
         }
         catch {
-            Write-Warning "  Could not enumerate blobs for $($repo.Name)"
+            Write-Warning "  Clone failed for $($repo.Name): $_ — falling back to API"
+            $apiResult    = Get-RepoSizeViaApi -repo $repo -adoOrg $adoOrg -adoProj $adoProj -apiHeaders $apiHeaders
+            $maxBlobSize  = $apiResult.MaxBlobMB
+            $largestBlobs = $apiResult.LargestBlobs
+            $auditMethod  = "API-fallback"
+
+            $exceedsGEI  = $maxBlobSize -gt 400 -or $repo.SizeGB -gt 40
+            $exceedsPush = $maxBlobSize -gt 100
+            $results += [PSCustomObject]@{
+                Project = $repo.Project; Name = $repo.Name
+                Status  = if ($exceedsGEI) { "BLOCKED" } elseif ($exceedsPush) { "WARNING" } else { "OK" }
+                MaxBlobMB = $maxBlobSize; TotalSizeMB = $totalSize; TotalSizeGB = $repo.SizeGB
+                ExceedsGEI = $exceedsGEI; ExceedsPushLimit = $exceedsPush
+                Top10Files = $largestBlobs; AuditMethod = $auditMethod
+            }
+            continue
         }
 
-        $exceedsGEI  = $maxBlobSize -gt 400 -or $repo.SizeGB -gt 40
-        $exceedsPush = $maxBlobSize -gt 100
+        try {
+            Push-Location $clonePath
+            $sizerJson = git-sizer --json 2>$null | ConvertFrom-Json -AsHashtable
 
-        if ($exceedsGEI) {
-            Write-Warning "  BLOCKER: Exceeds GEI limits (max blob: ${maxBlobSize} MB, total: $($repo.SizeGB) GB)"
-        }
-        elseif ($exceedsPush) {
-            Write-Warning "  WARNING: Has files > 100 MB — will need Git LFS after migration"
-        }
-        else {
-            Write-Host "  OK (max blob: ${maxBlobSize} MB)" -ForegroundColor Green
-        }
+            if ($sizerJson.ContainsKey('uniqueBlobSize') -and $sizerJson['uniqueBlobSize'].ContainsKey('maxSize')) {
+                $maxBlobSize = [math]::Round($sizerJson['uniqueBlobSize']['maxSize'] / 1MB, 2)
+            }
 
-        $results += [PSCustomObject]@{
-            Project          = $repo.Project
-            Name             = $repo.Name
-            Status           = if ($exceedsGEI) { "BLOCKED" } elseif ($exceedsPush) { "WARNING" } else { "OK" }
-            MaxBlobMB        = $maxBlobSize
-            TotalSizeMB      = $totalSize
-            TotalSizeGB      = $repo.SizeGB
-            ExceedsGEI       = $exceedsGEI
-            ExceedsPushLimit = $exceedsPush
-            Top10Files       = $largestBlobs
+            # Enumerate blobs for small repos (fast enough under 1 GB)
+            try {
+                $blobLines = git rev-list --objects --all 2>$null |
+                    git cat-file --batch-check='%(objecttype) %(objectsize) %(objectname) %(rest)' 2>$null |
+                    Where-Object { $_ -match '^blob' } |
+                    Sort-Object { [int64]($_ -split '\s+')[1] } -Descending |
+                    Select-Object -First 10
+                foreach ($line in $blobLines) {
+                    $parts = $line -split '\s+', 4
+                    $largestBlobs += [PSCustomObject]@{
+                        SizeMB = [math]::Round([int64]$parts[1] / 1MB, 2)
+                        Hash   = $parts[2]
+                        Path   = $parts[3]
+                    }
+                }
+            }
+            catch {
+                Write-Warning "  Could not enumerate blobs for $($repo.Name)"
+            }
+        }
+        finally {
+            Pop-Location
+            if (Test-Path $clonePath) {
+                Write-Host "  Cleaning up clone for $($repo.Name)..." -ForegroundColor Gray
+                Remove-Item $clonePath -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
     }
-    finally {
-        Pop-Location
+
+    # ── Evaluate limits ──────────────────────────────────────────────────
+    $exceedsGEI  = $maxBlobSize -gt 400 -or $repo.SizeGB -gt 40
+    $exceedsPush = $maxBlobSize -gt 100
+
+    if ($exceedsGEI) {
+        Write-Warning "  BLOCKER: Exceeds GEI limits (max blob: ${maxBlobSize} MB, total: $($repo.SizeGB) GB)"
+    }
+    elseif ($exceedsPush) {
+        Write-Warning "  WARNING: Has files > 100 MB — will need Git LFS after migration"
+    }
+    else {
+        Write-Host "  OK (max blob: ${maxBlobSize} MB) [$auditMethod]" -ForegroundColor Green
+    }
+
+    $results += [PSCustomObject]@{
+        Project          = $repo.Project
+        Name             = $repo.Name
+        Status           = if ($exceedsGEI) { "BLOCKED" } elseif ($exceedsPush) { "WARNING" } else { "OK" }
+        MaxBlobMB        = $maxBlobSize
+        TotalSizeMB      = $totalSize
+        TotalSizeGB      = $repo.SizeGB
+        ExceedsGEI       = $exceedsGEI
+        ExceedsPushLimit = $exceedsPush
+        Top10Files       = $largestBlobs
+        AuditMethod      = $auditMethod
     }
 }
 
-# ── Cleanup clones ───────────────────────────────────────────────────────────
-Write-Host "`nCleaning up temp clones..." -ForegroundColor Gray
+# ── Final cleanup (safety net) ───────────────────────────────────────────────
 if (Test-Path $cloneDir) { Remove-Item $cloneDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 # ── Report ───────────────────────────────────────────────────────────────────
