@@ -61,7 +61,18 @@ foreach ($repo in $repos) {
     if (Test-Path $clonePath) { Remove-Item $clonePath -Recurse -Force }
 
     try {
-        $cloneOutput = git -c http.extraHeader="Authorization: Basic $base64Auth" clone --bare --quiet $cloneUrl $clonePath 2>&1
+        $defaultBranch = $repo.DefaultBranch
+        $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth", 'clone', '--bare', '--quiet')
+
+        # Single-branch: full history of default branch only (skips other branches)
+        # This catches secrets in ALL old commits while reducing clone size
+        if ($defaultBranch) {
+            $cloneArgs += @('--single-branch', '--branch', $defaultBranch)
+            Write-Host "  Cloning single-branch '$defaultBranch' with full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
+        }
+        $cloneArgs += @($cloneUrl, $clonePath)
+
+        $cloneOutput = & git @cloneArgs 2>&1
         if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
     }
     catch {
@@ -108,10 +119,15 @@ foreach ($repo in $repos) {
         Write-Warning "  gitleaks returned exit code $exitCode"
         $repoSummary += [PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = -1; Status = "SCAN_ERROR" }
     }
+
+    # Clean up this repo's clone immediately to free disk space
+    if (Test-Path $clonePath) {
+        Write-Host "  Cleaning up clone for $($repo.Name)..." -ForegroundColor Gray
+        Remove-Item $clonePath -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# ── Cleanup ──────────────────────────────────────────────────────────────────
-Write-Host "`nCleaning up temp clones..." -ForegroundColor Gray
+# ── Final cleanup (safety net) ───────────────────────────────────────────────
 if (Test-Path $cloneDir) { Remove-Item $cloneDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 # ── Reports ──────────────────────────────────────────────────────────────────
