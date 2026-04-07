@@ -374,6 +374,12 @@ stages:
             env:
               ADO_PAT: $(ADO_PAT)
 
+          - script: |
+              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
+              mkdir -p "$(Build.SourcesDirectory)/repo-migration/tmp/clones"
+            displayName: 'Ensure output directories'
+
           - task: PowerShell@2
             displayName: '1.1 Discover Repos'
             inputs:
@@ -453,6 +459,11 @@ stages:
               df -h /
             displayName: 'Free disk space'
 
+          - script: |
+              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
+            displayName: 'Ensure output directories'
+
           - task: PowerShell@2
             displayName: '1.3a Scan Small Repos'
             inputs:
@@ -522,6 +533,11 @@ stages:
               sudo apt-get clean 2>/dev/null || true
               df -h /
             displayName: 'Free disk space'
+
+          - script: |
+              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
+            displayName: 'Ensure output directories'
 
           - task: PowerShell@2
             displayName: '1.3b Scan Large Repos'
