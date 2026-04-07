@@ -380,6 +380,7 @@ stages:
               filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/discover-repos.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
               pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
 
@@ -396,6 +397,7 @@ stages:
               filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/audit-repo-sizes.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
               pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
 
@@ -457,6 +459,7 @@ stages:
               filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json" -SizeFilter Small -SizeThresholdMB 1024'
               pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
 
@@ -526,6 +529,7 @@ stages:
               filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json" -SizeFilter Large -SizeThresholdMB 1024'
               pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
 
