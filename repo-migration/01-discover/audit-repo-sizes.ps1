@@ -79,9 +79,19 @@ function Get-RepoSizeViaApi {
         $itemsResp = Invoke-RestMethod -Uri $itemsUrl -Headers $apiHeaders -Method Get
 
         if ($itemsResp.value) {
-            # Filter to blobs (files), sort by size descending, take top 10
-            $files = @($itemsResp.value | Where-Object { -not $_.isFolder -and $_.PSObject.Properties['size'] } |
-                Sort-Object { $_.size } -Descending |
+            # Filter to blobs (files) — ADO returns gitObjectType='blob' for files
+            # Some items may lack isFolder; use gitObjectType or check for size property
+            $files = @($itemsResp.value | Where-Object {
+                $isFile = $false
+                if ($_.PSObject.Properties['gitObjectType']) {
+                    $isFile = $_.gitObjectType -eq 'blob'
+                } elseif ($_.PSObject.Properties['isFolder']) {
+                    $isFile = -not $_.isFolder
+                } else {
+                    $isFile = $_.PSObject.Properties['size'] -ne $null
+                }
+                $isFile -and $_.PSObject.Properties['size'] -and $_.size -gt 0
+            } | Sort-Object { $_.size } -Descending |
                 Select-Object -First 10)
 
             foreach ($f in $files) {
