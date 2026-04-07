@@ -61,17 +61,9 @@ foreach ($repo in $repos) {
     if (Test-Path $clonePath) { Remove-Item $clonePath -Recurse -Force }
 
     try {
-        $defaultBranch = $repo.DefaultBranch
-        $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth", 'clone', '--bare', '--quiet')
+        $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth", 'clone', '--bare', '--quiet', $cloneUrl, $clonePath)
 
-        # Single-branch: full history of default branch only (skips other branches)
-        # This catches secrets in ALL old commits while reducing clone size
-        if ($defaultBranch) {
-            $cloneArgs += @('--single-branch', '--branch', $defaultBranch)
-            Write-Host "  Cloning single-branch '$defaultBranch' with full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
-        }
-        $cloneArgs += @($cloneUrl, $clonePath)
-
+        Write-Host "  Cloning all branches with full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
         $cloneOutput = & git @cloneArgs 2>&1
         if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
     }
