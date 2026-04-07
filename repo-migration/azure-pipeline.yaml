@@ -341,9 +341,10 @@ stages:
   - stage: Discover
     displayName: '1. Discover & Analyze'
     jobs:
-      - job: DiscoverRepos
-        displayName: 'Discover → Size Audit → Secret Scan'
-        timeoutInMinutes: 120
+      # ── Job 1: Discover repos + Audit sizes ──────────────────────────────
+      - job: DiscoverAndAudit
+        displayName: 'Discover Repos & Audit Sizes'
+        timeoutInMinutes: 30
         steps:
 
           - script: |
@@ -353,14 +354,6 @@ stages:
               chmod +x /usr/local/bin/git-sizer
               git-sizer --version
             displayName: 'Install git-sizer'
-
-          - script: |
-              echo "Installing gitleaks..."
-              curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
-              tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
-              chmod +x /usr/local/bin/gitleaks
-              gitleaks version
-            displayName: 'Install gitleaks'
 
           - script: git lfs install
             displayName: 'Install Git LFS'
@@ -406,15 +399,6 @@ stages:
             env:
               ADO_PAT: $(ADO_PAT)
 
-          - task: PowerShell@2
-            displayName: '1.3 Scan for Secrets'
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
-              pwsh: true
-            env:
-              ADO_PAT: $(ADO_PAT)
-
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Discovery Reports'
             inputs:
@@ -423,11 +407,141 @@ stages:
               publishLocation: 'pipeline'
             condition: always()
 
+      # ── Job 2: Scan secrets — small repos (< 1 GB) ─────────────────────
+      - job: ScanSecretsSmall
+        displayName: '1.3a Scan Secrets (small repos < 1 GB)'
+        dependsOn: DiscoverAndAudit
+        timeoutInMinutes: 60
+        steps:
+
+          - script: |
+              curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
+              tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
+              chmod +x /usr/local/bin/gitleaks
+            displayName: 'Install gitleaks'
+
+          - script: git lfs install
+            displayName: 'Install Git LFS'
+
+          - task: PowerShell@2
+            displayName: 'Replace config tokens'
+            inputs:
+              targetType: inline
+              script: |
+                $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                $content = Get-Content $configFile -Raw
+                $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
+                $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
+                Set-Content -Path $configFile -Value $content
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download Discovery Reports'
+            inputs:
+              artifact: 'discovery-reports'
+              path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+
+          - script: |
+              echo "Freeing disk space..."
+              sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache 2>/dev/null || true
+              sudo apt-get clean 2>/dev/null || true
+              df -h /
+            displayName: 'Free disk space'
+
+          - task: PowerShell@2
+            displayName: '1.3a Scan Small Repos'
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json" -SizeFilter Small -SizeThresholdMB 1024'
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+
           - task: PublishPipelineArtifact@1
-            displayName: 'Publish Scan Logs'
+            displayName: 'Publish Small Scan Reports'
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+              artifact: 'scan-reports-small'
+              publishLocation: 'pipeline'
+            condition: always()
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Small Scan Logs'
             inputs:
               targetPath: '$(Build.SourcesDirectory)/repo-migration/output/logs'
-              artifact: 'discovery-logs'
+              artifact: 'scan-logs-small'
+              publishLocation: 'pipeline'
+            condition: always()
+
+      # ── Job 3: Scan secrets — large repos (>= 1 GB) ────────────────────
+      - job: ScanSecretsLarge
+        displayName: '1.3b Scan Secrets (large repos >= 1 GB)'
+        dependsOn: DiscoverAndAudit
+        timeoutInMinutes: 360
+        steps:
+
+          - script: |
+              curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
+              tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
+              chmod +x /usr/local/bin/gitleaks
+            displayName: 'Install gitleaks'
+
+          - script: git lfs install
+            displayName: 'Install Git LFS'
+
+          - task: PowerShell@2
+            displayName: 'Replace config tokens'
+            inputs:
+              targetType: inline
+              script: |
+                $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                $content = Get-Content $configFile -Raw
+                $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
+                $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
+                Set-Content -Path $configFile -Value $content
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download Discovery Reports'
+            inputs:
+              artifact: 'discovery-reports'
+              path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+
+          - script: |
+              echo "Freeing disk space..."
+              sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache 2>/dev/null || true
+              sudo apt-get clean 2>/dev/null || true
+              df -h /
+            displayName: 'Free disk space'
+
+          - task: PowerShell@2
+            displayName: '1.3b Scan Large Repos'
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json" -SizeFilter Large -SizeThresholdMB 1024'
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Large Scan Reports'
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+              artifact: 'scan-reports-large'
+              publishLocation: 'pipeline'
+            condition: always()
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Large Scan Logs'
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/logs'
+              artifact: 'scan-logs-large'
               publishLocation: 'pipeline'
             condition: always()
 
@@ -479,6 +593,46 @@ stages:
             inputs:
               artifact: 'discovery-reports'
               path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download Small Scan Reports'
+            inputs:
+              artifact: 'scan-reports-small'
+              path: '$(Build.SourcesDirectory)/repo-migration/output/scan-small'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download Large Scan Reports'
+            inputs:
+              artifact: 'scan-reports-large'
+              path: '$(Build.SourcesDirectory)/repo-migration/output/scan-large'
+
+          - task: PowerShell@2
+            displayName: 'Merge scan results'
+            inputs:
+              targetType: inline
+              script: |
+                $reportDir = "$(Build.SourcesDirectory)/repo-migration/output/reports"
+                $smallDir  = "$(Build.SourcesDirectory)/repo-migration/output/scan-small"
+                $largeDir  = "$(Build.SourcesDirectory)/repo-migration/output/scan-large"
+
+                # Merge summaries
+                $all = @()
+                $smallSummary = Join-Path $smallDir "secret-scan-summary-small.json"
+                $largeSummary = Join-Path $largeDir "secret-scan-summary-large.json"
+                if (Test-Path $smallSummary) { $all += Get-Content $smallSummary -Raw | ConvertFrom-Json }
+                if (Test-Path $largeSummary) { $all += Get-Content $largeSummary -Raw | ConvertFrom-Json }
+                $all | ConvertTo-Json -Depth 3 | Out-File (Join-Path $reportDir "secret-scan-summary.json") -Encoding utf8
+
+                # Merge findings
+                $allFindings = @()
+                $smallFindings = Join-Path $smallDir "secret-scan-findings-small.json"
+                $largeFindings = Join-Path $largeDir "secret-scan-findings-large.json"
+                if (Test-Path $smallFindings) { $allFindings += Get-Content $smallFindings -Raw | ConvertFrom-Json }
+                if (Test-Path $largeFindings) { $allFindings += Get-Content $largeFindings -Raw | ConvertFrom-Json }
+                $allFindings | ConvertTo-Json -Depth 5 | Out-File (Join-Path $reportDir "secret-scan-findings.json") -Encoding utf8
+
+                Write-Host "Merged scan results: $($all.Count) repos, $($allFindings.Count) total findings"
+              pwsh: true
 
           - task: PowerShell@2
             displayName: '2.1 Scrub Secrets (if needed)'
