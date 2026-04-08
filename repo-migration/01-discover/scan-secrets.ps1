@@ -25,7 +25,10 @@ param(
     [string]$SizeFilter = 'All',
 
     [Parameter(Mandatory = $false)]
-    [int]$SizeThresholdMB = 1024
+    [int]$SizeThresholdMB = 1024,
+
+    [Parameter(Mandatory = $false)]
+    [int]$ThrottleLimit = 5
 )
 
 Set-StrictMode -Version Latest
