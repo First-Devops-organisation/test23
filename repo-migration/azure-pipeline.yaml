@@ -586,122 +586,122 @@ stages:
               tabName: 'Secret Scan (Large)'
             condition: always()
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # PHASE 2: PREP
-  # ═══════════════════════════════════════════════════════════════════════════
-  - stage: Prep
-    displayName: '2. Prepare & Scrub Secrets'
-    dependsOn: Discover
-    jobs:
-      - job: PrepAndScrub
-        displayName: 'Install Tools & Scrub Secrets'
-        timeoutInMinutes: 60
-        steps:
+  # # ═══════════════════════════════════════════════════════════════════════════
+  # # PHASE 2: PREP
+  # # ═══════════════════════════════════════════════════════════════════════════
+  # - stage: Prep
+  #   displayName: '2. Prepare & Scrub Secrets'
+  #   dependsOn: Discover
+  #   jobs:
+  #     - job: PrepAndScrub
+  #       displayName: 'Install Tools & Scrub Secrets'
+  #       timeoutInMinutes: 60
+  #       steps:
 
-          - script: |
-              echo "Installing tools..."
-              # git-sizer
-              curl -sL https://github.com/github/git-sizer/releases/download/v1.5.0/git-sizer-1.5.0-linux-amd64.zip -o git-sizer.zip
-              unzip git-sizer.zip -d /usr/local/bin/
-              chmod +x /usr/local/bin/git-sizer
-              # gitleaks
-              curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
-              tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
-              chmod +x /usr/local/bin/gitleaks
-              # git-filter-repo
-              pip install git-filter-repo
-              # git lfs
-              git lfs install
-            displayName: 'Install all tools'
+  #         - script: |
+  #             echo "Installing tools..."
+  #             # git-sizer
+  #             curl -sL https://github.com/github/git-sizer/releases/download/v1.5.0/git-sizer-1.5.0-linux-amd64.zip -o git-sizer.zip
+  #             unzip git-sizer.zip -d /usr/local/bin/
+  #             chmod +x /usr/local/bin/git-sizer
+  #             # gitleaks
+  #             curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
+  #             tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
+  #             chmod +x /usr/local/bin/gitleaks
+  #             # git-filter-repo
+  #             pip install git-filter-repo
+  #             # git lfs
+  #             git lfs install
+  #           displayName: 'Install all tools'
 
-          - task: PowerShell@2
-            displayName: 'Replace config tokens'
-            inputs:
-              targetType: inline
-              script: |
-                $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
-                $content = Get-Content $configFile -Raw
-                $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
-                $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
-                $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
-                Set-Content -Path $configFile -Value $content
-              pwsh: true
-            env:
-              ADO_PAT: $(ADO_PAT)
+  #         - task: PowerShell@2
+  #           displayName: 'Replace config tokens'
+  #           inputs:
+  #             targetType: inline
+  #             script: |
+  #               $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+  #               $content = Get-Content $configFile -Raw
+  #               $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
+  #               $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+  #               $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
+  #               Set-Content -Path $configFile -Value $content
+  #             pwsh: true
+  #           env:
+  #             ADO_PAT: $(ADO_PAT)
 
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download Discovery Reports'
-            inputs:
-              artifact: 'discovery-reports'
-              path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+  #         - task: DownloadPipelineArtifact@2
+  #           displayName: 'Download Discovery Reports'
+  #           inputs:
+  #             artifact: 'discovery-reports'
+  #             path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
 
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download Small Scan Reports'
-            inputs:
-              artifact: 'scan-reports-small'
-              path: '$(Build.SourcesDirectory)/repo-migration/output/scan-small'
+  #         - task: DownloadPipelineArtifact@2
+  #           displayName: 'Download Small Scan Reports'
+  #           inputs:
+  #             artifact: 'scan-reports-small'
+  #             path: '$(Build.SourcesDirectory)/repo-migration/output/scan-small'
 
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download Large Scan Reports'
-            inputs:
-              artifact: 'scan-reports-large'
-              path: '$(Build.SourcesDirectory)/repo-migration/output/scan-large'
+  #         - task: DownloadPipelineArtifact@2
+  #           displayName: 'Download Large Scan Reports'
+  #           inputs:
+  #             artifact: 'scan-reports-large'
+  #             path: '$(Build.SourcesDirectory)/repo-migration/output/scan-large'
 
-          - task: PowerShell@2
-            displayName: 'Merge scan results'
-            inputs:
-              targetType: inline
-              script: |
-                $reportDir = "$(Build.SourcesDirectory)/repo-migration/output/reports"
-                $smallDir  = "$(Build.SourcesDirectory)/repo-migration/output/scan-small"
-                $largeDir  = "$(Build.SourcesDirectory)/repo-migration/output/scan-large"
+  #         - task: PowerShell@2
+  #           displayName: 'Merge scan results'
+  #           inputs:
+  #             targetType: inline
+  #             script: |
+  #               $reportDir = "$(Build.SourcesDirectory)/repo-migration/output/reports"
+  #               $smallDir  = "$(Build.SourcesDirectory)/repo-migration/output/scan-small"
+  #               $largeDir  = "$(Build.SourcesDirectory)/repo-migration/output/scan-large"
 
-                # Merge summaries
-                $all = @()
-                $smallSummary = Join-Path $smallDir "secret-scan-summary-small.json"
-                $largeSummary = Join-Path $largeDir "secret-scan-summary-large.json"
-                if (Test-Path $smallSummary) { $all += Get-Content $smallSummary -Raw | ConvertFrom-Json }
-                if (Test-Path $largeSummary) { $all += Get-Content $largeSummary -Raw | ConvertFrom-Json }
-                $all | ConvertTo-Json -Depth 3 | Out-File (Join-Path $reportDir "secret-scan-summary.json") -Encoding utf8
+  #               # Merge summaries
+  #               $all = @()
+  #               $smallSummary = Join-Path $smallDir "secret-scan-summary-small.json"
+  #               $largeSummary = Join-Path $largeDir "secret-scan-summary-large.json"
+  #               if (Test-Path $smallSummary) { $all += Get-Content $smallSummary -Raw | ConvertFrom-Json }
+  #               if (Test-Path $largeSummary) { $all += Get-Content $largeSummary -Raw | ConvertFrom-Json }
+  #               $all | ConvertTo-Json -Depth 3 | Out-File (Join-Path $reportDir "secret-scan-summary.json") -Encoding utf8
 
-                # Merge findings
-                $allFindings = @()
-                $smallFindings = Join-Path $smallDir "secret-scan-findings-small.json"
-                $largeFindings = Join-Path $largeDir "secret-scan-findings-large.json"
-                if (Test-Path $smallFindings) { $allFindings += Get-Content $smallFindings -Raw | ConvertFrom-Json }
-                if (Test-Path $largeFindings) { $allFindings += Get-Content $largeFindings -Raw | ConvertFrom-Json }
-                $allFindings | ConvertTo-Json -Depth 5 | Out-File (Join-Path $reportDir "secret-scan-findings.json") -Encoding utf8
+  #               # Merge findings
+  #               $allFindings = @()
+  #               $smallFindings = Join-Path $smallDir "secret-scan-findings-small.json"
+  #               $largeFindings = Join-Path $largeDir "secret-scan-findings-large.json"
+  #               if (Test-Path $smallFindings) { $allFindings += Get-Content $smallFindings -Raw | ConvertFrom-Json }
+  #               if (Test-Path $largeFindings) { $allFindings += Get-Content $largeFindings -Raw | ConvertFrom-Json }
+  #               $allFindings | ConvertTo-Json -Depth 5 | Out-File (Join-Path $reportDir "secret-scan-findings.json") -Encoding utf8
 
-                Write-Host "Merged scan results: $($all.Count) repos, $($allFindings.Count) total findings"
-              pwsh: true
+  #               Write-Host "Merged scan results: $($all.Count) repos, $($allFindings.Count) total findings"
+  #             pwsh: true
 
-          - task: PowerShell@2
-            displayName: '2.1 Scrub Secrets (if needed)'
-            inputs:
-              targetType: inline
-              script: |
-                $reportDir = "$(Build.SourcesDirectory)/repo-migration/output/reports"
-                $secretReport = Join-Path $reportDir "secret-scan-summary.json"
-                if (Test-Path $secretReport) {
-                    $data = Get-Content $secretReport -Raw | ConvertFrom-Json
-                    $dirty = $data | Where-Object { $_.Status -eq 'SECRETS_FOUND' }
-                    if ($dirty.Count -gt 0) {
-                        Write-Host "Repos with secrets found - running scrub..."
-                        & "$(Build.SourcesDirectory)/repo-migration/02-prep/scrub-secrets.ps1" -ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
-                    } else {
-                        Write-Host "No secrets found - skipping scrub."
-                    }
-                } else {
-                    Write-Host "No secret scan report found - skipping scrub."
-                }
-              pwsh: true
-            env:
-              ADO_PAT: $(ADO_PAT)
+  #         - task: PowerShell@2
+  #           displayName: '2.1 Scrub Secrets (if needed)'
+  #           inputs:
+  #             targetType: inline
+  #             script: |
+  #               $reportDir = "$(Build.SourcesDirectory)/repo-migration/output/reports"
+  #               $secretReport = Join-Path $reportDir "secret-scan-summary.json"
+  #               if (Test-Path $secretReport) {
+  #                   $data = Get-Content $secretReport -Raw | ConvertFrom-Json
+  #                   $dirty = $data | Where-Object { $_.Status -eq 'SECRETS_FOUND' }
+  #                   if ($dirty.Count -gt 0) {
+  #                       Write-Host "Repos with secrets found - running scrub..."
+  #                       & "$(Build.SourcesDirectory)/repo-migration/02-prep/scrub-secrets.ps1" -ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+  #                   } else {
+  #                       Write-Host "No secrets found - skipping scrub."
+  #                   }
+  #               } else {
+  #                   Write-Host "No secret scan report found - skipping scrub."
+  #               }
+  #             pwsh: true
+  #           env:
+  #             ADO_PAT: $(ADO_PAT)
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish Prep Reports'
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
-              artifact: 'prep-reports'
-              publishLocation: 'pipeline'
-            condition: always()
+  #         - task: PublishPipelineArtifact@1
+  #           displayName: 'Publish Prep Reports'
+  #           inputs:
+  #             targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+  #             artifact: 'prep-reports'
+  #             publishLocation: 'pipeline'
+  #           condition: always()
