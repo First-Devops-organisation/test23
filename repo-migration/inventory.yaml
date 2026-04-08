@@ -40,4 +40,9 @@ stages:
               publishLocation: 'pipeline'
             condition: always()
 
-  
+          - task: PublishHtmlReport@1
+            displayName: 'Publish Inventory Dashboard'
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/inventory/inventory-dashboard.html'
+              tabName: 'ADO Inventory'
+            condition: always()
