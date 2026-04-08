@@ -1,7 +1,7 @@
 trigger: none
 
-pool: 
-  vmImage: 'windows-latest'
+pool: migration-pool
+  # vmImage: 'windows-latest'
 
 variables:
   - group: repo-migration-discover
@@ -30,14 +30,14 @@ stages:
                 $env:PATH = "$env:AGENT_TOOLSDIRECTORY\git-sizer;$env:PATH"
                 Write-Host "##vso[task.prependpath]$env:AGENT_TOOLSDIRECTORY\git-sizer"
                 git-sizer --version
-              pwsh: false
+              pwsh: true
 
           - task: PowerShell@2
             displayName: 'Install Git LFS'
             inputs:
               targetType: inline
               script: git lfs install
-              pwsh: false
+              pwsh: true
 
           - task: PowerShell@2
             displayName: 'Replace config tokens'
@@ -51,7 +51,7 @@ stages:
                 $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
                 Set-Content -Path $configFile -Value $content
                 Write-Host "Config tokens replaced successfully."
-              pwsh: false
+              pwsh: true
             env:
               ADO_PAT: $(ADO_PAT)
 
@@ -63,14 +63,14 @@ stages:
                 New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\reports" -Force | Out-Null
                 New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\logs" -Force | Out-Null
                 New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\tmp\clones" -Force | Out-Null
-              pwsh: false
+              pwsh: true
 
           - task: PowerShell@2
             displayName: '1.1 Discover Repos'
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\discover-repos.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
-              pwsh: false
+              pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
@@ -82,14 +82,14 @@ stages:
               script: |
                 Write-Host "Checking disk space..."
                 Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{N='Used(GB)';E={[math]::Round($_.Used/1GB,2)}}, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,2)}}
-              pwsh: false
+              pwsh: true
 
           - task: PowerShell@2
             displayName: '1.2 Audit Repo Sizes'
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
-              pwsh: false
+              pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
@@ -124,14 +124,14 @@ stages:
                 Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_windows_x64.zip" -OutFile gitleaks.zip
                 Expand-Archive -Path gitleaks.zip -DestinationPath "$env:AGENT_TOOLSDIRECTORY\gitleaks" -Force
                 Write-Host "##vso[task.prependpath]$env:AGENT_TOOLSDIRECTORY\gitleaks"
-              pwsh: false
+              pwsh: true
 
           - task: PowerShell@2
             displayName: 'Install Git LFS'
             inputs:
               targetType: inline
               script: git lfs install
-              pwsh: false
+              pwsh: true
 
           - task: PowerShell@2
             displayName: 'Replace config tokens'
@@ -144,7 +144,7 @@ stages:
                 $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
                 $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
                 Set-Content -Path $configFile -Value $content
-              pwsh: false
+              pwsh: true
             env:
               ADO_PAT: $(ADO_PAT)
 
@@ -160,7 +160,7 @@ stages:
               targetType: inline
               script: |
                 Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{N='Used(GB)';E={[math]::Round($_.Used/1GB,2)}}, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,2)}}
-              pwsh: false
+              pwsh: true
 
           - task: PowerShell@2
             displayName: 'Ensure output directories'
@@ -169,14 +169,14 @@ stages:
               script: |
                 New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\reports" -Force | Out-Null
                 New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\logs" -Force | Out-Null
-              pwsh: false
+              pwsh: true
 
           - task: PowerShell@2
             displayName: '1.3a Scan Small Repos'
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
               arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json" -SizeFilter Small -SizeThresholdMB 1024 -ThrottleLimit 8'
-              pwsh: false
+              pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
