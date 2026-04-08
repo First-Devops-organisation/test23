@@ -134,11 +134,146 @@ if ($lfsRepos) {
 # ── Output ───────────────────────────────────────────────────────────────────
 $jsonOut = Join-Path $reportDir "repo-inventory.json"
 $csvOut  = Join-Path $reportDir "repo-inventory.csv"
+$htmlOut = Join-Path $reportDir "repo-inventory.html"
 
 $included | ConvertTo-Json -Depth 5 | Out-File $jsonOut -Encoding utf8
 $included | Export-Csv $csvOut -NoTypeInformation -Encoding utf8
 
+# ── HTML Dashboard Report ────────────────────────────────────────────────────
+$totalSizeMB = [math]::Round(($included | Measure-Object -Property SizeMB -Sum).Sum, 2)
+$totalSizeGB = [math]::Round($totalSizeMB / 1024, 2)
+$lfsCount    = @($included | Where-Object HasLFS).Count
+$geiCount    = @($included | Where-Object ExceedsGEI40GB).Count
+$disabledCount = @($included | Where-Object IsDisabled).Count
+$timestamp   = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
+
+$tableRows = ""
+$rowIndex = 0
+foreach ($r in ($included | Sort-Object { $_.SizeMB } -Descending)) {
+    $rowIndex++
+    $sizeClass = if ($r.SizeGB -gt 40) { "blocked" } elseif ($r.SizeMB -gt 1024) { "warning" } else { "ok" }
+    $lfsIcon   = if ($r.HasLFS) { "&#9989;" } else { "&#10060;" }
+    $geiIcon   = if ($r.ExceedsGEI40GB) { "<span class='badge blocked'>BLOCKED</span>" } else { "<span class='badge ok'>OK</span>" }
+    $lastCommit = if ($r.LastCommitDate) { try { ([datetime]$r.LastCommitDate).ToString("yyyy-MM-dd") } catch { "$($r.LastCommitDate)" } } else { "N/A" }
+    $repoName  = [System.Net.WebUtility]::HtmlEncode($r.Name)
+    $repoLink  = if ($r.Url) { "<a href='$([System.Net.WebUtility]::HtmlEncode($r.Url))' target='_blank'>$repoName</a>" } else { $repoName }
+
+    $tableRows += "    <tr class='$sizeClass'>`n"
+    $tableRows += "      <td>$rowIndex</td>`n"
+    $tableRows += "      <td>$repoLink</td>`n"
+    $tableRows += "      <td>$([System.Net.WebUtility]::HtmlEncode($r.DefaultBranch))</td>`n"
+    $tableRows += "      <td class='num'>$($r.SizeMB)</td>`n"
+    $tableRows += "      <td class='num'>$($r.SizeGB)</td>`n"
+    $tableRows += "      <td>$lastCommit</td>`n"
+    $tableRows += "      <td class='center'>$lfsIcon</td>`n"
+    $tableRows += "      <td class='center'>$geiIcon</td>`n"
+    $tableRows += "    </tr>`n"
+}
+
+$htmlContent = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADO Repository Discovery Report</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5; color: #24292f; padding: 20px; }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 1.8rem; margin-bottom: 5px; color: #0078d4; }
+  .subtitle { color: #586069; margin-bottom: 20px; font-size: 0.9rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 15px; margin-bottom: 25px; }
+  .card { background: #fff; border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); text-align: center; }
+  .card .value { font-size: 2rem; font-weight: 700; color: #0078d4; }
+  .card .label { font-size: 0.85rem; color: #586069; margin-top: 4px; }
+  .card.warn .value { color: #d29922; }
+  .card.error .value { color: #cf222e; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+  th { background: #0078d4; color: #fff; padding: 12px 10px; text-align: left; font-size: 0.85rem; position: sticky; top: 0; cursor: pointer; user-select: none; }
+  th:hover { background: #106ebe; }
+  td { padding: 10px; border-bottom: 1px solid #e1e4e8; font-size: 0.85rem; }
+  tr:hover { background: #f6f8fa; }
+  tr.blocked { background: #fff0f0; }
+  tr.warning { background: #fff8e1; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .center { text-align: center; }
+  .badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .badge.ok { background: #dafbe1; color: #1a7f37; }
+  .badge.blocked { background: #ffebe9; color: #cf222e; }
+  .search-box { margin-bottom: 15px; }
+  .search-box input { width: 100%; max-width: 400px; padding: 10px 14px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 0.9rem; }
+  .search-box input:focus { outline: none; border-color: #0078d4; box-shadow: 0 0 0 3px rgba(0,120,212,0.15); }
+  a { color: #0078d4; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .footer { margin-top: 15px; color: #586069; font-size: 0.8rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>&#128269; ADO Repository Discovery Report</h1>
+  <p class="subtitle">$([System.Net.WebUtility]::HtmlEncode($adoOrg)) / $([System.Net.WebUtility]::HtmlEncode($adoProj)) &mdash; Generated: $timestamp</p>
+  <div class="cards">
+    <div class="card"><div class="value">$($included.Count)</div><div class="label">Repos to Migrate</div></div>
+    <div class="card"><div class="value">$($excluded.Count)</div><div class="label">Excluded</div></div>
+    <div class="card"><div class="value">$totalSizeGB GB</div><div class="label">Total Size</div></div>
+    <div class="card$(if ($lfsCount -gt 0) {' warn'})"><div class="value">$lfsCount</div><div class="label">Repos with LFS</div></div>
+    <div class="card$(if ($geiCount -gt 0) {' error'})"><div class="value">$geiCount</div><div class="label">Exceed GEI 40 GB</div></div>
+    <div class="card$(if ($disabledCount -gt 0) {' warn'})"><div class="value">$disabledCount</div><div class="label">Disabled</div></div>
+  </div>
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Search repos..." onkeyup="filterTable()">
+  </div>
+  <table id="repoTable">
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">#</th>
+        <th onclick="sortTable(1)">Repository</th>
+        <th onclick="sortTable(2)">Default Branch</th>
+        <th onclick="sortTable(3)">Size (MB)</th>
+        <th onclick="sortTable(4)">Size (GB)</th>
+        <th onclick="sortTable(5)">Last Commit</th>
+        <th onclick="sortTable(6)">LFS</th>
+        <th onclick="sortTable(7)">GEI Status</th>
+      </tr>
+    </thead>
+    <tbody>
+$tableRows
+    </tbody>
+  </table>
+  <p class="footer">Total repos found: $($repos.Count) | Included: $($included.Count) | Excluded: $($excluded.Count)</p>
+</div>
+<script>
+function filterTable() {
+  var input = document.getElementById('searchInput').value.toLowerCase();
+  var rows = document.querySelectorAll('#repoTable tbody tr');
+  for (var i = 0; i < rows.length; i++) {
+    rows[i].style.display = rows[i].textContent.toLowerCase().indexOf(input) > -1 ? '' : 'none';
+  }
+}
+var sortDir = {};
+function sortTable(col) {
+  var tbody = document.getElementById('repoTable').querySelector('tbody');
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+  var dir = sortDir[col] = !sortDir[col];
+  rows.sort(function(a, b) {
+    var aVal = a.cells[col].textContent.trim();
+    var bVal = b.cells[col].textContent.trim();
+    var aNum = parseFloat(aVal), bNum = parseFloat(bVal);
+    if (!isNaN(aNum) && !isNaN(bNum)) return dir ? aNum - bNum : bNum - aNum;
+    return dir ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+  });
+  for (var i = 0; i < rows.length; i++) { tbody.appendChild(rows[i]); }
+}
+</script>
+</body>
+</html>
+"@
+
+$htmlContent | Out-File $htmlOut -Encoding utf8
+
 Write-Host "`nReports saved:" -ForegroundColor Cyan
 Write-Host "  JSON : $jsonOut"
 Write-Host "  CSV  : $csvOut"
+Write-Host "  HTML : $htmlOut"
 Write-Host "`nNext step: Run 01-discover\audit-repo-sizes.ps1 for detailed per-file size analysis."
