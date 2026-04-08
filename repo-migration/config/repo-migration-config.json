@@ -15,7 +15,7 @@
     "branches": []
   },
   "output": {
-    "reportDir": "./reports",
-    "logDir": "./logs"
+    "reportDir": "./output/reports",
+    "logDir": "./output/logs"
   }
 }
