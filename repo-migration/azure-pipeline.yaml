@@ -1,7 +1,7 @@
 trigger: none
 
-pool: migration-pool
-  # vmImage: 'windows-latest'
+pool: 
+  vmImage: 'windows-latest'
 
 variables:
   - group: repo-migration-discover
