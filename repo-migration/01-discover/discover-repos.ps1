@@ -134,9 +134,7 @@ if ($lfsRepos) {
 # ── Output ───────────────────────────────────────────────────────────────────
 $jsonOut = Join-Path $reportDir "repo-inventory.json"
 $csvOut  = Join-Path $reportDir "repo-inventory.csv"
-$htmlDir = Join-Path $reportDir "html-discovery"
-if (-not (Test-Path $htmlDir)) { New-Item -ItemType Directory -Path $htmlDir -Force | Out-Null }
-$htmlOut = Join-Path $htmlDir "index.html"
+$htmlOut = Join-Path $reportDir "repo-inventory.html"
 
 $included | ConvertTo-Json -Depth 5 | Out-File $jsonOut -Encoding utf8
 $included | Export-Csv $csvOut -NoTypeInformation -Encoding utf8
