@@ -124,14 +124,22 @@ foreach ($project in $projectsResp.value) {
 
     # --- Release Definitions (Classic) ---
     $vsrmUrl = $OrgUrl -replace "dev.azure.com", "vsrm.dev.azure.com"
-    $releasesResp = Invoke-AdoApi "$vsrmUrl/$projName/_apis/release/definitions"
+    $releasesResp = Invoke-AdoApi "$vsrmUrl/$projName/_apis/release/definitions?`$expand=environments"
     if ($releasesResp) {
         foreach ($rd in $releasesResp.value) {
+            $envNames = @()
+            if ($rd.environments) {
+                $envNames = @($rd.environments | ForEach-Object { $_.name })
+            }
             $projData.releaseDefinitions += @{
-                name = $rd.name
-                id   = $rd.id
-                path = $rd.path
-                environmentCount = if ($rd.environments) { $rd.environments.Count } else { 0 }
+                name             = $rd.name
+                id               = $rd.id
+                path             = $rd.path
+                environmentCount = $envNames.Count
+                environmentNames = ($envNames -join ', ')
+                createdBy        = if ($rd.createdBy) { $rd.createdBy.displayName } else { 'N/A' }
+                modifiedBy       = if ($rd.modifiedBy) { $rd.modifiedBy.displayName } else { 'N/A' }
+                modifiedOn       = $rd.modifiedOn
             }
         }
         Write-Host "    Release Definitions: $($releasesResp.count)" -ForegroundColor Gray
@@ -174,9 +182,14 @@ foreach ($project in $projectsResp.value) {
     if ($scResp) {
         foreach ($sc in $scResp.value) {
             $projData.serviceConnections += @{
-                name = $sc.name
-                type = $sc.type
-                id   = $sc.id
+                name        = $sc.name
+                type        = $sc.type
+                id          = $sc.id
+                url         = $sc.url
+                description = $sc.description
+                authScheme  = if ($sc.authorization) { $sc.authorization.scheme } else { 'N/A' }
+                isReady     = $sc.isReady
+                createdBy   = if ($sc.createdBy) { $sc.createdBy.displayName } else { 'N/A' }
             }
         }
         Write-Host "    Service Connections: $($scResp.count)" -ForegroundColor Gray
@@ -186,11 +199,26 @@ foreach ($project in $projectsResp.value) {
     $vgResp = Invoke-AdoApi "$OrgUrl/$projName/_apis/distributedtask/variablegroups"
     if ($vgResp) {
         foreach ($vg in $vgResp.value) {
+            $varNames = @()
+            $secretCount = 0
+            if ($vg.variables) {
+                $vg.variables.PSObject.Properties | ForEach-Object {
+                    $varNames += $_.Name
+                    if ($_.Value.isSecret) { $secretCount++ }
+                }
+            }
             $projData.variableGroups += @{
-                name         = $vg.name
-                id           = $vg.id
-                variableCount = ($vg.variables.PSObject.Properties | Measure-Object).Count
-                type         = $vg.type
+                name          = $vg.name
+                id            = $vg.id
+                variableCount = $varNames.Count
+                secretCount   = $secretCount
+                variableNames = ($varNames -join ', ')
+                type          = $vg.type
+                description   = $vg.description
+                providerData  = if ($vg.providerData) { $vg.providerData.vault } else { $null }
+                createdBy     = if ($vg.createdBy) { $vg.createdBy.displayName } else { 'N/A' }
+                modifiedBy    = if ($vg.modifiedBy) { $vg.modifiedBy.displayName } else { 'N/A' }
+                modifiedOn    = $vg.modifiedOn
             }
         }
         Write-Host "    Variable Groups: $($vgResp.count)" -ForegroundColor Gray
@@ -267,6 +295,14 @@ $totalEnvironments = ($inventory.projects | ForEach-Object { $_.environments.Cou
 $largeCount = @($inventory.projects | ForEach-Object { $_.repos } | Where-Object { $_.sizeGB -gt 1 }).Count
 $geiBlockedCount = @($inventory.projects | ForEach-Object { $_.repos } | Where-Object { $_.sizeGB -gt 40 }).Count
 
+# Build project-wise summary report table
+$reportRows = ""
+foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
+    $pSizeGB = [math]::Round(($proj.repos | Measure-Object -Property sizeGB -Sum).Sum, 2)
+    $reportRows += "<tr><td>$([System.Net.WebUtility]::HtmlEncode($proj.name))</td><td>$($proj.visibility)</td><td class='num'>$($proj.repos.Count)</td><td class='num'>$pSizeGB</td><td class='num'>$($proj.pipelines.Count)</td><td class='num'>$($proj.releaseDefinitions.Count)</td><td class='num'>$($proj.teams.Count)</td><td class='num'>$($proj.workItemCount)</td><td class='num'>$($proj.serviceConnections.Count)</td><td class='num'>$($proj.variableGroups.Count)</td><td class='num'>$($proj.environments.Count)</td></tr>`n"
+}
+$reportRows += "<tr class='total-row'><td>TOTAL</td><td></td><td class='num'>$($inventory.totalRepos)</td><td class='num'>$totalSizeGB</td><td class='num'>$($inventory.totalPipelines)</td><td class='num'>$totalReleaseDefs</td><td class='num'>$($inventory.totalTeams)</td><td class='num'>$($inventory.totalWorkItems)</td><td class='num'>$totalSvcConns</td><td class='num'>$totalVarGroups</td><td class='num'>$totalEnvironments</td></tr>`n"
+
 # Build project cards
 $projectCards = ""
 foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
@@ -301,7 +337,9 @@ foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
     # Release table rows
     $releaseRows = ""
     foreach ($rd in $proj.releaseDefinitions) {
-        $releaseRows += "<tr><td>$([System.Net.WebUtility]::HtmlEncode($rd.name))</td><td>$([System.Net.WebUtility]::HtmlEncode($rd.path))</td><td class='num'>$($rd.environmentCount)</td></tr>`n"
+        $rdEnvNames = if ($rd.environmentNames) { [System.Net.WebUtility]::HtmlEncode($rd.environmentNames) } else { '-' }
+        $rdModified = if ($rd.modifiedOn) { ([datetime]$rd.modifiedOn).ToString('yyyy-MM-dd') } else { '-' }
+        $releaseRows += "<tr><td>$([System.Net.WebUtility]::HtmlEncode($rd.name))</td><td>$([System.Net.WebUtility]::HtmlEncode($rd.path))</td><td class='num'>$($rd.environmentCount)</td><td>$rdEnvNames</td><td>$([System.Net.WebUtility]::HtmlEncode($rd.modifiedBy))</td><td>$rdModified</td></tr>`n"
     }
 
     # Teams table rows
@@ -313,13 +351,20 @@ foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
     # Service connections
     $scRows = ""
     foreach ($sc in $proj.serviceConnections) {
-        $scRows += "<tr><td>$([System.Net.WebUtility]::HtmlEncode($sc.name))</td><td>$([System.Net.WebUtility]::HtmlEncode($sc.type))</td></tr>`n"
+        $scUrl = if ($sc.url) { [System.Net.WebUtility]::HtmlEncode($sc.url) } else { '-' }
+        $scDesc = if ($sc.description) { [System.Net.WebUtility]::HtmlEncode($sc.description) } else { '-' }
+        $readyClass = if ($sc.isReady -eq $false) { "warning" } else { "" }
+        $scRows += "<tr class='$readyClass'><td>$([System.Net.WebUtility]::HtmlEncode($sc.name))</td><td>$([System.Net.WebUtility]::HtmlEncode($sc.type))</td><td>$([System.Net.WebUtility]::HtmlEncode($sc.authScheme))</td><td>$scUrl</td><td>$scDesc</td><td>$([System.Net.WebUtility]::HtmlEncode($sc.createdBy))</td><td>$(if ($sc.isReady) { 'Yes' } else { 'No' })</td></tr>`n"
     }
 
     # Variable groups
     $vgRows = ""
     foreach ($vg in $proj.variableGroups) {
-        $vgRows += "<tr><td>$([System.Net.WebUtility]::HtmlEncode($vg.name))</td><td class='num'>$($vg.variableCount)</td><td>$([System.Net.WebUtility]::HtmlEncode($vg.type))</td></tr>`n"
+        $vgDesc = if ($vg.description) { [System.Net.WebUtility]::HtmlEncode($vg.description) } else { '-' }
+        $vgVault = if ($vg.providerData) { [System.Net.WebUtility]::HtmlEncode($vg.providerData) } else { '-' }
+        $vgVarNames = if ($vg.variableNames) { "<span class='var-list' title='$([System.Net.WebUtility]::HtmlEncode($vg.variableNames))'>$([System.Net.WebUtility]::HtmlEncode($vg.variableNames))</span>" } else { '-' }
+        $vgModified = if ($vg.modifiedOn) { ([datetime]$vg.modifiedOn).ToString('yyyy-MM-dd') } else { '-' }
+        $vgRows += "<tr><td>$([System.Net.WebUtility]::HtmlEncode($vg.name))</td><td>$([System.Net.WebUtility]::HtmlEncode($vg.type))</td><td class='num'>$($vg.variableCount)</td><td class='num'>$($vg.secretCount)</td><td class='var-cell'>$vgVarNames</td><td>$vgVault</td><td>$vgDesc</td><td>$([System.Net.WebUtility]::HtmlEncode($vg.modifiedBy))</td><td>$vgModified</td></tr>`n"
     }
 
     # Environments
@@ -338,6 +383,8 @@ foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
       <span>Releases: <b>$releaseCount</b></span>
       <span>Teams: <b>$teamCount</b></span>
       <span>Work Items: <b>$wiCount</b></span>
+      <span>Svc Conns: <b>$scCount</b></span>
+      <span>Var Groups: <b>$vgCount</b></span>
       <span>Size: <b>$projSizeGB GB</b></span>
     </div>
   </div>
@@ -349,16 +396,16 @@ foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
     $(if ($pipeCount -gt 0) { "<table><thead><tr><th>Name</th><th>Type</th><th>Queue Status</th><th>Path</th></tr></thead><tbody>$pipeRows</tbody></table>" } else { "<p class='empty'>No build pipelines</p>" })
 
     <h3>Release Definitions ($releaseCount)</h3>
-    $(if ($releaseCount -gt 0) { "<table><thead><tr><th>Name</th><th>Path</th><th>Environments</th></tr></thead><tbody>$releaseRows</tbody></table>" } else { "<p class='empty'>No release definitions</p>" })
+    $(if ($releaseCount -gt 0) { "<table><thead><tr><th>Name</th><th>Path</th><th>Environments</th><th>Environment Names</th><th>Modified By</th><th>Modified</th></tr></thead><tbody>$releaseRows</tbody></table>" } else { "<p class='empty'>No release definitions</p>" })
 
     <h3>Teams ($teamCount)</h3>
     $(if ($teamCount -gt 0) { "<table><thead><tr><th>Name</th><th>Members</th><th>Description</th></tr></thead><tbody>$teamRows</tbody></table>" } else { "<p class='empty'>No teams</p>" })
 
     <h3>Service Connections ($scCount)</h3>
-    $(if ($scCount -gt 0) { "<table><thead><tr><th>Name</th><th>Type</th></tr></thead><tbody>$scRows</tbody></table>" } else { "<p class='empty'>No service connections</p>" })
+    $(if ($scCount -gt 0) { "<table><thead><tr><th>Name</th><th>Type</th><th>Auth Scheme</th><th>URL</th><th>Description</th><th>Created By</th><th>Ready</th></tr></thead><tbody>$scRows</tbody></table>" } else { "<p class='empty'>No service connections</p>" })
 
     <h3>Variable Groups ($vgCount)</h3>
-    $(if ($vgCount -gt 0) { "<table><thead><tr><th>Name</th><th>Variables</th><th>Type</th></tr></thead><tbody>$vgRows</tbody></table>" } else { "<p class='empty'>No variable groups</p>" })
+    $(if ($vgCount -gt 0) { "<table><thead><tr><th>Name</th><th>Type</th><th>Variables</th><th>Secrets</th><th>Variable Names</th><th>Key Vault</th><th>Description</th><th>Modified By</th><th>Modified</th></tr></thead><tbody>$vgRows</tbody></table>" } else { "<p class='empty'>No variable groups</p>" })
 
     <h3>Environments ($envCount)</h3>
     $(if ($envCount -gt 0) { "<table><thead><tr><th>Name</th></tr></thead><tbody>$envRows</tbody></table>" } else { "<p class='empty'>No environments</p>" })
@@ -413,6 +460,15 @@ $htmlContent = @"
   .expand-all{margin-bottom:15px}
   .expand-all button{padding:8px 16px;border:1px solid #d0d7de;border-radius:6px;background:#fff;cursor:pointer;font-size:.85rem}
   .expand-all button:hover{background:#f6f8fa}
+  .var-cell{max-width:250px}
+  .var-list{display:inline-block;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;cursor:help}
+  .report-section{background:#fff;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .report-section h2{font-size:1.1rem;color:#0078d4;margin-bottom:12px;border-bottom:2px solid #e1e4e8;padding-bottom:6px}
+  .report-table{width:100%;border-collapse:collapse;font-size:.83rem}
+  .report-table th{background:#f6f8fa;padding:8px 10px;text-align:left;font-weight:600;border-bottom:2px solid #e1e4e8;position:sticky;top:0}
+  .report-table td{padding:7px 10px;border-bottom:1px solid #e1e4e8}
+  .report-table tr:hover{background:#f6f8fa}
+  .report-table .total-row{background:#f0f2f5;font-weight:700}
 </style>
 </head>
 <body>
@@ -434,7 +490,17 @@ $htmlContent = @"
     <div class="card$(if ($largeCount -gt 0) {' warn'})"><div class="value">$largeCount</div><div class="label">Repos &gt; 1 GB</div></div>
     <div class="card$(if ($geiBlockedCount -gt 0) {' error'})"><div class="value">$geiBlockedCount</div><div class="label">GEI Blocked (&gt;40 GB)</div></div>
   </div>
-
+  <div class="report-section">
+    <h2>Project-wise Summary Report</h2>
+    <table class="report-table">
+      <thead>
+        <tr><th>Project</th><th>Visibility</th><th>Repos</th><th>Size (GB)</th><th>Pipelines</th><th>Releases</th><th>Teams</th><th>Work Items</th><th>Svc Conns</th><th>Var Groups</th><th>Environments</th></tr>
+      </thead>
+      <tbody>
+`$reportRows
+      </tbody>
+    </table>
+  </div>
   <div class="search-box">
     <input type="text" id="searchInput" placeholder="Search projects..." onkeyup="filterProjects()">
   </div>
