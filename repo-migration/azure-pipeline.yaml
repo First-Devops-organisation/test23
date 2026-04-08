@@ -422,169 +422,169 @@ stages:
               tabName: 'Repo Discovery'
             condition: always()
 
-      # ── Job 2: Scan secrets — small repos (< 1 GB) ─────────────────────
-      - job: ScanSecretsSmall
-        displayName: '1.3a Scan Secrets (small repos < 1 GB)'
-        dependsOn: DiscoverAndAudit
-        timeoutInMinutes: 60
-        steps:
+      # # ── Job 2: Scan secrets — small repos (< 1 GB) ─────────────────────
+      # - job: ScanSecretsSmall
+      #   displayName: '1.3a Scan Secrets (small repos < 1 GB)'
+      #   dependsOn: DiscoverAndAudit
+      #   timeoutInMinutes: 60
+      #   steps:
 
-          - script: |
-              curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
-              tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
-              chmod +x /usr/local/bin/gitleaks
-            displayName: 'Install gitleaks'
+      #     - script: |
+      #         curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
+      #         tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
+      #         chmod +x /usr/local/bin/gitleaks
+      #       displayName: 'Install gitleaks'
 
-          - script: git lfs install
-            displayName: 'Install Git LFS'
+      #     - script: git lfs install
+      #       displayName: 'Install Git LFS'
 
-          - task: PowerShell@2
-            displayName: 'Replace config tokens'
-            inputs:
-              targetType: inline
-              script: |
-                $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
-                $content = Get-Content $configFile -Raw
-                $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
-                $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
-                $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
-                Set-Content -Path $configFile -Value $content
-              pwsh: true
-            env:
-              ADO_PAT: $(ADO_PAT)
+      #     - task: PowerShell@2
+      #       displayName: 'Replace config tokens'
+      #       inputs:
+      #         targetType: inline
+      #         script: |
+      #           $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+      #           $content = Get-Content $configFile -Raw
+      #           $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
+      #           $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+      #           $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
+      #           Set-Content -Path $configFile -Value $content
+      #         pwsh: true
+      #       env:
+      #         ADO_PAT: $(ADO_PAT)
 
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download Discovery Reports'
-            inputs:
-              artifact: 'discovery-reports'
-              path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+      #     - task: DownloadPipelineArtifact@2
+      #       displayName: 'Download Discovery Reports'
+      #       inputs:
+      #         artifact: 'discovery-reports'
+      #         path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
 
-          - script: |
-              echo "Freeing disk space..."
-              sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache 2>/dev/null || true
-              sudo apt-get clean 2>/dev/null || true
-              df -h /
-            displayName: 'Free disk space'
+      #     - script: |
+      #         echo "Freeing disk space..."
+      #         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache 2>/dev/null || true
+      #         sudo apt-get clean 2>/dev/null || true
+      #         df -h /
+      #       displayName: 'Free disk space'
 
-          - script: |
-              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
-              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
-            displayName: 'Ensure output directories'
+      #     - script: |
+      #         mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+      #         mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
+      #       displayName: 'Ensure output directories'
 
-          - task: PowerShell@2
-            displayName: '1.3a Scan Small Repos'
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json" -SizeFilter Small -SizeThresholdMB 1024'
-              pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
-            env:
-              ADO_PAT: $(ADO_PAT)
+      #     - task: PowerShell@2
+      #       displayName: '1.3a Scan Small Repos'
+      #       inputs:
+      #         filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
+      #         arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json" -SizeFilter Small -SizeThresholdMB 1024'
+      #         pwsh: true
+      #         workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
+      #       env:
+      #         ADO_PAT: $(ADO_PAT)
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish Small Scan Reports'
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
-              artifact: 'scan-reports-small'
-              publishLocation: 'pipeline'
-            condition: always()
+      #     - task: PublishPipelineArtifact@1
+      #       displayName: 'Publish Small Scan Reports'
+      #       inputs:
+      #         targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+      #         artifact: 'scan-reports-small'
+      #         publishLocation: 'pipeline'
+      #       condition: always()
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish Small Scan Logs'
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/logs'
-              artifact: 'scan-logs-small'
-              publishLocation: 'pipeline'
-            condition: always()
+      #     - task: PublishPipelineArtifact@1
+      #       displayName: 'Publish Small Scan Logs'
+      #       inputs:
+      #         targetPath: '$(Build.SourcesDirectory)/repo-migration/output/logs'
+      #         artifact: 'scan-logs-small'
+      #         publishLocation: 'pipeline'
+      #       condition: always()
 
-          - task: PublishHtmlReport@1
-            displayName: 'Publish Small Scan Dashboard'
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/secret-scan-report-small.html'
-              tabName: 'Secret Scan (Small)'
-            condition: always()
+      #     - task: PublishHtmlReport@1
+      #       displayName: 'Publish Small Scan Dashboard'
+      #       inputs:
+      #         reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/secret-scan-report-small.html'
+      #         tabName: 'Secret Scan (Small)'
+      #       condition: always()
 
-      # ── Job 3: Scan secrets — large repos (>= 1 GB) ────────────────────
-      - job: ScanSecretsLarge
-        displayName: '1.3b Scan Secrets (large repos >= 1 GB)'
-        dependsOn: DiscoverAndAudit
-        timeoutInMinutes: 360
-        steps:
+      # # ── Job 3: Scan secrets — large repos (>= 1 GB) ────────────────────
+      # - job: ScanSecretsLarge
+      #   displayName: '1.3b Scan Secrets (large repos >= 1 GB)'
+      #   dependsOn: DiscoverAndAudit
+      #   timeoutInMinutes: 360
+      #   steps:
 
-          - script: |
-              curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
-              tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
-              chmod +x /usr/local/bin/gitleaks
-            displayName: 'Install gitleaks'
+      #     - script: |
+      #         curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz -o gitleaks.tar.gz
+      #         tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
+      #         chmod +x /usr/local/bin/gitleaks
+      #       displayName: 'Install gitleaks'
 
-          - script: git lfs install
-            displayName: 'Install Git LFS'
+      #     - script: git lfs install
+      #       displayName: 'Install Git LFS'
 
-          - task: PowerShell@2
-            displayName: 'Replace config tokens'
-            inputs:
-              targetType: inline
-              script: |
-                $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
-                $content = Get-Content $configFile -Raw
-                $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
-                $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
-                $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
-                Set-Content -Path $configFile -Value $content
-              pwsh: true
-            env:
-              ADO_PAT: $(ADO_PAT)
+      #     - task: PowerShell@2
+      #       displayName: 'Replace config tokens'
+      #       inputs:
+      #         targetType: inline
+      #         script: |
+      #           $configFile = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+      #           $content = Get-Content $configFile -Raw
+      #           $content = $content -replace '\$\(ADO_ORG\)', '$(ADO_ORG)'
+      #           $content = $content -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+      #           $content = $content -replace '\$\(ADO_PAT\)', '$(ADO_PAT)'
+      #           Set-Content -Path $configFile -Value $content
+      #         pwsh: true
+      #       env:
+      #         ADO_PAT: $(ADO_PAT)
 
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download Discovery Reports'
-            inputs:
-              artifact: 'discovery-reports'
-              path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+      #     - task: DownloadPipelineArtifact@2
+      #       displayName: 'Download Discovery Reports'
+      #       inputs:
+      #         artifact: 'discovery-reports'
+      #         path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
 
-          - script: |
-              echo "Freeing disk space..."
-              sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache 2>/dev/null || true
-              sudo apt-get clean 2>/dev/null || true
-              df -h /
-            displayName: 'Free disk space'
+      #     - script: |
+      #         echo "Freeing disk space..."
+      #         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache 2>/dev/null || true
+      #         sudo apt-get clean 2>/dev/null || true
+      #         df -h /
+      #       displayName: 'Free disk space'
 
-          - script: |
-              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
-              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
-            displayName: 'Ensure output directories'
+      #     - script: |
+      #         mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+      #         mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
+      #       displayName: 'Ensure output directories'
 
-          - task: PowerShell@2
-            displayName: '1.3b Scan Large Repos'
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json" -SizeFilter Large -SizeThresholdMB 1024'
-              pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
-            env:
-              ADO_PAT: $(ADO_PAT)
+      #     - task: PowerShell@2
+      #       displayName: '1.3b Scan Large Repos'
+      #       inputs:
+      #         filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
+      #         arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json" -SizeFilter Large -SizeThresholdMB 1024'
+      #         pwsh: true
+      #         workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
+      #       env:
+      #         ADO_PAT: $(ADO_PAT)
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish Large Scan Reports'
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
-              artifact: 'scan-reports-large'
-              publishLocation: 'pipeline'
-            condition: always()
+      #     - task: PublishPipelineArtifact@1
+      #       displayName: 'Publish Large Scan Reports'
+      #       inputs:
+      #         targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
+      #         artifact: 'scan-reports-large'
+      #         publishLocation: 'pipeline'
+      #       condition: always()
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish Large Scan Logs'
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/logs'
-              artifact: 'scan-logs-large'
-              publishLocation: 'pipeline'
-            condition: always()
+      #     - task: PublishPipelineArtifact@1
+      #       displayName: 'Publish Large Scan Logs'
+      #       inputs:
+      #         targetPath: '$(Build.SourcesDirectory)/repo-migration/output/logs'
+      #         artifact: 'scan-logs-large'
+      #         publishLocation: 'pipeline'
+      #       condition: always()
 
-          - task: PublishHtmlReport@1
-            displayName: 'Publish Large Scan Dashboard'
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/secret-scan-report-large.html'
-              tabName: 'Secret Scan (Large)'
-            condition: always()
+      #     - task: PublishHtmlReport@1
+      #       displayName: 'Publish Large Scan Dashboard'
+      #       inputs:
+      #         reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/secret-scan-report-large.html'
+      #         tabName: 'Secret Scan (Large)'
+      #       condition: always()
 
   # # ═══════════════════════════════════════════════════════════════════════════
   # # PHASE 2: PREP
