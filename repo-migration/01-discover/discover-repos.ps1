@@ -27,10 +27,20 @@ if (-not (Test-Path $ConfigPath)) {
     Write-Error "Config not found at $ConfigPath. Copy repo-migration-config.json and fill in your values."
 }
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-$adoOrg   = $config.source.organization.TrimEnd('/')
-$adoProj  = $config.source.project
-$adoPat   = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 
+# Resolve config values — if they look like ADO pipeline variable references, read from env
+$adoOrg  = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
+$adoProj = if ($config.source.project      -match '^\$\(') { $env:ADO_PROJECT } else { $config.source.project }
+$adoPat  = if ($config.source.pat           -match '^\$\(') { $env:ADO_PAT } else { $config.source.pat }
+
+$adoOrg = ($adoOrg ?? '').TrimEnd('/')
+
+if ([string]::IsNullOrWhiteSpace($adoOrg)) {
+    Write-Error "Set the ADO_ORG environment variable or update config.source.organization"
+}
+if ([string]::IsNullOrWhiteSpace($adoProj)) {
+    Write-Error "Set the ADO_PROJECT environment variable or update config.source.project"
+}
 if ([string]::IsNullOrWhiteSpace($adoPat)) {
     Write-Error "Set the ADO_PAT environment variable or update config.source.pat"
 }
@@ -46,6 +56,10 @@ $headers = @{ Authorization = "Basic $base64Auth" }
 Write-Host "=== Discovering repos in $adoOrg/$adoProj ===" -ForegroundColor Cyan
 $repoApiUrl = "$adoOrg/$adoProj/_apis/git/repositories?api-version=7.1"
 $response = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get
+
+if (-not $response.PSObject.Properties['value']) {
+    Write-Error "Unexpected API response from $repoApiUrl — no 'value' property. Check that ADO_ORG ('$adoOrg') and ADO_PROJECT ('$adoProj') are correct."
+}
 
 $repos = @($response.value | ForEach-Object {
     $repo = $_
