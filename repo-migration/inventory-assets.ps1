@@ -284,6 +284,71 @@ foreach ($proj in $inventory.projects) {
 $csvRows | Export-Csv -Path $csvFile -NoTypeInformation
 Write-Host "Repo summary CSV saved to: $csvFile" -ForegroundColor Green
 
+# --- Service Connections CSV ---
+$scCsvFile = Join-Path $OutputDir "service-connections.csv"
+$scCsvRows = @()
+foreach ($proj in $inventory.projects) {
+    foreach ($sc in $proj.serviceConnections) {
+        $scCsvRows += [PSCustomObject]@{
+            Project    = $proj.name
+            Name       = $sc.name
+            Type       = $sc.type
+            AuthScheme = $sc.authScheme
+            URL        = $sc.url
+            IsReady    = $sc.isReady
+            CreatedBy  = $sc.createdBy
+        }
+    }
+}
+if ($scCsvRows.Count -gt 0) {
+    $scCsvRows | Export-Csv -Path $scCsvFile -NoTypeInformation
+    Write-Host "Service connections CSV saved to: $scCsvFile" -ForegroundColor Green
+}
+
+# --- Variable Groups CSV ---
+$vgCsvFile = Join-Path $OutputDir "variable-groups.csv"
+$vgCsvRows = @()
+foreach ($proj in $inventory.projects) {
+    foreach ($vg in $proj.variableGroups) {
+        $vgCsvRows += [PSCustomObject]@{
+            Project       = $proj.name
+            Name          = $vg.name
+            Type          = $vg.type
+            VariableCount = $vg.variableCount
+            SecretCount   = $vg.secretCount
+            VariableNames = $vg.variableNames
+            KeyVault      = $vg.providerData
+            ModifiedBy    = $vg.modifiedBy
+            ModifiedOn    = $vg.modifiedOn
+        }
+    }
+}
+if ($vgCsvRows.Count -gt 0) {
+    $vgCsvRows | Export-Csv -Path $vgCsvFile -NoTypeInformation
+    Write-Host "Variable groups CSV saved to: $vgCsvFile" -ForegroundColor Green
+}
+
+# --- Release Definitions CSV ---
+$relCsvFile = Join-Path $OutputDir "release-definitions.csv"
+$relCsvRows = @()
+foreach ($proj in $inventory.projects) {
+    foreach ($rd in $proj.releaseDefinitions) {
+        $relCsvRows += [PSCustomObject]@{
+            Project          = $proj.name
+            Name             = $rd.name
+            Path             = $rd.path
+            EnvironmentCount = $rd.environmentCount
+            EnvironmentNames = $rd.environmentNames
+            ModifiedBy       = $rd.modifiedBy
+            ModifiedOn       = $rd.modifiedOn
+        }
+    }
+}
+if ($relCsvRows.Count -gt 0) {
+    $relCsvRows | Export-Csv -Path $relCsvFile -NoTypeInformation
+    Write-Host "Release definitions CSV saved to: $relCsvFile" -ForegroundColor Green
+}
+
 # --- HTML Dashboard ---
 $htmlFile = Join-Path $OutputDir "inventory-dashboard.html"
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
@@ -390,7 +455,7 @@ foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
   </div>
   <div class="project-body" id="body-$($proj.id)" style="display:none;">
     <h3>Repositories ($repoCount)</h3>
-    $(if ($repoCount -gt 0) { "<table><thead><tr><th>Name</th><th>Size (MB)</th><th>Size (GB)</th><th>Default Branch</th><th>Disabled</th></tr></thead><tbody>$repoRows</tbody></table>" } else { "<p class='empty'>No repositories</p>" })
+    $(if ($repoCount -gt 0) { "<table><colgroup><col style='width:40%'><col style='width:15%'><col style='width:15%'><col style='width:20%'><col style='width:10%'></colgroup><thead><tr><th>Name</th><th>Size (MB)</th><th>Size (GB)</th><th>Default Branch</th><th>Disabled</th></tr></thead><tbody>$repoRows</tbody></table>" } else { "<p class='empty'>No repositories</p>" })
 
     <h3>Build Pipelines ($pipeCount)</h3>
     $(if ($pipeCount -gt 0) { "<table><thead><tr><th>Name</th><th>Type</th><th>Queue Status</th><th>Path</th></tr></thead><tbody>$pipeRows</tbody></table>" } else { "<p class='empty'>No build pipelines</p>" })
@@ -402,10 +467,10 @@ foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
     $(if ($teamCount -gt 0) { "<table><thead><tr><th>Name</th><th>Members</th><th>Description</th></tr></thead><tbody>$teamRows</tbody></table>" } else { "<p class='empty'>No teams</p>" })
 
     <h3>Service Connections ($scCount)</h3>
-    $(if ($scCount -gt 0) { "<table><thead><tr><th>Name</th><th>Type</th><th>Auth Scheme</th><th>URL</th><th>Description</th><th>Created By</th><th>Ready</th></tr></thead><tbody>$scRows</tbody></table>" } else { "<p class='empty'>No service connections</p>" })
+    $(if ($scCount -gt 0) { "<table><colgroup><col style='width:20%'><col style='width:12%'><col style='width:12%'><col style='width:20%'><col style='width:16%'><col style='width:12%'><col style='width:8%'></colgroup><thead><tr><th>Name</th><th>Type</th><th>Auth Scheme</th><th>URL</th><th>Description</th><th>Created By</th><th>Ready</th></tr></thead><tbody>$scRows</tbody></table>" } else { "<p class='empty'>No service connections</p>" })
 
     <h3>Variable Groups ($vgCount)</h3>
-    $(if ($vgCount -gt 0) { "<table><thead><tr><th>Name</th><th>Type</th><th>Variables</th><th>Secrets</th><th>Variable Names</th><th>Key Vault</th><th>Description</th><th>Modified By</th><th>Modified</th></tr></thead><tbody>$vgRows</tbody></table>" } else { "<p class='empty'>No variable groups</p>" })
+    $(if ($vgCount -gt 0) { "<table><colgroup><col style='width:15%'><col style='width:10%'><col style='width:7%'><col style='width:7%'><col style='width:20%'><col style='width:10%'><col style='width:13%'><col style='width:10%'><col style='width:8%'></colgroup><thead><tr><th>Name</th><th>Type</th><th>Variables</th><th>Secrets</th><th>Variable Names</th><th>Key Vault</th><th>Description</th><th>Modified By</th><th>Modified</th></tr></thead><tbody>$vgRows</tbody></table>" } else { "<p class='empty'>No variable groups</p>" })
 
     <h3>Environments ($envCount)</h3>
     $(if ($envCount -gt 0) { "<table><thead><tr><th>Name</th></tr></thead><tbody>$envRows</tbody></table>" } else { "<p class='empty'>No environments</p>" })
@@ -444,13 +509,13 @@ $htmlContent = @"
   .project-stats{display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;color:#586069}
   .project-body{padding:0 20px 20px}
   .project-body h3{font-size:.95rem;color:#0078d4;margin:16px 0 8px;border-bottom:1px solid #e1e4e8;padding-bottom:4px}
-  table{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:.83rem}
-  th{background:#f6f8fa;padding:8px 10px;text-align:left;font-weight:600;border-bottom:2px solid #e1e4e8}
-  td{padding:7px 10px;border-bottom:1px solid #e1e4e8}
+  table{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:.83rem;table-layout:fixed}
+  th{background:#f6f8fa;padding:8px 10px;text-align:left;font-weight:600;border-bottom:2px solid #e1e4e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  td{padding:7px 10px;border-bottom:1px solid #e1e4e8;word-wrap:break-word;overflow:hidden;text-overflow:ellipsis}
   tr:hover{background:#f6f8fa}
   tr.blocked{background:#fff0f0}
   tr.warning{background:#fff8e1}
-  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   .badge-vis{font-size:.7rem;padding:2px 8px;border-radius:10px;background:#dafbe1;color:#1a7f37;margin-left:8px}
   .badge-state{font-size:.7rem;padding:2px 8px;border-radius:10px;background:#ddf4ff;color:#0969da;margin-left:4px}
   .empty{color:#8b949e;font-style:italic;font-size:.85rem;padding:4px 0}
