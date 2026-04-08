@@ -287,7 +287,7 @@ foreach ($proj in ($inventory.projects | Sort-Object { $_.name })) {
         $rName = [System.Net.WebUtility]::HtmlEncode($r.name)
         $rLink = if ($r.url) { "<a href='$([System.Net.WebUtility]::HtmlEncode($r.url))' target='_blank'>$rName</a>" } else { $rName }
         $sizeClass = if ($r.sizeGB -gt 40) { "blocked" } elseif ($r.sizeGB -gt 1) { "warning" } else { "" }
-        $branch = [System.Net.WebUtility]::HtmlEncode("$($r.defaultBranch)" -replace '^refs/heads/', '')
+        $branch = [System.Net.WebUtility]::HtmlEncode(("$($r.defaultBranch)" -replace '^refs/heads/', ''))
         $disabled = if ($r.isDisabled) { "Yes" } else { "No" }
         $repoRows += "<tr class='$sizeClass'><td>$rLink</td><td class='num'>$($r.sizeMB)</td><td class='num'>$($r.sizeGB)</td><td>$branch</td><td>$disabled</td></tr>`n"
     }
