@@ -415,6 +415,13 @@ stages:
               publishLocation: 'pipeline'
             condition: always()
 
+          - task: PublishHtmlReport@1
+            displayName: 'Publish Discovery Dashboard'
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/repo-inventory.html'
+              tabName: 'Repo Discovery'
+            condition: always()
+
       # ── Job 2: Scan secrets — small repos (< 1 GB) ─────────────────────
       - job: ScanSecretsSmall
         displayName: '1.3a Scan Secrets (small repos < 1 GB)'
@@ -490,6 +497,13 @@ stages:
               publishLocation: 'pipeline'
             condition: always()
 
+          - task: PublishHtmlReport@1
+            displayName: 'Publish Small Scan Dashboard'
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/secret-scan-report-small.html'
+              tabName: 'Secret Scan (Small)'
+            condition: always()
+
       # ── Job 3: Scan secrets — large repos (>= 1 GB) ────────────────────
       - job: ScanSecretsLarge
         displayName: '1.3b Scan Secrets (large repos >= 1 GB)'
@@ -563,6 +577,13 @@ stages:
               targetPath: '$(Build.SourcesDirectory)/repo-migration/output/logs'
               artifact: 'scan-logs-large'
               publishLocation: 'pipeline'
+            condition: always()
+
+          - task: PublishHtmlReport@1
+            displayName: 'Publish Large Scan Dashboard'
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/secret-scan-report-large.html'
+              tabName: 'Secret Scan (Large)'
             condition: always()
 
   # ═══════════════════════════════════════════════════════════════════════════
