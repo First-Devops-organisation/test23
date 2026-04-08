@@ -27,20 +27,10 @@ if (-not (Test-Path $ConfigPath)) {
     Write-Error "Config not found at $ConfigPath. Copy repo-migration-config.json and fill in your values."
 }
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$adoOrg   = $config.source.organization.TrimEnd('/')
+$adoProj  = $config.source.project
+$adoPat   = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 
-# Resolve config values — if they look like ADO pipeline variable references, read from env
-$adoOrg  = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
-$adoProj = if ($config.source.project      -match '^\$\(') { $env:ADO_PROJECT } else { $config.source.project }
-$adoPat  = if ($config.source.pat           -match '^\$\(') { $env:ADO_PAT } else { $config.source.pat }
-
-$adoOrg = ($adoOrg ?? '').TrimEnd('/')
-
-if ([string]::IsNullOrWhiteSpace($adoOrg)) {
-    Write-Error "Set the ADO_ORG environment variable or update config.source.organization"
-}
-if ([string]::IsNullOrWhiteSpace($adoProj)) {
-    Write-Error "Set the ADO_PROJECT environment variable or update config.source.project"
-}
 if ([string]::IsNullOrWhiteSpace($adoPat)) {
     Write-Error "Set the ADO_PAT environment variable or update config.source.pat"
 }
@@ -50,42 +40,12 @@ if (-not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir
 
 # ── Auth header ──────────────────────────────────────────────────────────────
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
-$headers = @{
-    Authorization  = "Basic $base64Auth"
-    Accept         = "application/json"
-    "Content-Type" = "application/json"
-}
-
-# ── Verify PAT connectivity ─────────────────────────────────────────────────
-Write-Host "Verifying PAT connectivity..." -ForegroundColor Cyan
-try {
-    $connTest = Invoke-RestMethod -Uri "$adoOrg/_apis/connectiondata" -Headers $headers -Method Get
-    Write-Host "  Authenticated as: $($connTest.authenticatedUser.providerDisplayName)" -ForegroundColor Green
-}
-catch {
-    Write-Error "PAT authentication failed against $adoOrg. Ensure ADO_PAT is valid and not expired. Detail: $_"
-}
+$headers = @{ Authorization = "Basic $base64Auth" }
 
 # ── Fetch all repos ─────────────────────────────────────────────────────────
 Write-Host "=== Discovering repos in $adoOrg/$adoProj ===" -ForegroundColor Cyan
 $repoApiUrl = "$adoOrg/$adoProj/_apis/git/repositories?api-version=7.1"
-
-try {
-    $response = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get
-}
-catch {
-    $statusCode = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { 'N/A' }
-    Write-Error "API call failed (HTTP $statusCode) for $repoApiUrl — verify ADO_PAT has 'Code (Read)' scope for project '$adoProj'. Detail: $_"
-}
-
-if ($response -is [string]) {
-    Write-Error "API returned non-JSON response (likely a sign-in page). The PAT is not authorized for $repoApiUrl."
-}
-
-if (-not $response.PSObject.Properties['value']) {
-    Write-Host "API response keys: $($response.PSObject.Properties.Name -join ', ')" -ForegroundColor Yellow
-    Write-Error "Unexpected API response — no 'value' property. Response: $($response | ConvertTo-Json -Depth 2 -Compress)"
-}
+$response = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get
 
 $repos = @($response.value | ForEach-Object {
     $repo = $_
