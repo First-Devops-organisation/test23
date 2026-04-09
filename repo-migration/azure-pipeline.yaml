@@ -1,7 +1,7 @@
 trigger: none
 
-pool: 
-  vmImage: 'windows-latest'
+pool: migration-pool
+  # vmImage: 'windows-latest'
 
 variables:
   - group: repo-migration-discover
@@ -109,11 +109,23 @@ stages:
               tabName: 'Repo Discovery'
             condition: always()
 
-      # ── Job 2: Scan secrets — small repos (< 1 GB) ─────────────────────
+      # ── Job 2: Scan secrets — small repos (< 1 GB) — 3 parallel agents ──
       - job: ScanSecretsSmall
         displayName: '1.3a Scan Secrets (small repos < 1 GB)'
         dependsOn: DiscoverAndAudit
         timeoutInMinutes: 60
+        strategy:
+          maxParallel: 3
+          matrix:
+            Batch1:
+              BATCH_INDEX: 0
+              BATCH_TOTAL: 3
+            Batch2:
+              BATCH_INDEX: 1
+              BATCH_TOTAL: 3
+            Batch3:
+              BATCH_INDEX: 2
+              BATCH_TOTAL: 3
         steps:
 
           - task: PowerShell@2
@@ -175,7 +187,7 @@ stages:
             displayName: '1.3a Scan Small Repos'
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json" -SizeFilter Small -SizeThresholdMB 1024 -ThrottleLimit 8'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json" -SizeFilter Small -SizeThresholdMB 1024 -ThrottleLimit 4 -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)'
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -185,7 +197,7 @@ stages:
             displayName: 'Publish Small Scan Reports'
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-              artifact: 'scan-reports-small'
+              artifact: 'scan-reports-small-$(BATCH_INDEX)'
               publishLocation: 'pipeline'
             condition: always()
 
@@ -193,22 +205,35 @@ stages:
             displayName: 'Publish Small Scan Logs'
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
-              artifact: 'scan-logs-small'
+              artifact: 'scan-logs-small-$(BATCH_INDEX)'
               publishLocation: 'pipeline'
             condition: always()
 
           - task: PublishHtmlReport@1
             displayName: 'Publish Small Scan Dashboard'
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-small.html'
-              tabName: 'Secret Scan (Small)'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-small-batch$(BATCH_INDEX).html'
+              tabName: 'Secret Scan (Small Batch $(BATCH_INDEX))'
             condition: always()
 
-      # ── Job 3: Scan secrets — large repos (>= 1 GB) ────────────────────
+      # ── Job 3: Scan secrets — large repos (>= 1 GB) — 3 parallel agents ─
+      #    Runs AFTER small scan finishes to stay within 3 VM limit
       - job: ScanSecretsLarge
         displayName: '1.3b Scan Secrets (large repos >= 1 GB)'
-        dependsOn: DiscoverAndAudit
-        timeoutInMinutes: 360
+        dependsOn: ScanSecretsSmall
+        # timeoutInMinutes: 360
+        strategy:
+          maxParallel: 3
+          matrix:
+            Batch1:
+              BATCH_INDEX: 0
+              BATCH_TOTAL: 3
+            Batch2:
+              BATCH_INDEX: 1
+              BATCH_TOTAL: 3
+            Batch3:
+              BATCH_INDEX: 2
+              BATCH_TOTAL: 3
         steps:
 
           - task: PowerShell@2
@@ -270,7 +295,7 @@ stages:
             displayName: '1.3b Scan Large Repos'
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json" -SizeFilter Large -SizeThresholdMB 1024 -ThrottleLimit 8'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json" -SizeFilter Large -SizeThresholdMB 1024 -ThrottleLimit 4 -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)'
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -280,7 +305,7 @@ stages:
             displayName: 'Publish Large Scan Reports'
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-              artifact: 'scan-reports-large'
+              artifact: 'scan-reports-large-$(BATCH_INDEX)'
               publishLocation: 'pipeline'
             condition: always()
 
@@ -288,15 +313,15 @@ stages:
             displayName: 'Publish Large Scan Logs'
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
-              artifact: 'scan-logs-large'
+              artifact: 'scan-logs-large-$(BATCH_INDEX)'
               publishLocation: 'pipeline'
             condition: always()
 
           - task: PublishHtmlReport@1
             displayName: 'Publish Large Scan Dashboard'
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-large.html'
-              tabName: 'Secret Scan (Large)'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-large-batch$(BATCH_INDEX).html'
+              tabName: 'Secret Scan (Large Batch $(BATCH_INDEX))'
             condition: always()
 
   # # ═══════════════════════════════════════════════════════════════════════════
