@@ -4,7 +4,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  - group: repo-migration-discoverB
+  - group: repo-migration-discover
 
 stages:
   # ═══════════════════════════════════════════════════════════════════════════
