@@ -1,12 +1,14 @@
 <#
 .SYNOPSIS
-    Scans all repos for exposed secrets using gitleaks.
+    Scans all repos for exposed secrets using gitleaks (parallel).
 .DESCRIPTION
     For each repo in repo-inventory.json:
-      - Clone to temp dir (shallow for large repos, full for small)
+      - Full bare clone to temp dir (complete history for 100% coverage)
       - Run gitleaks detect --source <path> --report-format json
       - Collect findings into consolidated report
+    Uses ForEach-Object -Parallel for concurrent scanning.
     Use -SizeFilter to run Small/Large repos in parallel jobs.
+    Use -BatchIndex/-BatchTotal with matrix strategy for multi-agent scanning.
     Repos with findings MUST go through scrub-secrets.ps1 before migration.
 .PARAMETER ConfigPath
     Path to repo-migration-config.json
@@ -15,11 +17,11 @@
 .PARAMETER SizeThresholdMB
     Size threshold in MB for Small/Large split (default: 1024 = 1 GB)
 .PARAMETER ThrottleLimit
-    Max parallel repo scans (default: 5)
-.PARAMETER ShallowDepth
-    Git clone depth for shallow clones (default: 50). Set to 0 to always do full clones.
-.PARAMETER ShallowAboveMB
-    Repos larger than this (MB) use shallow clone (default: 500). Ignored if ShallowDepth is 0.
+    Max parallel repo scans per agent (default: 5)
+.PARAMETER BatchIndex
+    Which batch this agent handles (0-based). Used with matrix strategy. Default: 0
+.PARAMETER BatchTotal
+    Total number of batches (agents). Set to 1 to disable batching. Default: 1
 #>
 [CmdletBinding()]
 param(
@@ -37,10 +39,10 @@ param(
     [int]$ThrottleLimit = 5,
 
     [Parameter(Mandatory = $false)]
-    [int]$ShallowDepth = 50,
+    [int]$BatchIndex = 0,
 
     [Parameter(Mandatory = $false)]
-    [int]$ShallowAboveMB = 500
+    [int]$BatchTotal = 1
 )
 
 Set-StrictMode -Version Latest
@@ -87,13 +89,21 @@ $repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
 # Sort repos smallest-first so most repos complete quickly
 $repos = @($repos | Sort-Object { $_.SizeMB })
 
+# ── Batch splitting (for matrix strategy — multiple agents) ──────────────────
+if ($BatchTotal -gt 1) {
+    $batchedRepos = @()
+    for ($i = 0; $i -lt $repos.Count; $i++) {
+        if ($i % $BatchTotal -eq $BatchIndex) { $batchedRepos += $repos[$i] }
+    }
+    $repos = $batchedRepos
+    Write-Host "Batch $($BatchIndex + 1) of ${BatchTotal}: scanning $($repos.Count) repos on this agent" -ForegroundColor Cyan
+}
+
 # File suffix for parallel job output (avoids overwriting)
-$fileSuffix = if ($SizeFilter -ne 'All') { "-$($SizeFilter.ToLower())" } else { '' }
+$batchSuffix = if ($BatchTotal -gt 1) { "-batch$BatchIndex" } else { '' }
+$fileSuffix = if ($SizeFilter -ne 'All') { "-$($SizeFilter.ToLower())${batchSuffix}" } else { $batchSuffix }
 
 Write-Host "=== Scanning $($repos.Count) repos for secrets [$SizeFilter] (ThrottleLimit=$ThrottleLimit) ===" -ForegroundColor Cyan
-if ($ShallowDepth -gt 0) {
-    Write-Host "  Shallow clone (depth=$ShallowDepth) for repos > ${ShallowAboveMB} MB" -ForegroundColor Cyan
-}
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -101,45 +111,36 @@ $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $allFindings = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 
-# ── Parallel scan ────────────────────────────────────────────────────────────
+# ── Parallel scan (full clone — complete history for 100% secret coverage) ───
 $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
-    $repo         = $_
-    $cloneDir     = $using:cloneDir
-    $logDir       = $using:logDir
-    $adoPat       = $using:adoPat
-    $shallowDepth = $using:ShallowDepth
-    $shallowAbove = $using:ShallowAboveMB
-    $findings     = $using:allFindings
-    $summary      = $using:repoSummary
+    $repo      = $_
+    $cloneDir  = $using:cloneDir
+    $logDir    = $using:logDir
+    $adoPat    = $using:adoPat
+    $findings  = $using:allFindings
+    $summary   = $using:repoSummary
 
     $repoLabel  = "[$($repo.Project)] $($repo.Name)"
     $clonePath  = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8)).git"
     $reportFile = Join-Path $logDir "gitleaks-$($repo.Name).json"
 
-    # Decide clone strategy
-    $useShallow = ($shallowDepth -gt 0) -and ($repo.SizeMB -ge $shallowAbove)
-
-    # Clone — use header auth to avoid URL-encoding issues with PAT
+    # Clone — full bare clone with header auth; skip LFS (binaries can't contain text secrets)
     $cloneUrl   = $repo.RemoteUrl -replace '://[^@]+@', '://'
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("pat:${adoPat}"))
 
     try {
-        if ($useShallow) {
-            Write-Host "  Cloning $repoLabel — SHALLOW (depth=$shallowDepth, $($repo.SizeMB) MB)" -ForegroundColor Gray
-            $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth",
-                           'clone', '--bare', '--quiet', '--depth', $shallowDepth, $cloneUrl, $clonePath)
-        } else {
-            Write-Host "  Cloning $repoLabel — full ($($repo.SizeMB) MB)" -ForegroundColor Gray
-            $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth",
-                           'clone', '--bare', '--quiet', $cloneUrl, $clonePath)
-        }
+        $env:GIT_LFS_SKIP_SMUDGE = '1'
+        Write-Host "  Cloning $repoLabel — full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
+        $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth",
+                       '-c', 'lfs.fetchexclude=*',
+                       'clone', '--bare', '--quiet', $cloneUrl, $clonePath)
 
         $cloneOutput = & git @cloneArgs 2>&1
         if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
     }
     catch {
         Write-Warning "  Clone failed for ${repoLabel}: $_"
-        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = -1; Status = "CLONE_FAILED" })
+        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = -1; Status = "CLONE_FAILED" })
         return
     }
 
@@ -155,7 +156,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
     if ($exitCode -eq 0) {
         Write-Host "  CLEAN — $repoLabel" -ForegroundColor Green
-        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = 0; Status = "CLEAN" })
+        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = 0; Status = "CLEAN" })
     }
     elseif ($exitCode -eq 1 -and (Test-Path $reportFile)) {
         $foundItems = Get-Content $reportFile -Raw | ConvertFrom-Json
@@ -175,14 +176,14 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
                 Date      = $f.Date
             })
         }
-        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = $count; Status = "SECRETS_FOUND" })
+        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = $count; Status = "SECRETS_FOUND" })
     }
     else {
         Write-Warning "  gitleaks returned exit code $exitCode for $repoLabel"
-        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; FindingsCount = -1; Status = "SCAN_ERROR" })
+        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = -1; Status = "SCAN_ERROR" })
     }
 
-    # Clean up this repo's clone immediately to free disk space
+    # Clean up clone immediately to free disk space
     if (Test-Path $clonePath) {
         Remove-Item $clonePath -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -193,7 +194,7 @@ $stopwatch.Stop()
 # ── Final cleanup (safety net) ───────────────────────────────────────────────
 if (Test-Path $cloneDir) { Remove-Item $cloneDir -Recurse -Force -ErrorAction SilentlyContinue }
 
-# ── Convert ConcurrentBag to arrays for export ──────────────────────────────
+# ── Convert ConcurrentBag to arrays ─────────────────────────────────────────
 $repoSummaryArr = @($repoSummary.ToArray())
 $allFindingsArr = @($allFindings.ToArray())
 
@@ -205,7 +206,7 @@ $repoSummaryArr | ConvertTo-Json -Depth 3 | Out-File $summaryJson  -Encoding utf
 $allFindingsArr | ConvertTo-Json -Depth 5 | Out-File $findingsJson -Encoding utf8
 
 # ── HTML Report ──────────────────────────────────────────────────────────────
-$htmlPath = Join-Path $reportDir "secret-scan-report${fileSuffix}.html"
+$htmlPath     = Join-Path $reportDir "secret-scan-report${fileSuffix}.html"
 $cleanCount   = ($repoSummaryArr | Where-Object Status -eq 'CLEAN').Count
 $secretsCount = ($repoSummaryArr | Where-Object Status -eq 'SECRETS_FOUND').Count
 $errorCount   = ($repoSummaryArr | Where-Object Status -eq 'SCAN_ERROR').Count
@@ -219,7 +220,7 @@ $tableRows = ($repoSummaryArr | Sort-Object Status, Name | ForEach-Object {
         'CLONE_FAILED'  { '#95a5a6' }
         default         { '#333' }
     }
-    "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Project))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.Name))</td><td>$($_.FindingsCount)</td><td style='color:$statusColor;font-weight:bold'>$($_.Status)</td></tr>"
+    "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Project))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.Name))</td><td>$($_.SizeMB)</td><td>$($_.FindingsCount)</td><td style='color:$statusColor;font-weight:bold'>$($_.Status)</td></tr>"
 }) -join "`n"
 
 $html = @"
@@ -228,8 +229,8 @@ $html = @"
 <style>
   body { font-family: 'Segoe UI', sans-serif; margin: 20px; background: #f5f5f5; }
   h1 { color: #2c3e50; } h2 { color: #34495e; }
-  .summary { display: flex; gap: 15px; margin: 15px 0; }
-  .card { padding: 15px 25px; border-radius: 8px; color: #fff; font-size: 1.1em; }
+  .summary { display: flex; gap: 15px; margin: 15px 0; flex-wrap: wrap; }
+  .card { padding: 15px 25px; border-radius: 8px; color: #fff; font-size: 1.1em; min-width: 120px; }
   .card .num { font-size: 2em; font-weight: bold; }
   table { border-collapse: collapse; width: 100%; background: #fff; margin-top: 10px; }
   th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
@@ -238,7 +239,7 @@ $html = @"
   .elapsed { color: #7f8c8d; font-size: 0.9em; margin-top: 5px; }
 </style></head><body>
 <h1>Secret Scan Report [$SizeFilter]</h1>
-<p class="elapsed">Scanned $($repoSummaryArr.Count) repos in $($stopwatch.Elapsed.ToString('hh\:mm\:ss')) | ThrottleLimit=$ThrottleLimit | ShallowDepth=$ShallowDepth (above ${ShallowAboveMB} MB)</p>
+<p class="elapsed">Scanned $($repoSummaryArr.Count) repos in $($stopwatch.Elapsed.ToString('hh\:mm\:ss')) | ThrottleLimit=$ThrottleLimit | Full clone (complete history)</p>
 <div class="summary">
   <div class="card" style="background:#27ae60"><div class="num">$cleanCount</div>Clean</div>
   <div class="card" style="background:#e74c3c"><div class="num">$secretsCount</div>Secrets Found</div>
@@ -246,7 +247,7 @@ $html = @"
   <div class="card" style="background:#95a5a6"><div class="num">$failedCount</div>Clone Failed</div>
 </div>
 <h2>Repo Details</h2>
-<table><tr><th>Project</th><th>Repo</th><th>Findings</th><th>Status</th></tr>
+<table><tr><th>Project</th><th>Repo</th><th>Size (MB)</th><th>Findings</th><th>Status</th></tr>
 $tableRows
 </table>
 </body></html>
