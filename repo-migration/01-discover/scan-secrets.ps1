@@ -68,7 +68,7 @@ $inventoryPath = Join-Path $reportDir "repo-inventory.json"
 if (-not (Test-Path $inventoryPath)) {
     Write-Error "repo-inventory.json not found. Run 01-discover\discover-repos.ps1 first."
 }
-$repos = Get-Content $inventoryPath -Raw | ConvertFrom-Json
+$repos = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
 
 $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
@@ -207,10 +207,10 @@ $allFindingsArr | ConvertTo-Json -Depth 5 | Out-File $findingsJson -Encoding utf
 
 # ── HTML Report ──────────────────────────────────────────────────────────────
 $htmlPath     = Join-Path $reportDir "secret-scan-report${fileSuffix}.html"
-$cleanCount   = ($repoSummaryArr | Where-Object Status -eq 'CLEAN').Count
-$secretsCount = ($repoSummaryArr | Where-Object Status -eq 'SECRETS_FOUND').Count
-$errorCount   = ($repoSummaryArr | Where-Object Status -eq 'SCAN_ERROR').Count
-$failedCount  = ($repoSummaryArr | Where-Object Status -eq 'CLONE_FAILED').Count
+$cleanCount   = @($repoSummaryArr | Where-Object Status -eq 'CLEAN').Count
+$secretsCount = @($repoSummaryArr | Where-Object Status -eq 'SECRETS_FOUND').Count
+$errorCount   = @($repoSummaryArr | Where-Object Status -eq 'SCAN_ERROR').Count
+$failedCount  = @($repoSummaryArr | Where-Object Status -eq 'CLONE_FAILED').Count
 
 $tableRows = ($repoSummaryArr | Sort-Object Status, Name | ForEach-Object {
     $statusColor = switch ($_.Status) {
@@ -263,7 +263,7 @@ Write-Host "  Scan errors         : $errorCount"
 Write-Host "  Clone failed        : $failedCount"
 Write-Host "  Total findings      : $($allFindingsArr.Count)"
 
-$dirty = $repoSummaryArr | Where-Object { $_.Status -eq 'SECRETS_FOUND' }
+$dirty = @($repoSummaryArr | Where-Object { $_.Status -eq 'SECRETS_FOUND' })
 if ($dirty) {
     Write-Host "`nRepos requiring secret scrubbing BEFORE migration:" -ForegroundColor Red
     $dirty | Format-Table Name, FindingsCount -AutoSize
