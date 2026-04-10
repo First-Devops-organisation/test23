@@ -13,11 +13,11 @@ parameters:
   - name: fileSizeBlockedMB
     displayName: "Single File BLOCKED threshold (MB)"
     type: number
-    default: 400
+    default: 3
   - name: fileSizeWarningMB
     displayName: "Single File WARNING threshold (MB)"
     type: number
-    default: 100
+    default: 2
 
 pool: 
   vmImage: windows-latest
