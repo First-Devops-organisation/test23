@@ -54,14 +54,18 @@ $singleScript = "$PSScriptRoot\migrate-single.ps1"
 if (-not (Test-Path $singleScript)) { Write-Error "migrate-single.ps1 not found at: $singleScript" }
 
 # ── Build repo list ──────────────────────────────────────────────────────────
-$repoList = @()   # array of @{ ADORepo; GHRepo }
+# Use List[hashtable] + Add() — avoids pipeline PSObject wrapping that breaks ['key'] access
+$repoList = [System.Collections.Generic.List[hashtable]]::new()
+$seen     = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
 if ($RepoListCsv) {
     # ── From CSV ──
     if (-not (Test-Path $RepoListCsv)) { Write-Error "CSV not found: $RepoListCsv" }
     $csv = Import-Csv $RepoListCsv
     foreach ($row in $csv) {
-        $repoList += @{ ADORepo = $row.ADORepo.Trim(); GHRepo = if ($row.GHRepo) { $row.GHRepo.Trim() } else { $row.ADORepo.Trim() } }
+        $ado = $row.ADORepo.Trim()
+        $gh  = if ($row.GHRepo) { $row.GHRepo.Trim() } else { $ado }
+        if ($seen.Add($ado)) { $repoList.Add(@{ ADORepo = $ado; GHRepo = $gh }) }
     }
     Write-Host "Loaded $($repoList.Count) repos from CSV: $RepoListCsv"
 }
@@ -70,17 +74,16 @@ else {
     if (-not (Test-Path $ConfigPath)) { Write-Error "Config not found: $ConfigPath" }
     $config  = Get-Content $ConfigPath -Raw | ConvertFrom-Json
     $batches = $config.batches
-    if ($BatchName) {
-        $batches = $batches | Where-Object { $_.name -eq $BatchName }
-        if (-not $batches) { Write-Error "Batch '$BatchName' not found in config" }
+    if (-not [string]::IsNullOrWhiteSpace($BatchName)) {
+        $batches = @($batches | Where-Object { $_.name -eq $BatchName.Trim() })
+        if ($batches.Count -eq 0) { Write-Error "Batch '$BatchName' not found in config" }
     }
     foreach ($batch in $batches) {
         foreach ($repo in $batch.repos) {
-            $repoList += @{ ADORepo = $repo; GHRepo = $repo }
+            $name = $repo.ToString().Trim()
+            if ($seen.Add($name)) { $repoList.Add(@{ ADORepo = $name; GHRepo = $name }) }
         }
     }
-    $repoList = $repoList | Sort-Object { $_['ADORepo'] } | Select-Object -Unique { $_['ADORepo'] } |
-        ForEach-Object { $_ }   # dedup by ADORepo
     Write-Host "Loaded $($repoList.Count) repos from config batch(es)"
 }
 
@@ -124,8 +127,8 @@ function Wait-ForSlot {
 
 foreach ($entry in $repoList) {
     $repoIndex++
-    $adoRepo = $entry['ADORepo']
-    $ghRepo  = $entry['GHRepo']
+    $adoRepo = $entry.ADORepo
+    $ghRepo  = $entry.GHRepo
 
     Write-Host "`n[$repoIndex/$($repoList.Count)] Queuing: $adoRepo → $ghRepo" -ForegroundColor Yellow
 
