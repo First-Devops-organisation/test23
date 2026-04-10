@@ -19,8 +19,8 @@ parameters:
     type: number
     default: 100
 
-pool: migration-pool
-#   vmImage: windows-latest
+pool: 
+  vmImage: windows-latest
 
 variables:
   - group: log
