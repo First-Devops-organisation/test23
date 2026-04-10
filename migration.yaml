@@ -1,7 +1,26 @@
 trigger: none
 
-pool: 
-  vmImage: windows-latest
+parameters:
+  # ── Test overrides: lower these to trigger BLOCKED/WARNING with small repos ──
+  - name: repoSizeBlockedGB
+    displayName: "Repo Size BLOCKED threshold (GB)"
+    type: number
+    default: 40
+  - name: repoSizeWarningGB
+    displayName: "Repo Size WARNING threshold (GB)"
+    type: number
+    default: 10
+  - name: fileSizeBlockedMB
+    displayName: "Single File BLOCKED threshold (MB)"
+    type: number
+    default: 400
+  - name: fileSizeWarningMB
+    displayName: "Single File WARNING threshold (MB)"
+    type: number
+    default: 100
+
+pool: migration-pool
+#   vmImage: windows-latest
 
 variables:
   - group: log
@@ -124,12 +143,18 @@ stages:
                 $sizeGB = [math]::Round($sizeBytes / 1GB, 2)
                 Write-Host "  Repo size: $sizeMB MB ($sizeGB GB)"
 
-                if ($sizeGB -gt 40) {
-                    Write-Host "##vso[task.logissue type=error]BLOCKED: Repo is $sizeGB GB — exceeds GEI 40 GB archive limit"
+                $repoBlockedGB  = ${{ parameters.repoSizeBlockedGB }}
+                $repoWarningGB  = ${{ parameters.repoSizeWarningGB }}
+                $fileBlockedMB  = ${{ parameters.fileSizeBlockedMB }}
+                $fileWarningMB  = ${{ parameters.fileSizeWarningMB }}
+                Write-Host "  Thresholds: Repo BLOCKED > ${repoBlockedGB}GB | WARNING > ${repoWarningGB}GB | File BLOCKED > ${fileBlockedMB}MB | WARNING > ${fileWarningMB}MB"
+
+                if ($sizeGB -gt $repoBlockedGB) {
+                    Write-Host "##vso[task.logissue type=error]BLOCKED: Repo is $sizeGB GB — exceeds $repoBlockedGB GB limit"
                     $blocked = $true
-                } elseif ($sizeGB -gt 10) {
-                    Write-Host "##vso[task.logissue type=warning]WARNING: Repo is $sizeGB GB — may timeout during migration"
-                    $warnings += "Repo size $sizeGB GB exceeds 10 GB (risk of timeout)"
+                } elseif ($sizeGB -gt $repoWarningGB) {
+                    Write-Host "##vso[task.logissue type=warning]WARNING: Repo is $sizeGB GB — exceeds $repoWarningGB GB threshold"
+                    $warnings += "Repo size $sizeGB GB exceeds $repoWarningGB GB (risk of timeout)"
                 } else {
                     Write-Host "  OK — under 10 GB"
                 }
@@ -145,7 +170,7 @@ stages:
                         $itemsResp = Invoke-RestMethod -Uri $itemsUrl -Headers $headers -Method Get
                         if ($itemsResp.value) {
                             $largeFiles = @($itemsResp.value | Where-Object {
-                                $_.PSObject.Properties['size'] -and $_.size -gt (100 * 1MB) -and
+                                $_.PSObject.Properties['size'] -and $_.size -gt ($fileWarningMB * 1MB) -and
                                 (-not $_.PSObject.Properties['isFolder'] -or -not $_.isFolder)
                             } | Sort-Object { $_.size } -Descending | Select-Object -First 20)
                         }
@@ -155,18 +180,18 @@ stages:
                 }
 
                 if ($largeFiles.Count -gt 0) {
-                    Write-Host "##vso[task.logissue type=warning]WARNING: $($largeFiles.Count) file(s) exceed 100 MB"
+                    Write-Host "##vso[task.logissue type=warning]WARNING: $($largeFiles.Count) file(s) exceed $fileWarningMB MB"
                     foreach ($f in $largeFiles) {
                         $fSizeMB = [math]::Round($f.size / 1MB, 2)
                         Write-Host "    $($f.path) — $fSizeMB MB"
-                        if ($fSizeMB -gt 400) {
-                            Write-Host "##vso[task.logissue type=error]BLOCKED: $($f.path) is $fSizeMB MB — exceeds GEI 400 MB file limit"
+                        if ($fSizeMB -gt $fileBlockedMB) {
+                            Write-Host "##vso[task.logissue type=error]BLOCKED: $($f.path) is $fSizeMB MB — exceeds $fileBlockedMB MB limit"
                             $blocked = $true
                         }
                     }
-                    $warnings += "$($largeFiles.Count) file(s) > 100 MB found"
+                    $warnings += "$($largeFiles.Count) file(s) > $fileWarningMB MB found"
                 } else {
-                    Write-Host "  OK — no files > 100 MB on default branch"
+                    Write-Host "  OK — no files > $fileWarningMB MB on default branch"
                 }
 
                 # ── CHECK 3: Git LFS detection ──
