@@ -1,7 +1,7 @@
 trigger: none
 
-pool: 
-  vmImage: windows-latest
+pool: migration-pool
+#   vmImage: windows-latest
 
 variables:
   - group: log
@@ -94,6 +94,12 @@ stages:
                 $adoPat    = "$(ADO_PAT)"
                 $auditDir  = "$(Build.ArtifactStagingDirectory)\audit"
                 New-Item -ItemType Directory -Path $auditDir -Force | Out-Null
+
+                # Ensure full ADO URL
+                if ($adoOrg -notmatch '^https?://') {
+                    $adoOrg = "https://dev.azure.com/$adoOrg"
+                }
+                $adoOrg = $adoOrg.TrimEnd('/')
 
                 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
                 $headers = @{ Authorization = "Basic $base64Auth" }
