@@ -215,9 +215,8 @@ stages:
                 $precheckReport | ConvertTo-Json -Depth 3 | Out-File "$auditDir\precheck-report.json" -Encoding utf8
 
                 if ($blocked) {
-                    Write-Host "##vso[task.logissue type=error]MIGRATION BLOCKED — resolve issues before migrating"
+                    Write-Host "##vso[task.logissue type=error]MIGRATION BLOCKED — requires approval to proceed"
                     Write-Host "##vso[task.setvariable variable=PRECHECK_RESULT;isOutput=true]BLOCKED"
-                    exit 1
                 } elseif ($warnings.Count -gt 0) {
                     Write-Host "##vso[task.logissue type=warning]Proceeding with warnings"
                     Write-Host "##vso[task.setvariable variable=PRECHECK_RESULT;isOutput=true]WARNING"
@@ -232,26 +231,25 @@ stages:
       # JOB 2 – APPROVAL GATE (only when WARNING)
       # =============================================
       - job: ApprovalGate
-        displayName: "Approval Gate - Review Pre-Check Warnings"
+        displayName: "Approval Gate - Review Pre-Check Issues"
         dependsOn: PreChecks
-        condition: and(succeeded(), eq(dependencies.PreChecks.outputs['sizeCheck.PRECHECK_RESULT'], 'WARNING'))
+        condition: and(succeeded(), in(dependencies.PreChecks.outputs['sizeCheck.PRECHECK_RESULT'], 'WARNING', 'BLOCKED'))
         pool: server
         timeoutInMinutes: 1440
         steps:
           - task: ManualValidation@0
-            displayName: "Review Pre-Check Warnings Before Migration"
+            displayName: "Review Pre-Check Issues Before Migration"
             timeoutInMinutes: 1440
             inputs:
               notifyUsers: ""
               instructions: |
-                Pre-migration checks detected warnings for repo $(ADO_Repo).
+                Pre-migration checks detected issues for repo $(ADO_Repo).
 
                 Review the PreChecks job logs for details on:
-                - Repository size warnings (> 10 GB)
-                - Large files (> 100 MB)
-                - Git LFS usage (LFS objects will NOT be migrated)
+                - BLOCKED: Repo exceeds 40 GB or has files > 400 MB (GEI limits)
+                - WARNING: Repo size > 10 GB (timeout risk), files > 100 MB, or Git LFS detected
 
-                Approve to continue migration, or Reject to cancel.
+                Approve to override and force migration, or Reject to cancel.
               onTimeout: "reject"
 
       # =============================================
@@ -266,7 +264,6 @@ stages:
           and(
             succeeded('PreChecks'),
             ne(dependencies.PreChecks.outputs['repoCheck.REPO_STATUS'], 'ALREADY_EXISTS'),
-            ne(dependencies.PreChecks.outputs['sizeCheck.PRECHECK_RESULT'], 'BLOCKED'),
             in(dependencies.ApprovalGate.result, 'Succeeded', 'Skipped')
           )
         timeoutInMinutes: 120
