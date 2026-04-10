@@ -5,11 +5,11 @@ parameters:
   - name: repoSizeBlockedGB
     displayName: "Repo Size BLOCKED threshold (GB)"
     type: number
-    default: 40
+    default: 1
   - name: repoSizeWarningGB
     displayName: "Repo Size WARNING threshold (GB)"
     type: number
-    default: 10
+    default: 0.5
   - name: fileSizeBlockedMB
     displayName: "Single File BLOCKED threshold (MB)"
     type: number
@@ -20,7 +20,7 @@ parameters:
     default: 2
 
 pool: 
-  vmImage: windows-latest
+   vmImage: windows-latest
 
 variables:
   - group: log
@@ -149,6 +149,9 @@ stages:
                 $fileWarningMB  = ${{ parameters.fileSizeWarningMB }}
                 Write-Host "  Thresholds: Repo BLOCKED > ${repoBlockedGB}GB | WARNING > ${repoWarningGB}GB | File BLOCKED > ${fileBlockedMB}MB | WARNING > ${fileWarningMB}MB"
 
+                # Use lowest threshold as scan floor so any condition is caught
+                $fileScanFloorMB = [math]::Min($fileWarningMB, $fileBlockedMB)
+
                 if ($sizeGB -gt $repoBlockedGB) {
                     Write-Host "##vso[task.logissue type=error]BLOCKED: Repo is $sizeGB GB — exceeds $repoBlockedGB GB limit"
                     $blocked = $true
@@ -156,11 +159,11 @@ stages:
                     Write-Host "##vso[task.logissue type=warning]WARNING: Repo is $sizeGB GB — exceeds $repoWarningGB GB threshold"
                     $warnings += "Repo size $sizeGB GB exceeds $repoWarningGB GB (risk of timeout)"
                 } else {
-                    Write-Host "  OK — under 10 GB"
+                    Write-Host "  OK — under $repoWarningGB GB"
                 }
 
-                # ── CHECK 2: Individual files > 100 MB ──
-                Write-Host "`n[CHECK 2] Large Files (> 100 MB)..."
+                # ── CHECK 2: Individual large files ──
+                Write-Host "`n[CHECK 2] Large Files (> $fileScanFloorMB MB)..."
                 $defaultBranch = if ($repoInfo.defaultBranch) { $repoInfo.defaultBranch -replace '^refs/heads/', '' } else { $null }
                 $largeFiles = @()
 
@@ -170,7 +173,7 @@ stages:
                         $itemsResp = Invoke-RestMethod -Uri $itemsUrl -Headers $headers -Method Get
                         if ($itemsResp.value) {
                             $largeFiles = @($itemsResp.value | Where-Object {
-                                $_.PSObject.Properties['size'] -and $_.size -gt ($fileWarningMB * 1MB) -and
+                                $_.PSObject.Properties['size'] -and $_.size -gt ($fileScanFloorMB * 1MB) -and
                                 (-not $_.PSObject.Properties['isFolder'] -or -not $_.isFolder)
                             } | Sort-Object { $_.size } -Descending | Select-Object -First 20)
                         }
@@ -180,18 +183,20 @@ stages:
                 }
 
                 if ($largeFiles.Count -gt 0) {
-                    Write-Host "##vso[task.logissue type=warning]WARNING: $($largeFiles.Count) file(s) exceed $fileWarningMB MB"
+                    Write-Host "##vso[task.logissue type=warning]WARNING: $($largeFiles.Count) file(s) exceed $fileScanFloorMB MB"
                     foreach ($f in $largeFiles) {
                         $fSizeMB = [math]::Round($f.size / 1MB, 2)
                         Write-Host "    $($f.path) — $fSizeMB MB"
                         if ($fSizeMB -gt $fileBlockedMB) {
                             Write-Host "##vso[task.logissue type=error]BLOCKED: $($f.path) is $fSizeMB MB — exceeds $fileBlockedMB MB limit"
                             $blocked = $true
+                        } elseif ($fSizeMB -gt $fileWarningMB) {
+                            $warnings += "File $($f.path) is $fSizeMB MB (exceeds $fileWarningMB MB)"
                         }
                     }
-                    $warnings += "$($largeFiles.Count) file(s) > $fileWarningMB MB found"
+                    $warnings += "$($largeFiles.Count) file(s) > $fileScanFloorMB MB found"
                 } else {
-                    Write-Host "  OK — no files > $fileWarningMB MB on default branch"
+                    Write-Host "  OK — no files > $fileScanFloorMB MB on default branch"
                 }
 
                 # ── CHECK 3: Git LFS detection ──
@@ -225,7 +230,7 @@ stages:
                 Write-Host "  PRE-CHECK SUMMARY"
                 Write-Host "============================================"
                 Write-Host "  Repo Size    : $sizeMB MB ($sizeGB GB)"
-                Write-Host "  Large Files  : $($largeFiles.Count) file(s) > 100 MB"
+                Write-Host "  Large Files  : $($largeFiles.Count) file(s) > $fileScanFloorMB MB"
                 Write-Host "  Git LFS      : $(if ($hasLfs) { 'YES — LFS objects will NOT migrate' } else { 'No' })"
                 Write-Host "  Warnings     : $($warnings.Count)"
                 Write-Host "  Blocked      : $blocked"
