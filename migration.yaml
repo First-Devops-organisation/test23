@@ -28,8 +28,9 @@ stages:
     displayName: "Stage 2 - Migrate & Audit"
     dependsOn: Setup
     jobs:
-      - job: MigrateSingleRepo
-        timeoutInMinutes: 120
+      - job: PreChecks
+        displayName: "Pre-Migration Checks"
+        timeoutInMinutes: 30
         cancelTimeoutInMinutes: 1
         steps:
           # -------------------------------------------
@@ -50,6 +51,7 @@ stages:
           # STEP 2 – PRE-CHECK REPO IN GITHUB
           # -------------------------------------------
           - task: PowerShell@2
+            name: repoCheck
             displayName: "Step 2 - Pre-check Repo Existence in GitHub"
             continueOnError: true
             inputs:
@@ -67,12 +69,12 @@ stages:
                     [void](gh repo view "$org/$repo" --json name 2>&1)
                     Write-Host "Repo already exists in GitHub: $repo"
                     "ALREADY_EXISTS" | Out-File "$(Build.ArtifactStagingDirectory)\repo-precheck.txt" -Encoding utf8
-                    Write-Host "##vso[task.setvariable variable=REPO_STATUS]ALREADY_EXISTS"
+                    Write-Host "##vso[task.setvariable variable=REPO_STATUS;isOutput=true]ALREADY_EXISTS"
                 }
                 catch {
                     Write-Host "Repo does not exist yet (will be migrated): $repo"
                     "NOT_EXISTS" | Out-File "$(Build.ArtifactStagingDirectory)\repo-precheck.txt" -Encoding utf8
-                    Write-Host "##vso[task.setvariable variable=REPO_STATUS]NOT_EXISTS"
+                    Write-Host "##vso[task.setvariable variable=REPO_STATUS;isOutput=true]NOT_EXISTS"
                 }
                 finally {
                     $ErrorActionPreference = 'Continue'
@@ -83,8 +85,9 @@ stages:
           # STEP 2.5 – PRE-MIGRATION SIZE & LFS CHECKS
           # -------------------------------------------
           - task: PowerShell@2
+            name: sizeCheck
             displayName: "Step 2.5 - Pre-Migration Size & LFS Checks"
-            condition: and(succeeded(), ne(variables['REPO_STATUS'], 'ALREADY_EXISTS'))
+            condition: and(succeeded(), ne(variables['repoCheck.REPO_STATUS'], 'ALREADY_EXISTS'))
             inputs:
               targetType: "inline"
               script: |
@@ -213,24 +216,84 @@ stages:
 
                 if ($blocked) {
                     Write-Host "##vso[task.logissue type=error]MIGRATION BLOCKED — resolve issues before migrating"
-                    Write-Host "##vso[task.setvariable variable=PRECHECK_RESULT]BLOCKED"
+                    Write-Host "##vso[task.setvariable variable=PRECHECK_RESULT;isOutput=true]BLOCKED"
                     exit 1
                 } elseif ($warnings.Count -gt 0) {
                     Write-Host "##vso[task.logissue type=warning]Proceeding with warnings"
-                    Write-Host "##vso[task.setvariable variable=PRECHECK_RESULT]WARNING"
+                    Write-Host "##vso[task.setvariable variable=PRECHECK_RESULT;isOutput=true]WARNING"
                 } else {
                     Write-Host "All pre-checks passed!"
-                    Write-Host "##vso[task.setvariable variable=PRECHECK_RESULT]PASSED"
+                    Write-Host "##vso[task.setvariable variable=PRECHECK_RESULT;isOutput=true]PASSED"
                 }
             env:
               ADO_PAT: $(ADO_PAT)
 
+      # =============================================
+      # JOB 2 – APPROVAL GATE (only when WARNING)
+      # =============================================
+      - job: ApprovalGate
+        displayName: "Approval Gate - Review Pre-Check Warnings"
+        dependsOn: PreChecks
+        condition: and(succeeded(), eq(dependencies.PreChecks.outputs['sizeCheck.PRECHECK_RESULT'], 'WARNING'))
+        pool: server
+        timeoutInMinutes: 1440
+        steps:
+          - task: ManualValidation@0
+            displayName: "Review Pre-Check Warnings Before Migration"
+            timeoutInMinutes: 1440
+            inputs:
+              notifyUsers: ""
+              instructions: |
+                Pre-migration checks detected warnings for repo $(ADO_Repo).
+
+                Review the PreChecks job logs for details on:
+                - Repository size warnings (> 10 GB)
+                - Large files (> 100 MB)
+                - Git LFS usage (LFS objects will NOT be migrated)
+
+                Approve to continue migration, or Reject to cancel.
+              onTimeout: "reject"
+
+      # =============================================
+      # JOB 3 – MIGRATE & AUDIT
+      # =============================================
+      - job: MigrateAndAudit
+        displayName: "Migrate & Audit Repo"
+        dependsOn:
+          - PreChecks
+          - ApprovalGate
+        condition: |
+          and(
+            succeeded('PreChecks'),
+            ne(dependencies.PreChecks.outputs['repoCheck.REPO_STATUS'], 'ALREADY_EXISTS'),
+            ne(dependencies.PreChecks.outputs['sizeCheck.PRECHECK_RESULT'], 'BLOCKED'),
+            in(dependencies.ApprovalGate.result, 'Succeeded', 'Skipped')
+          )
+        timeoutInMinutes: 120
+        cancelTimeoutInMinutes: 1
+        variables:
+          REPO_STATUS: $[ dependencies.PreChecks.outputs['repoCheck.REPO_STATUS'] ]
+          PRECHECK_RESULT: $[ dependencies.PreChecks.outputs['sizeCheck.PRECHECK_RESULT'] ]
+        steps:
           # -------------------------------------------
-          # STEP 3 – MIGRATE REPO (SKIPPED IF ALREADY EXISTS OR BLOCKED)
+          # RE-AUTHENTICATE (new agent)
+          # -------------------------------------------
+          - task: PowerShell@2
+            displayName: "Re-authenticate GitHub CLI"
+            inputs:
+              targetType: "inline"
+              script: |
+                $env:GH_TOKEN = "$(GH_PAT)"
+                echo $env:GH_TOKEN | gh auth login --with-token
+                gh auth status
+                gh extension install github/gh-ado2gh
+                gh extension list
+
+          # -------------------------------------------
+          # STEP 3 – MIGRATE REPO
           # -------------------------------------------
           - task: PowerShell@2
             displayName: "Step 3 - Migrate Repo (gh ado2gh)"
-            condition: and(succeeded(), ne(variables['REPO_STATUS'], 'ALREADY_EXISTS'), ne(variables['PRECHECK_RESULT'], 'BLOCKED'))
             inputs:
               targetType: "inline"
               script: |
