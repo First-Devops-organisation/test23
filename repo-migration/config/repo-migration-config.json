@@ -22,25 +22,9 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
-        "repo-name-1",
-        "repo-name-2",
-        "repo-name-3"
-      ]
-    },
-    {
-      "name": "batch-2",
-      "scheduledDate": "2026-04-22",
-      "repos": [
-        "repo-name-4",
-        "repo-name-5"
-      ]
-    },
-    {
-      "name": "batch-3",
-      "scheduledDate": "2026-04-29",
-      "repos": [
-        "repo-name-6",
-        "repo-name-7"
+        "powershelautomation",
+        "pulldependency"
+        
       ]
     }
   ],
