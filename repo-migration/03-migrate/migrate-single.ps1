@@ -48,6 +48,12 @@ if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
     $ADOOrg = $Matches[1]
 }
 
+# ── Normalize GHOrg — strip full URL if user set it as https://github.com/<org> ──
+if ($GHOrg -match '^https?://github\.com/([^/]+)/?$') {
+    Write-Host "  Normalising GHOrg: stripping URL prefix → '$($Matches[1])'"
+    $GHOrg = $Matches[1]
+}
+
 # ── Validate PATs ────────────────────────────────────────────────────────────
 $ghPat  = $env:GH_PAT
 $adoPat = $env:ADO_PAT
@@ -167,21 +173,42 @@ else {
     }
     else {
         "FAILED" | Out-File $stateFile -Encoding utf8
-        Write-Warning @"
+        $outputStr = $migOutput -join "`n"
+        if ($outputStr -match 'lookup the Organization ID|Failed to lookup') {
+            Write-Warning @"
+Migration failed: GitHub could not resolve org '$GHOrg'.
+  ROOT CAUSE — GH_PAT is missing required scopes.
+  Required classic PAT scopes:
+    - repo          (Full control of private repositories)
+    - read:org      (Read org and team membership, org projects)
+  Note: Fine-grained PATs are NOT supported by gh ado2gh.
+  Fix: Go to github.com/settings/tokens → regenerate the classic PAT
+       with 'repo' and 'read:org' (or 'admin:org') scopes,
+       then update the GH_PAT value in the repo-migration-migrate variable group.
+"@
+        } else {
+            Write-Warning @"
 Migration failed (exit code $LASTEXITCODE). Common causes:
   1. ADO_PAT scope: needs 'Code (Read)' + 'Identity (Read)' on the ADO organisation.
   2. ADOOrg name mismatch: check the value in the repo-migration-discover variable group.
-  3. GHOrg name mismatch or GH_PAT lacks 'repo' + 'admin:org' scopes.
+     (Value must be bare org name e.g. 'YashTech-DevOps', not a full URL)
+  3. GHOrg name mismatch or GH_PAT lacks 'repo' + 'read:org' scopes.
 GEI output above should contain a more specific error message.
 "@
+        }
     }
 }
 
 # ════════════════════════════════════════════════════════════════════════════
 # STEP 4 – Branch-wise post-migration audit
 # ════════════════════════════════════════════════════════════════════════════
+$migStateNow = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { "UNKNOWN" }
+
 if ($SkipAudit) {
     Write-Host "`n[Step 4] SKIPPED (–SkipAudit flag set)." -ForegroundColor Yellow
+}
+elseif ($migStateNow -in @("FAILED", "DRY_RUN", "UNKNOWN")) {
+    Write-Host "`n[Step 4] SKIPPED — migration state is '$migStateNow', no repo to audit." -ForegroundColor Yellow
 }
 else {
     Write-Host "`n[Step 4] Post-migration audit (branch-wise)..." -ForegroundColor Cyan
