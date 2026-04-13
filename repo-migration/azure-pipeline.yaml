@@ -265,13 +265,25 @@ stages:
             inputs:
               targetType: inline
               script: |
+                # Portable zip install — no elevation required on self-hosted agents
+                $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
                 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.msi" -OutFile gh.msi
-                    Start-Process msiexec.exe -ArgumentList '/i','gh.msi','/quiet','/norestart' -Wait
-                    Write-Host "##vso[task.prependpath]$env:ProgramFiles\GitHub CLI"
+                    Write-Host "Installing GitHub CLI (portable zip)..."
+                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
+                    Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
+                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
+                    Write-Host "##vso[task.prependpath]$ghBin"
+                    $env:PATH = "$ghBin;$env:PATH"
                 }
                 gh --version
+
+                # Authenticate gh CLI before installing extensions
+                $env:GH_TOKEN = "$(GH_PAT)"
+                "$(GH_PAT)" | gh auth login --with-token
+                gh auth status
+
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+                gh extension list
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
@@ -358,13 +370,25 @@ stages:
             inputs:
               targetType: inline
               script: |
+                # Portable zip install — no elevation required on self-hosted agents
+                $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
                 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.msi" -OutFile gh.msi
-                    Start-Process msiexec.exe -ArgumentList '/i','gh.msi','/quiet','/norestart' -Wait
-                    Write-Host "##vso[task.prependpath]$env:ProgramFiles\GitHub CLI"
+                    Write-Host "Installing GitHub CLI (portable zip)..."
+                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
+                    Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
+                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
+                    Write-Host "##vso[task.prependpath]$ghBin"
+                    $env:PATH = "$ghBin;$env:PATH"
                 }
                 gh --version
+
+                # Authenticate gh CLI before installing extensions
+                $env:GH_TOKEN = "$(GH_PAT)"
+                "$(GH_PAT)" | gh auth login --with-token
+                gh auth status
+
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+                gh extension list
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
