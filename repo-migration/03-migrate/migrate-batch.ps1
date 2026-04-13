@@ -139,64 +139,38 @@ try {
     Write-Warning "Could not check free disk space: $_"
 }
 
-# ── Run migrations in parallel using PowerShell background jobs ───────────────
-$jobs      = @()
-$completed = @()
-$failed    = @()
-$repoIndex = 0
-
-function Wait-ForSlot {
-    while (@($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
-        Start-Sleep -Seconds 10
-    }
-}
+# ── Run migrations sequentially (no child processes — avoids .NET errors) ─────
+$completedRepos = @()
+$failedRepos    = @()
+$repoIndex      = 0
 
 foreach ($entry in $repoList) {
     $repoIndex++
     $adoRepo = $entry.ADORepo
     $ghRepo  = $entry.GHRepo
 
-    Write-Host "`n[$repoIndex/$($repoList.Count)] Queuing: $adoRepo → $ghRepo" -ForegroundColor Yellow
+    Write-Host "`n[$repoIndex/$($repoList.Count)] Migrating: $adoRepo → $ghRepo" -ForegroundColor Yellow
 
-    Wait-ForSlot
+    $migrateParams = @{
+        ADOOrg     = $ADOOrg
+        ADOProject = $ADOProject
+        ADORepo    = $adoRepo
+        GHOrg      = $GHOrg
+        GHRepo     = $ghRepo
+        OutputDir  = $OutputDir
+    }
+    if ($SkipAudit) { $migrateParams['SkipAudit'] = $true }
+    if ($DryRun)    { $migrateParams['DryRun']    = $true }
 
-    $job = Start-Job -Name "migrate-$adoRepo" -ScriptBlock {
-        param($scriptPath, $adoOrg, $adoProject, $adoRepo, $ghOrg, $ghRepo, $outputDir, $skipAudit, $dryRun, $ghPat, $adoPat)
-
-        $env:GH_PAT  = $ghPat
-        $env:ADO_PAT = $adoPat
-        $env:GH_TOKEN = $ghPat
-
-        $migrateParams = @{
-            ADOOrg     = $adoOrg
-            ADOProject = $adoProject
-            ADORepo    = $adoRepo
-            GHOrg      = $ghOrg
-            GHRepo     = $ghRepo
-            OutputDir  = $outputDir
-        }
-        if ($skipAudit) { $migrateParams['SkipAudit'] = $true }
-        if ($dryRun)    { $migrateParams['DryRun']    = $true }
-
-        # Call migrate-single.ps1 directly — Start-Job already runs in its
-        # own process, so spawning another pwsh is unnecessary and can cause
-        # ".NET application could not be started" errors on build agents.
-        & $scriptPath @migrateParams 2>&1
-    } -ArgumentList $singleScript, $ADOOrg, $ADOProject, $adoRepo, $GHOrg, $ghRepo, $OutputDir, $SkipAudit.IsPresent, $DryRun.IsPresent, $env:GH_PAT, $env:ADO_PAT
-
-    $jobs += $job
-    Write-Host "  Job started: $($job.Name) (Id $($job.Id))" -ForegroundColor Gray
-}
-
-# ── Wait for all remaining jobs ───────────────────────────────────────────────
-Write-Host "`nWaiting for all migration jobs to finish..." -ForegroundColor Cyan
-Wait-Job -Job $jobs | Out-Null
-
-foreach ($j in $jobs) {
-    $out = Receive-Job -Job $j -ErrorAction SilentlyContinue
-    $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
-    if ($j.State -eq 'Completed') { $completed += $j } else { $failed += $j }
-    Remove-Job -Job $j
+    try {
+        & $singleScript @migrateParams
+        $completedRepos += $adoRepo
+        Write-Host "  [$adoRepo] Finished successfully." -ForegroundColor Green
+    }
+    catch {
+        $failedRepos += $adoRepo
+        Write-Warning "  [$adoRepo] FAILED: $_"
+    }
 }
 
 # ── Collect per-repo results into a batch summary ─────────────────────────────
