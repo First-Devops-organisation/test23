@@ -141,7 +141,7 @@ function Wait-ForSlot {
         # Harvest finished jobs
         foreach ($j in @($jobs | Where-Object { $_.State -in @('Completed','Failed') })) {
             if ($j.Name -notin ($completed + $failed | ForEach-Object { $_.Name })) {
-                $out = Receive-Job -Job $j
+                $out = Receive-Job -Job $j -ErrorAction SilentlyContinue
                 $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
                 if ($j.State -eq 'Completed') { $script:completed += $j }
                 else                          { $script:failed    += $j }
@@ -167,7 +167,7 @@ foreach ($entry in $repoList) {
         $env:ADO_PAT = $adoPat
         $env:GH_TOKEN = $ghPat
 
-        $args = @(
+        $migrateArgs = @(
             '-ADOOrg',     $adoOrg,
             '-ADOProject', $adoProject,
             '-ADORepo',    $adoRepo,
@@ -175,10 +175,13 @@ foreach ($entry in $repoList) {
             '-GHRepo',     $ghRepo,
             '-OutputDir',  $outputDir
         )
-        if ($skipAudit) { $args += '-SkipAudit' }
-        if ($dryRun)    { $args += '-DryRun' }
+        if ($skipAudit) { $migrateArgs += '-SkipAudit' }
+        if ($dryRun)    { $migrateArgs += '-DryRun' }
 
-        & pwsh -NoLogo -NonInteractive -File $scriptPath @args
+        # Redirect stderr to stdout so gh CLI informational messages do not
+        # enter the job error stream and trigger $ErrorActionPreference = Stop
+        # in the parent script when Receive-Job is called.
+        & pwsh -NoLogo -NonInteractive -File $scriptPath @migrateArgs 2>&1
     } -ArgumentList $singleScript, $ADOOrg, $ADOProject, $adoRepo, $GHOrg, $ghRepo, $OutputDir, $SkipAudit.IsPresent, $DryRun.IsPresent, $env:GH_PAT, $env:ADO_PAT
 
     $jobs += $job
@@ -190,7 +193,7 @@ Write-Host "`nWaiting for all migration jobs to finish..." -ForegroundColor Cyan
 Wait-Job -Job $jobs | Out-Null
 
 foreach ($j in $jobs) {
-    $out = Receive-Job -Job $j
+    $out = Receive-Job -Job $j -ErrorAction SilentlyContinue
     $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
     if ($j.State -eq 'Completed') { $completed += $j } else { $failed += $j }
     Remove-Job -Job $j
