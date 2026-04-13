@@ -80,10 +80,8 @@ Write-Host "============================================"
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 1] Authenticate GitHub CLI..." -ForegroundColor Cyan
 $env:GH_TOKEN = $ghPat
-# When GH_TOKEN is set the CLI uses it directly — gh auth login is not needed
-# and returns exit code 1 (polluting the job error stream). Skip it.
-Write-Host "  Authenticating via GH_TOKEN environment variable."
-gh auth status 2>&1 | ForEach-Object { Write-Host "  $_" }
+$ghPat | gh auth login --with-token
+gh auth status
 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
 gh extension list
 
@@ -93,14 +91,15 @@ gh extension list
 Write-Host "`n[Step 2] Pre-check repo existence in GitHub..." -ForegroundColor Cyan
 $repoStatus = "NOT_EXISTS"
 try {
-    $ErrorActionPreference = 'SilentlyContinue'
+    $ErrorActionPreference = 'Stop'
     [void](gh repo view "$GHOrg/$GHRepo" --json name 2>&1)
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  Repo already exists: $GHOrg/$GHRepo" -ForegroundColor Yellow
-        $repoStatus = "ALREADY_EXISTS"
-    }
+    Write-Host "  Repo already exists: $GHOrg/$GHRepo" -ForegroundColor Yellow
+    $repoStatus = "ALREADY_EXISTS"
 }
-catch { }
+catch {
+    Write-Host "  Repo does not exist yet (will be migrated): $GHRepo"
+    $repoStatus = "NOT_EXISTS"
+}
 finally { $ErrorActionPreference = 'Stop' }
 
 $repoStatus | Out-File $precheckFile -Encoding utf8
@@ -188,9 +187,7 @@ else {
 
     Write-Host "  Cloning GitHub repo (blobless mirror)..."
     $ErrorActionPreference = 'SilentlyContinue'
-    # URL-encode the PAT so special characters (+, =, /, etc.) don't break the URL
-    $encodedPat = [Uri]::EscapeDataString($ghPat)
-    git clone --filter=blob:none --mirror "https://x-access-token:$encodedPat@github.com/$GHOrg/$GHRepo.git" $cloneDir 2>&1 | ForEach-Object { Write-Host "  $_" }
+    git clone --filter=blob:none --mirror "https://$ghPat@github.com/$GHOrg/$GHRepo.git" $cloneDir 2>&1 | ForEach-Object { Write-Host "  $_" }
     $ErrorActionPreference = 'Stop'
 
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $cloneDir)) {
