@@ -123,16 +123,19 @@ elseif ($DryRun) {
 }
 else {
     Write-Host "`n[Step 3] Migrating repo..." -ForegroundColor Cyan
-    $env:ADO_PAT = $adoPat
-    $env:GH_PAT  = $ghPat
+    $env:ADO_PAT  = $adoPat
+    $env:GH_PAT   = $ghPat
+    $env:GH_TOKEN = $ghPat
     "PENDING" | Out-File $stateFile -Encoding utf8
 
     $migOutput = gh ado2gh migrate-repo `
-        --ado-org       $ADOOrg `
+        --ado-org          $ADOOrg `
         --ado-team-project $ADOProject `
-        --ado-repo      $ADORepo `
-        --github-org    $GHOrg `
-        --github-repo   $GHRepo 2>&1
+        --ado-repo         $ADORepo `
+        --github-org       $GHOrg `
+        --github-repo      $GHRepo `
+        --ado-pat          $adoPat `
+        --github-pat       $ghPat 2>&1
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
 
