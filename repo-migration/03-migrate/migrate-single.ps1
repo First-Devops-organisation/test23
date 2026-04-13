@@ -524,33 +524,74 @@ function Get-AuditVal($file) {
     return "N/A"
 }
 
-$branchCount  = Get-AuditVal "gh-branch-count.txt"
-$tagCount     = Get-AuditVal "gh-tag-count.txt"
-$commitCount  = Get-AuditVal "gh-commit-count.txt"
-$prCount      = Get-AuditVal "gh-pr-count.txt"
-$prOpen       = Get-AuditVal "gh-pr-open.txt"
-$prMerged     = Get-AuditVal "gh-pr-merged.txt"
-$prClosed     = Get-AuditVal "gh-pr-closed.txt"
-$repoSize     = Get-AuditVal "gh-repo-size-actual.txt"
+$branchCount   = Get-AuditVal "gh-branch-count.txt"
+$tagCount      = Get-AuditVal "gh-tag-count.txt"
+$commitCount   = Get-AuditVal "gh-commit-count.txt"
+$prCount       = Get-AuditVal "gh-pr-count.txt"
+$prOpen        = Get-AuditVal "gh-pr-open.txt"
+$prMerged      = Get-AuditVal "gh-pr-merged.txt"
+$prClosed      = Get-AuditVal "gh-pr-closed.txt"
+$repoSize      = Get-AuditVal "gh-repo-size-actual.txt"
 $defaultBranch = Get-AuditVal "gh-default-branch.txt"
-$migDate      = Get-Date -Format 'dd MMM yyyy · HH:mm'
+$migDate       = Get-Date -Format 'dd MMM yyyy · HH:mm'
 
-# Determine final migration result
+# Determine migration result + status styling
 $migState = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { "UNKNOWN" }
-if     ($migState -eq "SKIPPED")   { $migResult = "Skipped (Already Exists)"; $statusColor = "#f0ad4e"; $statusBg = "#fff8e1"; $statusEmoji = "&#x26A0;" }
-elseif ($migState -eq "DRY_RUN")   { $migResult = "Dry Run";                  $statusColor = "#0969da"; $statusBg = "#ddf4ff"; $statusEmoji = "&#x1F4CB;" }
-elseif ($migState -eq "COMPLETE")  { $migResult = "Success";                  $statusColor = "#28a745"; $statusBg = "#e6f9ed"; $statusEmoji = "&#x2705;" }
-else                               { $migResult = "Failed";                   $statusColor = "#dc3545"; $statusBg = "#fdecea"; $statusEmoji = "&#x274C;" }
+
+if ($migState -eq "SKIPPED") {
+    $migResult   = "Already Exists"; $statusColor = "#f0ad4e"; $statusBg = "#fff8e1"
+    $statusEmoji = "&#x26A0;&#xFE0F;";  $statusText  = "Skipped &#x2014; Repository Already Exists"
+    $reasonText  = "Target repository was detected in GitHub prior to migration."
+} elseif ($migState -eq "DRY_RUN") {
+    $migResult   = "Dry Run";         $statusColor = "#0969da"; $statusBg = "#ddf4ff"
+    $statusEmoji = "&#x1F4CB;";       $statusText  = "Dry Run &#x2014; No changes made"
+    $reasonText  = "Dry run mode: GEI command was printed but not executed."
+} elseif ($migState -eq "COMPLETE") {
+    $migResult   = "Success";         $statusColor = "#28a745"; $statusBg = "#e6f9ed"
+    $statusEmoji = "&#x2705;";        $statusText  = "Completed &#x2014; Migration Successful"
+    $reasonText  = "Repository migrated successfully from ADO to GitHub."
+} else {
+    $migResult   = "Failed";          $statusColor = "#dc3545"; $statusBg = "#fdecea"
+    $statusEmoji = "&#x274C;";        $statusText  = "Failed &#x2014; Migration Error"
+    $reasonText  = "Check migration logs for error details."
+}
+
+# Pipeline execution phase rows
+if ($migState -eq "SKIPPED") {
+    $phaseRows = @(
+        @("&#x2705;","Pre-Check","Completed","#28a745"),
+        @("&#x23E9;","Migration","Skipped","#f0ad4e"),
+        @("&#x2705;","Audit","Completed","#28a745"),
+        @("&#x26A0;&#xFE0F;","Result","Repository Already Exists","#f0ad4e")
+    )
+} elseif ($migState -eq "COMPLETE") {
+    $phaseRows = @(
+        @("&#x2705;","Pre-Check","Completed","#28a745"),
+        @("&#x2705;","Migration","Completed","#28a745"),
+        @("&#x2705;","Audit","Completed","#28a745"),
+        @("&#x2705;","Result","Migration Successful","#28a745")
+    )
+} else {
+    $phaseRows = @(
+        @("&#x2705;","Pre-Check","Completed","#28a745"),
+        @("&#x274C;","Migration","Failed","#dc3545"),
+        @("&#x2705;","Audit","Completed","#28a745"),
+        @("&#x274C;","Result","Migration Failed","#dc3545")
+    )
+}
+$phaseHtml = ""
+foreach ($p in $phaseRows) {
+    $phaseHtml += "<tr><td style='font-size:20px;text-align:center;'>$($p[0])</td><td><strong>$($p[1])</strong></td><td style='color:$($p[3]);font-weight:600;'>$($p[2])</td></tr>`n"
+}
 
 # Top branches table rows
 $topBranchHtml = ""
-$topCsvFile = "$auditDir\gh-top-branches.csv"
+$topCsvFile    = "$auditDir\gh-top-branches.csv"
 if (Test-Path $topCsvFile) {
-    $topRows = Import-Csv $topCsvFile
-    $rank = 1
+    $topRows = Import-Csv $topCsvFile; $rank = 1
     foreach ($r in $topRows) {
-        $defLabel = if ($r.IsDefault -eq "Yes") { " <span style='background:#ddf4ff;color:#0969da;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700;'>DEFAULT</span>" } else { "" }
-        $topBranchHtml += "<tr><td style='text-align:center;color:#6f42c1;font-weight:700;'>$rank</td><td><code>$($r.Branch)</code>$defLabel</td><td style='text-align:right;font-variant-numeric:tabular-nums;font-weight:600;'>$($r.Commits)</td></tr>`n"
+        $defLabel = if ($r.IsDefault -eq "Yes") { " <span style='background:#ddf4ff;color:#0969da;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;margin-left:6px;'>DEFAULT</span>" } else { "" }
+        $topBranchHtml += "<tr><td style='text-align:center;color:#6f42c1;font-weight:700;'>$rank</td><td><code>$($r.Branch)</code>$defLabel</td><td style='text-align:right;font-weight:600;font-variant-numeric:tabular-nums;'>$($r.Commits)</td></tr>`n"
         $rank++
     }
 }
@@ -560,64 +601,92 @@ if ($topBranchHtml -eq "") { $topBranchHtml = "<tr><td colspan='3' style='color:
 $allBranchHtml = ""
 $branchCsvFile = "$auditDir\gh-branch-wise-data.csv"
 if (Test-Path $branchCsvFile) {
-    $allRows = Import-Csv $branchCsvFile | Sort-Object Branch
-    $idx = 1
+    $allRows = Import-Csv $branchCsvFile | Sort-Object Branch; $idx = 1
     foreach ($r in $allRows) {
-        $allBranchHtml += "<tr><td style='text-align:center;'>$idx</td><td><code>$($r.Branch)</code></td><td style='text-align:center;'><span style='background:#dafbe1;color:#1a7f37;padding:3px 12px;border-radius:12px;font-weight:600;'>&#x2705; Migrated</span></td></tr>`n"
+        $allBranchHtml += "<tr><td style='text-align:center;'>$idx</td><td><code>$($r.Branch)</code></td><td style='text-align:center;'><span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x2705; Migrated</span></td></tr>`n"
         $idx++
     }
 }
 if ($allBranchHtml -eq "") { $allBranchHtml = "<tr><td colspan='3' style='color:#999;text-align:center;'>No data</td></tr>" }
 
 $nl = [Environment]::NewLine
-$html  = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Migration Report - $GHRepo</title>" + $nl
-$html += "<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',sans-serif;background:#f4f6f9;color:#333;padding:30px}"
-$html += ".container{max-width:960px;margin:0 auto}.header{background:linear-gradient(135deg,#0d1117,#161b22);color:#fff;padding:32px;border-radius:14px;margin-bottom:24px}"
-$html += ".header h1{font-size:26px;margin-bottom:10px}.status-banner{display:inline-block;padding:10px 22px;border-radius:8px;font-size:17px;font-weight:600;background:$statusBg;color:$statusColor;border:2px solid $statusColor}"
-$html += ".card{background:#fff;border-radius:12px;padding:28px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.06)}.card h2{font-size:20px;margin-bottom:16px;border-bottom:2px solid #e1e4e8;padding-bottom:8px}"
-$html += "table{width:100%;border-collapse:collapse}th{background:#f6f8fa;padding:11px 14px;font-weight:600;border-bottom:2px solid #d0d7de;text-align:left}"
-$html += "td{padding:10px 14px;border-bottom:1px solid #eaecef}tr:hover{background:#f6f8fa}"
-$html += ".stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}"
-$html += ".stat-box{background:#f6f8fa;border-radius:10px;padding:18px;text-align:center;border:1px solid #e1e4e8}"
-$html += ".stat-box .num{font-size:28px;font-weight:700;color:#0d1117}.stat-box .label{font-size:13px;color:#666;margin-top:4px}"
-$html += ".pr-pills{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}"
-$html += ".pr-pill{padding:7px 16px;border-radius:20px;font-weight:600;font-size:14px}"
+$html  = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>Migration Report - $GHRepo</title>" + $nl
+$html += "<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f4f6f9;color:#333;padding:30px;font-size:16px}"
+$html += ".container{max-width:960px;margin:0 auto}.header{background:linear-gradient(135deg,#0d1117 0%,#161b22 100%);color:#fff;padding:32px 36px;border-radius:14px;margin-bottom:24px}"
+$html += ".header h1{font-size:28px;margin-bottom:12px}.status-banner{display:inline-block;padding:10px 22px;border-radius:8px;font-size:18px;font-weight:600;margin-top:6px;background:$statusBg;color:$statusColor;border:2px solid $statusColor}"
+$html += ".card{background:#fff;border-radius:12px;padding:28px 32px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.06)}.card h2{font-size:22px;margin-bottom:18px;color:#0d1117;border-bottom:2px solid #e1e4e8;padding-bottom:10px}"
+$html += "table{width:100%;border-collapse:collapse;font-size:15px}th{background:#f6f8fa;text-align:left;padding:12px 16px;font-weight:600;color:#24292f;border-bottom:2px solid #d0d7de}"
+$html += "td{padding:11px 16px;border-bottom:1px solid #eaecef}tr:hover{background:#f6f8fa}"
+$html += ".overview-table td:first-child{font-weight:600;width:220px;color:#555;font-size:16px}.overview-table td:last-child{font-size:16px}"
+$html += "code{background:#eff1f3;padding:3px 8px;border-radius:5px;font-size:14px;color:#0d1117}"
+$html += ".stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:8px}"
+$html += ".stat-box{background:#f6f8fa;border-radius:10px;padding:20px;text-align:center;border:1px solid #e1e4e8}"
+$html += ".stat-box .num{font-size:32px;font-weight:700;color:#0d1117}.stat-box .label{font-size:14px;color:#666;margin-top:4px}"
+$html += ".reason{background:#f0f4f8;border-left:4px solid $statusColor;padding:12px 18px;border-radius:6px;margin-top:14px;font-size:15px;color:#555}"
+$html += "details{margin-top:10px}details summary{cursor:pointer;font-weight:600;font-size:16px;color:#0969da;padding:8px 0}details summary:hover{text-decoration:underline}"
+$html += ".pr-pills{display:flex;gap:12px;flex-wrap:wrap}.pr-pill{padding:8px 18px;border-radius:20px;font-weight:600;font-size:15px}"
 $html += ".pr-open{background:#dafbe1;color:#1a7f37}.pr-merged{background:#e8d5f5;color:#8250df}.pr-closed{background:#fdecea;color:#cf222e}"
-$html += "details summary{cursor:pointer;font-weight:600;color:#0969da;padding:8px 0}code{background:#eff1f3;padding:2px 7px;border-radius:4px;font-size:13px}"
-$html += ".footer{text-align:center;color:#999;font-size:13px;margin-top:24px;padding-top:14px;border-top:1px solid #e1e4e8}</style></head><body><div class='container'>" + $nl
-$html += "<div class='header'><h1>&#x1F680; ADO &#x2192; GitHub Migration Report</h1><div class='status-banner'>$statusEmoji $migResult</div></div>" + $nl
-$html += "<div class='card'><h2>&#x1F4C2; Migration Overview</h2><table>"
-$html += "<tr><td><strong>Date</strong></td><td>$migDate</td></tr>"
-$html += "<tr><td><strong>Source (ADO)</strong></td><td><code>$ADOOrg / $ADOProject / $ADORepo</code></td></tr>"
-$html += "<tr><td><strong>Target (GitHub)</strong></td><td><code>$GHOrg / $GHRepo</code></td></tr>"
-$html += "<tr><td><strong>Default Branch</strong></td><td><code>$defaultBranch</code></td></tr>"
+$html += ".footer{text-align:center;color:#999;font-size:13px;margin-top:30px;padding-top:16px;border-top:1px solid #e1e4e8}</style></head><body><div class='container'>" + $nl
+# Header
+$html += "<div class='header'><h1>&#x1F680; ADO &#x2192; GitHub Migration Report</h1><div class='status-banner'>$statusEmoji $statusText</div></div>" + $nl
+# Migration overview
+$html += "<div class='card'><h2>&#x1F4C2; Migration Overview</h2><table class='overview-table'>" + $nl
+$html += "<tr><td>&#x1F4C5; Migration Date</td><td>$migDate</td></tr>" + $nl
+$html += "<tr><td>&#x1F4E6; Source (ADO)</td><td><code>$ADOOrg / $ADOProject / $ADORepo</code></td></tr>" + $nl
+$html += "<tr><td>&#x1F3AF; Target (GitHub)</td><td><code>$GHOrg / $GHRepo</code></td></tr>" + $nl
+$html += "<tr><td>&#x1F33F; Default Branch</td><td><code>$defaultBranch</code></td></tr>" + $nl
 $html += "</table></div>" + $nl
-$html += "<div class='card'><h2>&#x1F4CA; Repository Snapshot</h2><div class='stat-grid'>"
-$html += "<div class='stat-box'><div class='num'>$branchCount</div><div class='label'>&#x1F33F; Branches</div></div>"
-$html += "<div class='stat-box'><div class='num'>$tagCount</div><div class='label'>&#x1F3F7; Tags</div></div>"
-$html += "<div class='stat-box'><div class='num'>$commitCount</div><div class='label'>&#x1F4DD; Commits</div></div>"
-$html += "<div class='stat-box'><div class='num'>$prCount</div><div class='label'>&#x1F500; Pull Requests</div></div>"
-$html += "<div class='stat-box'><div class='num'>$repoSize</div><div class='label'>&#x1F4BE; Repo Size</div></div>"
-$html += "</div><div class='pr-pills'><span class='pr-pill pr-open'>&#x1F7E2; $prOpen Open</span><span class='pr-pill pr-merged'>&#x1F7E3; $prMerged Merged</span><span class='pr-pill pr-closed'>&#x1F534; $prClosed Closed</span></div></div>" + $nl
-$html += "<div class='card'><h2>&#x1F511; Key Branches</h2><table><thead><tr><th style='width:50px;text-align:center;'>#</th><th>Branch</th><th style='text-align:right;'>Commits</th></tr></thead><tbody>$topBranchHtml</tbody></table></div>" + $nl
-$html += "<div class='card'><h2>&#x1F33F; All Branches ($branchCount)</h2><details><summary>Click to expand</summary><table style='margin-top:10px;'><thead><tr><th style='width:50px;text-align:center;'>#</th><th>Branch</th><th style='text-align:center;'>Status</th></tr></thead><tbody>$allBranchHtml</tbody></table></details></div>" + $nl
+# Pipeline execution status
+$html += "<div class='card'><h2>&#x1F6A6; Pipeline Execution Status</h2><table>" + $nl
+$html += "<thead><tr><th style='width:50px;'></th><th>Phase</th><th>Status</th></tr></thead><tbody>" + $nl
+$html += $phaseHtml
+$html += "</tbody></table><div class='reason'>&#x2139;&#xFE0F; <strong>Reason:</strong> $reasonText</div></div>" + $nl
+# Repository snapshot
+$html += "<div class='card'><h2>&#x1F4CA; Repository Snapshot</h2><div class='stat-grid'>" + $nl
+$html += "<div class='stat-box'><div class='num'>$branchCount</div><div class='label'>&#x1F33F; Branches</div></div>" + $nl
+$html += "<div class='stat-box'><div class='num'>$tagCount</div><div class='label'>&#x1F3F7;&#xFE0F; Tags</div></div>" + $nl
+$html += "<div class='stat-box'><div class='num'>$commitCount</div><div class='label'>&#x1F4DD; Commits</div></div>" + $nl
+$html += "<div class='stat-box'><div class='num'>$prCount</div><div class='label'>&#x1F500; Pull Requests</div></div>" + $nl
+$html += "<div class='stat-box'><div class='num'>$repoSize</div><div class='label'>&#x1F4BE; Repo Size</div></div>" + $nl
+$html += "</div><div class='pr-pills' style='margin-top:14px;'><span class='pr-pill pr-open'>&#x1F7E2; $prOpen Open</span><span class='pr-pill pr-merged'>&#x1F7E3; $prMerged Merged</span><span class='pr-pill pr-closed'>&#x1F534; $prClosed Closed</span></div></div>" + $nl
+# Key branches
+$html += "<div class='card'><h2>&#x1F511; Key Branches</h2><table><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:right;'>Commits</th></tr></thead><tbody>$topBranchHtml</tbody></table></div>" + $nl
+# All branches
+$html += "<div class='card'><h2>&#x1F33F; All Branches ($branchCount)</h2><details><summary>Click to expand all branches</summary><table style='margin-top:10px;'><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:center;'>Status</th></tr></thead><tbody>$allBranchHtml</tbody></table></details></div>" + $nl
+# Audit & Artifacts
+$html += "<div class='card'><h2>&#x1F4E6; Audit &amp; Artifacts</h2>" + $nl
+$html += "<p style='font-size:16px;margin-bottom:10px;'>&#x1F4E5; <strong>MigrationAudit</strong> artifact includes:</p>" + $nl
+$html += "<ul style='margin-left:24px;font-size:15px;line-height:2;'>" + $nl
+$html += "<li>Folder-wise file inventory (<code>gh-folder-wise-files.csv</code>, <code>gh-folder-summary-default.md</code>)</li>" + $nl
+$html += "<li>PR breakdown by source branch (<code>gh-pr-by-source-branch.md</code>)</li>" + $nl
+$html += "<li>PR breakdown by target branch (<code>gh-pr-by-target-branch.md</code>)</li>" + $nl
+$html += "<li>Branch-wise commit table (<code>gh-branch-wise-table.md</code>)</li>" + $nl
+$html += "<li>Validation checks &amp; repo size</li></ul>" + $nl
+$html += "<p style='margin-top:12px;font-size:15px;'>&#x2705; Recommended for audit &amp; compliance reviews.</p></div>" + $nl
+# Footer
 $html += "<div class='footer'>Generated $migDate &bull; ADO-to-GitHub Migration Pipeline</div></div></body></html>"
 
 $html | Out-File "$dashDir\migration-report-$GHRepo.html" -Encoding utf8
 Write-Host "  HTML saved: $dashDir\migration-report-$GHRepo.html" -ForegroundColor Green
 
-# Markdown summary
-$md  = "# ADO to GitHub Migration Report`n`n"
-$md += "> **Repo:** ``$ADORepo`` | **Status:** $migResult`n`n"
+# Markdown summary (with Unicode chars matching yaml.yaml)
+$emojiCheck = [char]::ConvertFromUtf32(0x2705)
+$emojiWarn  = [char]::ConvertFromUtf32(0x26A0) + [char]::ConvertFromUtf32(0xFE0F)
+$emojiCross = [char]::ConvertFromUtf32(0x274C)
+if     ($migResult -eq "Already Exists") { $mdStatus = "$emojiWarn Skipped — Repository Already Exists" }
+elseif ($migResult -eq "Success")        { $mdStatus = "$emojiCheck Completed — Migration Successful" }
+else                                     { $mdStatus = "$emojiCross Failed — Migration Error" }
+
+$md  = "# " + [char]::ConvertFromUtf32(0x1F680) + " ADO " + [char]::ConvertFromUtf32(0x2192) + " GitHub Migration Report`n`n"
+$md += "> Status: $mdStatus`n`n"
 $md += "| | |`n|:---|:---|`n"
-$md += "| Date | $migDate |`n"
-$md += "| Source | ``$ADOOrg / $ADOProject / $ADORepo`` |`n"
-$md += "| Target | ``$GHOrg / $GHRepo`` |`n"
-$md += "| Branches | $branchCount |`n"
-$md += "| Tags | $tagCount |`n"
-$md += "| Commits | $commitCount |`n"
-$md += "| Repo Size | $repoSize |`n"
-$md += "| PRs | $prOpen Open / $prMerged Merged / $prClosed Closed |`n"
+$md += "| " + [char]::ConvertFromUtf32(0x1F4C5) + " Date | $migDate |`n"
+$md += "| " + [char]::ConvertFromUtf32(0x1F4E6) + " Source | ``$ADOOrg / $ADOProject / $ADORepo`` |`n"
+$md += "| " + [char]::ConvertFromUtf32(0x1F3AF) + " Target | ``$GHOrg / $GHRepo`` |`n"
+$md += "| " + [char]::ConvertFromUtf32(0x1F33F) + " Branches | $branchCount |`n"
+$md += "| " + [char]::ConvertFromUtf32(0x1F4DD) + " Commits | $commitCount |`n"
+$md += "| " + [char]::ConvertFromUtf32(0x1F500) + " PRs | $prOpen Open / $prMerged Merged / $prClosed Closed |`n`n"
+$md += "> " + [char]::ConvertFromUtf32(0x1F4A1) + " Download the **MigrationDashboard** artifact for the full HTML report.`n"
 $md | Out-File "$reportDir\migration-summary-$GHRepo.md" -Encoding utf8
 
 Write-Host "`n============================================" -ForegroundColor Green
