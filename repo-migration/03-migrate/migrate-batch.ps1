@@ -46,6 +46,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# ── Normalize URLs — strip full URLs if passed instead of bare names ──────────
+if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
+    Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
+    $ADOOrg = $Matches[1]
+}
+if ($GHOrg -match '^https?://github\.com/([^/]+)/?$') {
+    Write-Host "  Normalising GHOrg: stripping URL prefix → '$($Matches[1])'"
+    $GHOrg = $Matches[1]
+}
+
 # ── Guard: detect unresolved ADO pipeline tokens ─────────────────────────────
 foreach ($paramCheck in @(
     @{ Name = 'ADOOrg';    Value = $ADOOrg    }
