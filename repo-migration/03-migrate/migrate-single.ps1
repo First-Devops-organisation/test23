@@ -187,7 +187,9 @@ else {
 
     Write-Host "  Cloning GitHub repo (blobless mirror)..."
     $ErrorActionPreference = 'SilentlyContinue'
-    git clone --filter=blob:none --mirror "https://$ghPat@github.com/$GHOrg/$GHRepo.git" $cloneDir 2>&1 | ForEach-Object { Write-Host "  $_" }
+    # URL-encode the PAT so special characters (+, =, /, etc.) don't break the URL
+    $encodedPat = [Uri]::EscapeDataString($ghPat)
+    git clone --filter=blob:none --mirror "https://x-access-token:${encodedPat}@github.com/$GHOrg/$GHRepo.git" $cloneDir 2>&1 | ForEach-Object { Write-Host "  $_" }
     $ErrorActionPreference = 'Stop'
 
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $cloneDir)) {
