@@ -148,16 +148,6 @@ $repoIndex = 0
 function Wait-ForSlot {
     while (@($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
         Start-Sleep -Seconds 10
-        # Harvest finished jobs
-        foreach ($j in @($jobs | Where-Object { $_.State -in @('Completed','Failed') })) {
-            if ($j.Name -notin ($completed + $failed | ForEach-Object { $_.Name })) {
-                $out = Receive-Job -Job $j -ErrorAction SilentlyContinue
-                $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
-                if ($j.State -eq 'Completed') { $script:completed += $j }
-                else                          { $script:failed    += $j }
-                Remove-Job -Job $j
-            }
-        }
     }
 }
 
@@ -177,21 +167,21 @@ foreach ($entry in $repoList) {
         $env:ADO_PAT = $adoPat
         $env:GH_TOKEN = $ghPat
 
-        $migrateArgs = @(
-            '-ADOOrg',     $adoOrg,
-            '-ADOProject', $adoProject,
-            '-ADORepo',    $adoRepo,
-            '-GHOrg',      $ghOrg,
-            '-GHRepo',     $ghRepo,
-            '-OutputDir',  $outputDir
-        )
-        if ($skipAudit) { $migrateArgs += '-SkipAudit' }
-        if ($dryRun)    { $migrateArgs += '-DryRun' }
+        $migrateParams = @{
+            ADOOrg     = $adoOrg
+            ADOProject = $adoProject
+            ADORepo    = $adoRepo
+            GHOrg      = $ghOrg
+            GHRepo     = $ghRepo
+            OutputDir  = $outputDir
+        }
+        if ($skipAudit) { $migrateParams['SkipAudit'] = $true }
+        if ($dryRun)    { $migrateParams['DryRun']    = $true }
 
-        # Redirect stderr to stdout so gh CLI informational messages do not
-        # enter the job error stream and trigger $ErrorActionPreference = Stop
-        # in the parent script when Receive-Job is called.
-        & pwsh -NoLogo -NonInteractive -File $scriptPath @migrateArgs 2>&1
+        # Call migrate-single.ps1 directly — Start-Job already runs in its
+        # own process, so spawning another pwsh is unnecessary and can cause
+        # ".NET application could not be started" errors on build agents.
+        & $scriptPath @migrateParams 2>&1
     } -ArgumentList $singleScript, $ADOOrg, $ADOProject, $adoRepo, $GHOrg, $ghRepo, $OutputDir, $SkipAudit.IsPresent, $DryRun.IsPresent, $env:GH_PAT, $env:ADO_PAT
 
     $jobs += $job
