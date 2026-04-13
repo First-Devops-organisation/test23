@@ -46,6 +46,18 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# ── Guard: detect unresolved ADO pipeline tokens ─────────────────────────────
+foreach ($paramCheck in @(
+    @{ Name = 'ADOOrg';    Value = $ADOOrg    }
+    @{ Name = 'ADOProject';Value = $ADOProject }
+    @{ Name = 'GHOrg';     Value = $GHOrg     }
+)) {
+    if ($paramCheck.Value -match '^\$\(') {
+        Write-Error ("Parameter -$($paramCheck.Name) contains an unresolved ADO variable token: '$($paramCheck.Value)'. " +
+            "Ensure the variable is defined in the pipeline variable group and saved before running.")
+    }
+}
+
 # ── Validate PATs ────────────────────────────────────────────────────────────
 if ([string]::IsNullOrWhiteSpace($env:GH_PAT))  { Write-Error "Set GH_PAT environment variable" }
 if ([string]::IsNullOrWhiteSpace($env:ADO_PAT)) { Write-Error "Set ADO_PAT environment variable" }
