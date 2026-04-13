@@ -103,72 +103,45 @@ Write-Host "  MaxParallel: $MaxParallel"
 Write-Host "  DryRun:      $DryRun"
 Write-Host "======================================================" -ForegroundColor Cyan
 
-# ── Run migrations in parallel using PowerShell background jobs ───────────────
-$jobs      = @()
-$completed = @()
-$failed    = @()
-$repoIndex = 0
-
-function Wait-ForSlot {
-    while (@($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
-        Start-Sleep -Seconds 10
-        # Harvest finished jobs
-        foreach ($j in @($jobs | Where-Object { $_.State -in @('Completed','Failed') })) {
-            if ($j.Name -notin @($completed + $failed | ForEach-Object { $_.Name })) {
-                $out = Receive-Job -Job $j
-                $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
-                if ($j.State -eq 'Completed') { $script:completed += $j }
-                else                          { $script:failed    += $j }
-                Remove-Job -Job $j
-            }
-        }
-    }
-}
+# ── Run migrations sequentially (in-process) ─────────────────────────────────
+# NOTE: Start-Job / Receive-Job was removed because gh CLI writes informational
+#       messages to stderr (e.g. "GH_TOKEN environment variable is being used")
+#       which PowerShell strict mode treats as terminating errors, causing
+#       pipeline exit code 1 even on successful migrations.
+$successRepos = @()
+$failedRepos  = @()
+$repoIndex    = 0
 
 foreach ($entry in $repoList) {
     $repoIndex++
     $adoRepo = $entry.ADORepo
     $ghRepo  = $entry.GHRepo
 
-    Write-Host "`n[$repoIndex/$($repoList.Count)] Queuing: $adoRepo → $ghRepo" -ForegroundColor Yellow
+    Write-Host "`n[$repoIndex/$($repoList.Count)] Migrating: $adoRepo → $ghRepo" -ForegroundColor Yellow
 
-    Wait-ForSlot
+    $migParams = @{
+        ADOOrg     = $ADOOrg
+        ADOProject = $ADOProject
+        ADORepo    = $adoRepo
+        GHOrg      = $GHOrg
+        GHRepo     = $ghRepo
+        OutputDir  = $OutputDir
+    }
+    if ($SkipAudit) { $migParams['SkipAudit'] = $true }
+    if ($DryRun)    { $migParams['DryRun']    = $true }
 
-    $job = Start-Job -Name "migrate-$adoRepo" -ScriptBlock {
-        param($scriptPath, $adoOrg, $adoProject, $adoRepo, $ghOrg, $ghRepo, $outputDir, $skipAudit, $dryRun, $ghPat, $adoPat)
-
-        $env:GH_PAT  = $ghPat
-        $env:ADO_PAT = $adoPat
-        $env:GH_TOKEN = $ghPat
-
-        $args = @(
-            '-ADOOrg',     $adoOrg,
-            '-ADOProject', $adoProject,
-            '-ADORepo',    $adoRepo,
-            '-GHOrg',      $ghOrg,
-            '-GHRepo',     $ghRepo,
-            '-OutputDir',  $outputDir
-        )
-        if ($skipAudit) { $args += '-SkipAudit' }
-        if ($dryRun)    { $args += '-DryRun' }
-
-        & pwsh -NoLogo -NonInteractive -File $scriptPath @args
-    } -ArgumentList $singleScript, $ADOOrg, $ADOProject, $adoRepo, $GHOrg, $ghRepo, $OutputDir, $SkipAudit.IsPresent, $DryRun.IsPresent, $env:GH_PAT, $env:ADO_PAT
-
-    $jobs += $job
-    Write-Host "  Job started: $($job.Name) (Id $($job.Id))" -ForegroundColor Gray
+    try {
+        & $singleScript @migParams
+        Write-Host "  [$adoRepo] Completed successfully." -ForegroundColor Green
+        $successRepos += $adoRepo
+    }
+    catch {
+        Write-Host "  [$adoRepo] FAILED: $($_.Exception.Message)" -ForegroundColor Red
+        $failedRepos += $adoRepo
+    }
 }
 
-# ── Wait for all remaining jobs ───────────────────────────────────────────────
-Write-Host "`nWaiting for all migration jobs to finish..." -ForegroundColor Cyan
-Wait-Job -Job $jobs | Out-Null
-
-foreach ($j in $jobs) {
-    $out = Receive-Job -Job $j
-    $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
-    if ($j.State -eq 'Completed') { $completed += $j } else { $failed += $j }
-    Remove-Job -Job $j
-}
+Write-Host "`nAll $($repoList.Count) repo(s) processed." -ForegroundColor Cyan
 
 # ── Collect per-repo results into a batch summary ─────────────────────────────
 Write-Host "`nGenerating batch summary report..." -ForegroundColor Cyan
