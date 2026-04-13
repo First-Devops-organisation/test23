@@ -134,6 +134,9 @@ else {
     $env:GH_TOKEN = $ghPat
     "PENDING" | Out-File $stateFile -Encoding utf8
 
+    Write-Host "  State: EXPORTING from ADO..."
+    "EXPORTING" | Out-File $stateFile -Encoding utf8
+
     $migOutput = gh ado2gh migrate-repo `
         --ado-org          $ADOOrg `
         --ado-team-project $ADOProject `
@@ -313,6 +316,17 @@ else {
                     }
                     $branchFileMd | Out-File "$folderDir\gh-files-$safeBranch.md" -Encoding utf8
 
+                    # Folder summary Markdown for default branch
+                    $folderSummaryMd = "| Folder | Files |`n|---|---|`n"
+                    $folderTotal = 0
+                    foreach ($folder in ($filesByFolder.Keys | Sort-Object)) {
+                        $fc = $filesByFolder[$folder].Count
+                        $folderTotal += $fc
+                        $folderSummaryMd += "| $folder | $fc |`n"
+                    }
+                    $folderSummaryMd += "| **Total** | **$folderTotal** |`n"
+                    $folderSummaryMd | Out-File "$auditDir\gh-folder-summary-default.md" -Encoding utf8
+
                     # Stream folder CSVs
                     foreach ($folder in $filesByFolder.Keys) {
                         [PSCustomObject]@{ Branch=$b; Folder=$folder; FileCount=$filesByFolder[$folder].Count } |
@@ -375,6 +389,49 @@ else {
         $totalOpen   = @($allPRs | Where-Object { $_.state -eq "open" }).Count
         $totalMerged = @($allPRs | Where-Object { $_.merged_at }).Count
         $totalClosed = $totalPRs - $totalOpen - $totalMerged
+
+        # PR breakdown by source branch (head)
+        $prByHead = @{}
+        foreach ($pr in $allPRs) {
+            $head = $pr.head.ref
+            if (-not $prByHead.ContainsKey($head)) { $prByHead[$head] = @{ Open=0; Merged=0; Closed=0 } }
+            if     ($pr.state -eq "open") { $prByHead[$head].Open++ }
+            elseif ($pr.merged_at)        { $prByHead[$head].Merged++ }
+            else                          { $prByHead[$head].Closed++ }
+        }
+        $prHeadMd = "| Source Branch (head) | Open | Merged | Closed | Total |`n|---|---|---|---|---|`n"
+        foreach ($hb in ($prByHead.Keys | Sort-Object)) {
+            $o=$prByHead[$hb].Open; $m=$prByHead[$hb].Merged; $c=$prByHead[$hb].Closed; $t=$o+$m+$c
+            $prHeadMd += "| $hb | $o | $m | $c | $t |`n"
+        }
+        $prHeadMd += "| **TOTAL** | **$totalOpen** | **$totalMerged** | **$totalClosed** | **$totalPRs** |`n"
+        $prHeadMd | Out-File "$auditDir\gh-pr-by-source-branch.md" -Encoding utf8
+
+        # PR breakdown by target branch (base)
+        $prByBase = @{}
+        foreach ($pr in $allPRs) {
+            $base = $pr.base.ref
+            if (-not $prByBase.ContainsKey($base)) { $prByBase[$base] = @{ Open=0; Merged=0; Closed=0 } }
+            if     ($pr.state -eq "open") { $prByBase[$base].Open++ }
+            elseif ($pr.merged_at)        { $prByBase[$base].Merged++ }
+            else                          { $prByBase[$base].Closed++ }
+        }
+        $prBaseMd = "| Target Branch (base) | Open | Merged | Closed | Total |`n|---|---|---|---|---|`n"
+        foreach ($bb in ($prByBase.Keys | Sort-Object)) {
+            $o=$prByBase[$bb].Open; $m=$prByBase[$bb].Merged; $c=$prByBase[$bb].Closed; $t=$o+$m+$c
+            $prBaseMd += "| $bb | $o | $m | $c | $t |`n"
+        }
+        $prBaseMd | Out-File "$auditDir\gh-pr-by-target-branch.md" -Encoding utf8
+
+        # Branch-wise Markdown table
+        $mdTable  = "| # | Branch | Status | Files | Latest Commit | Date |`n"
+        $mdTable += "|---|---|---|---|---|---|`n"
+        $idx = 1
+        foreach ($row in ($branchCsvRows | Sort-Object Branch)) {
+            $mdTable += "| $idx | ``$($row.Branch)`` | $($row.Status) | $($row.Files) | $($row.LatestAuthor) - *$($row.LatestMsg)* | $($row.LatestDate) |`n"
+            $idx++
+        }
+        $mdTable | Out-File "$auditDir\gh-branch-wise-table.md" -Encoding utf8
 
         # Write metric text files
         $branchCount  | Out-File "$auditDir\gh-branch-count.txt"  -Encoding utf8
@@ -439,6 +496,19 @@ if ($sizeKB -gt 0) {
     if     ($sizeKB -ge 1048576) { $actualSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
     elseif ($sizeKB -ge 1024)    { $actualSize = "{0:N2} MB" -f ($sizeKB / 1024) }
     else                         { $actualSize = "$sizeKB KB" }
+    Write-Host "  Repo size (GitHub API): $actualSize"
+}
+
+# Fallback: size-pack from blobless clone metadata
+if ($actualSize -eq "N/A") {
+    $repoSizeFile = "$auditDir\gh-repo-size.txt"
+    if (Test-Path $repoSizeFile) {
+        $sizePack = (Get-Content $repoSizeFile | Where-Object { $_ -match '^size-pack:' }) -replace 'size-pack:\s*',''
+        if ($sizePack) {
+            $actualSize = $sizePack.Trim()
+            Write-Host "  Repo size (clone metadata fallback): $actualSize"
+        }
+    }
 }
 $actualSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
 Write-Host "  Repo size: $actualSize"
