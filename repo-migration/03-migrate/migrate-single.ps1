@@ -92,9 +92,13 @@ Write-Host "`n[Step 2] Pre-check repo existence in GitHub..." -ForegroundColor C
 $repoStatus = "NOT_EXISTS"
 try {
     $ErrorActionPreference = 'Stop'
-    [void](gh repo view "$GHOrg/$GHRepo" --json name 2>&1)
-    Write-Host "  Repo already exists: $GHOrg/$GHRepo" -ForegroundColor Yellow
-    $repoStatus = "ALREADY_EXISTS"
+    $null = gh repo view "$GHOrg/$GHRepo" --json name 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  Repo already exists: $GHOrg/$GHRepo" -ForegroundColor Yellow
+        $repoStatus = "ALREADY_EXISTS"
+    } else {
+        throw "repo not found"
+    }
 }
 catch {
     Write-Host "  Repo does not exist yet (will be migrated): $GHRepo"
