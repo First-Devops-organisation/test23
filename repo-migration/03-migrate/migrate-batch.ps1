@@ -24,6 +24,12 @@
     Directory for all reports/logs/dashboards (default: ./output)
 .PARAMETER MaxParallel
     Max concurrent migrations (default: 3 — stay within GEI throttle)
+.PARAMETER SliceIndex
+    This agent's slice index (0-based). Used with SliceTotal to distribute
+    repos across multiple self-hosted agents via ADO matrix strategy.
+    Default 0 = run all repos on this agent.
+.PARAMETER SliceTotal
+    Total number of agent slices. Default 1 = single agent runs everything.
 .PARAMETER SkipAudit
     Passed to migrate-single.ps1 — skips branch-wise audit for all repos
 .PARAMETER DryRun
@@ -39,6 +45,8 @@ param(
     [Parameter(Mandatory = $false)] [string]$RepoListCsv,
     [Parameter(Mandatory = $false)] [string]$OutputDir    = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)] [int]   $MaxParallel  = 3,
+    [Parameter(Mandatory = $false)] [int]   $SliceIndex   = 0,
+    [Parameter(Mandatory = $false)] [int]   $SliceTotal   = 1,
     [switch]$SkipAudit,
     [switch]$DryRun
 )
@@ -111,6 +119,20 @@ else {
 
 if ($repoList.Count -eq 0) { Write-Error "No repos found to migrate." }
 
+# ── Slice repo list for multi-agent distribution ──────────────────────────────
+if ($SliceTotal -gt 1) {
+    $allRepos = [System.Collections.Generic.List[hashtable]]::new($repoList)
+    $repoList = [System.Collections.Generic.List[hashtable]]::new()
+    for ($i = 0; $i -lt $allRepos.Count; $i++) {
+        if ($i % $SliceTotal -eq $SliceIndex) { $repoList.Add($allRepos[$i]) }
+    }
+    Write-Host "Agent slice $SliceIndex/$SliceTotal — assigned $($repoList.Count) of $($allRepos.Count) repos"
+    if ($repoList.Count -eq 0) {
+        Write-Host "No repos assigned to this agent slice. Exiting cleanly."
+        exit 0
+    }
+}
+
 # ── Output folder ─────────────────────────────────────────────────────────────
 $reportDir = "$OutputDir\reports"
 New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
@@ -121,7 +143,7 @@ Write-Host "  BATCH MIGRATION"
 Write-Host "  ADO:         $ADOOrg / $ADOProject"
 Write-Host "  GitHub:      $GHOrg"
 Write-Host "  Repos:       $($repoList.Count)"
-Write-Host "  MaxParallel: $MaxParallel"
+Write-Host "  Slice:       $SliceIndex of $SliceTotal"
 Write-Host "  DryRun:      $DryRun"
 Write-Host "======================================================" -ForegroundColor Cyan
 
@@ -204,8 +226,9 @@ foreach ($entry in $repoList) {
     }
 }
 
-$summaryJson = "$reportDir\batch-migration-summary.json"
-$summaryCsv  = "$reportDir\batch-migration-summary.csv"
+$sliceSuffix = if ($SliceTotal -gt 1) { "-agent$SliceIndex" } else { "" }
+$summaryJson = "$reportDir\batch-migration-summary$sliceSuffix.json"
+$summaryCsv  = "$reportDir\batch-migration-summary$sliceSuffix.csv"
 $batchResults | ConvertTo-Json -Depth 3 | Out-File $summaryJson -Encoding utf8
 $batchResults | Export-Csv $summaryCsv -NoTypeInformation -Encoding utf8
 
