@@ -24,12 +24,6 @@
     Directory for all reports/logs/dashboards (default: ./output)
 .PARAMETER MaxParallel
     Max concurrent migrations (default: 3 — stay within GEI throttle)
-.PARAMETER SliceIndex
-    This agent's slice index (0-based). Used with SliceTotal to distribute
-    repos across multiple self-hosted agents via ADO matrix strategy.
-    Default 0 = run all repos on this agent.
-.PARAMETER SliceTotal
-    Total number of agent slices. Default 1 = single agent runs everything.
 .PARAMETER SkipAudit
     Passed to migrate-single.ps1 — skips branch-wise audit for all repos
 .PARAMETER DryRun
@@ -45,36 +39,12 @@ param(
     [Parameter(Mandatory = $false)] [string]$RepoListCsv,
     [Parameter(Mandatory = $false)] [string]$OutputDir    = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)] [int]   $MaxParallel  = 3,
-    [Parameter(Mandatory = $false)] [int]   $SliceIndex   = 0,
-    [Parameter(Mandatory = $false)] [int]   $SliceTotal   = 1,
     [switch]$SkipAudit,
     [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-
-# ── Normalize URLs — strip full URLs if passed instead of bare names ──────────
-if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
-    Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
-    $ADOOrg = $Matches[1]
-}
-if ($GHOrg -match '^https?://github\.com/([^/]+)/?$') {
-    Write-Host "  Normalising GHOrg: stripping URL prefix → '$($Matches[1])'"
-    $GHOrg = $Matches[1]
-}
-
-# ── Guard: detect unresolved ADO pipeline tokens ─────────────────────────────
-foreach ($paramCheck in @(
-    @{ Name = 'ADOOrg';    Value = $ADOOrg    }
-    @{ Name = 'ADOProject';Value = $ADOProject }
-    @{ Name = 'GHOrg';     Value = $GHOrg     }
-)) {
-    if ($paramCheck.Value -match '^\$\(') {
-        Write-Error ("Parameter -$($paramCheck.Name) contains an unresolved ADO variable token: '$($paramCheck.Value)'. " +
-            "Ensure the variable is defined in the pipeline variable group and saved before running.")
-    }
-}
 
 # ── Validate PATs ────────────────────────────────────────────────────────────
 if ([string]::IsNullOrWhiteSpace($env:GH_PAT))  { Write-Error "Set GH_PAT environment variable" }
@@ -103,7 +73,7 @@ else {
     # ── From config JSON ──
     if (-not (Test-Path $ConfigPath)) { Write-Error "Config not found: $ConfigPath" }
     $config  = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-    $batches = @($config.batches)
+    $batches = $config.batches
     if (-not [string]::IsNullOrWhiteSpace($BatchName)) {
         $batches = @($batches | Where-Object { $_.name -eq $BatchName.Trim() })
         if ($batches.Count -eq 0) { Write-Error "Batch '$BatchName' not found in config" }
@@ -119,20 +89,6 @@ else {
 
 if ($repoList.Count -eq 0) { Write-Error "No repos found to migrate." }
 
-# ── Slice repo list for multi-agent distribution ──────────────────────────────
-if ($SliceTotal -gt 1) {
-    $allRepos = [System.Collections.Generic.List[hashtable]]::new($repoList)
-    $repoList = [System.Collections.Generic.List[hashtable]]::new()
-    for ($i = 0; $i -lt $allRepos.Count; $i++) {
-        if ($i % $SliceTotal -eq $SliceIndex) { $repoList.Add($allRepos[$i]) }
-    }
-    Write-Host "Agent slice $SliceIndex/$SliceTotal — assigned $($repoList.Count) of $($allRepos.Count) repos"
-    if ($repoList.Count -eq 0) {
-        Write-Host "No repos assigned to this agent slice. Exiting cleanly."
-        exit 0
-    }
-}
-
 # ── Output folder ─────────────────────────────────────────────────────────────
 $reportDir = "$OutputDir\reports"
 New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
@@ -143,56 +99,75 @@ Write-Host "  BATCH MIGRATION"
 Write-Host "  ADO:         $ADOOrg / $ADOProject"
 Write-Host "  GitHub:      $GHOrg"
 Write-Host "  Repos:       $($repoList.Count)"
-Write-Host "  Slice:       $SliceIndex of $SliceTotal"
+Write-Host "  MaxParallel: $MaxParallel"
 Write-Host "  DryRun:      $DryRun"
 Write-Host "======================================================" -ForegroundColor Cyan
 
-# ── Free disk space pre-check (fail fast before any migration starts) ────────
-$minFreeGB  = 10 * $repoList.Count   # rough estimate: 10 GB headroom per repo
-$drive      = Split-Path -Qualifier $OutputDir
-if (-not $drive) { $drive = (Get-Location).Drive.Root }
-try {
-    $freeGB = [math]::Round((Get-PSDrive ($drive.TrimEnd(':\')) -ErrorAction SilentlyContinue).Free / 1GB, 1)
-    Write-Host "  Free disk on ${drive}: ${freeGB} GB  (recommended >= ${minFreeGB} GB for $($repoList.Count) repos)" -ForegroundColor Gray
-    if ($freeGB -lt $minFreeGB) {
-        Write-Warning "Low disk space: ${freeGB} GB free. Recommend >= ${minFreeGB} GB. Migration continues but may fail mid-run."
-    }
-} catch {
-    Write-Warning "Could not check free disk space: $_"
-}
+# ── Run migrations in parallel using PowerShell background jobs ───────────────
+$jobs      = @()
+$completed = @()
+$failed    = @()
+$repoIndex = 0
 
-# ── Run migrations sequentially (no child processes — avoids .NET errors) ─────
-$completedRepos = @()
-$failedRepos    = @()
-$repoIndex      = 0
+function Wait-ForSlot {
+    while (($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
+        Start-Sleep -Seconds 10
+        # Harvest finished jobs
+        foreach ($j in ($jobs | Where-Object { $_.State -in @('Completed','Failed') })) {
+            if ($j.Name -notin ($completed + $failed | ForEach-Object { $_.Name })) {
+                $out = Receive-Job -Job $j
+                $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
+                if ($j.State -eq 'Completed') { $script:completed += $j }
+                else                          { $script:failed    += $j }
+                Remove-Job -Job $j
+            }
+        }
+    }
+}
 
 foreach ($entry in $repoList) {
     $repoIndex++
     $adoRepo = $entry.ADORepo
     $ghRepo  = $entry.GHRepo
 
-    Write-Host "`n[$repoIndex/$($repoList.Count)] Migrating: $adoRepo → $ghRepo" -ForegroundColor Yellow
+    Write-Host "`n[$repoIndex/$($repoList.Count)] Queuing: $adoRepo → $ghRepo" -ForegroundColor Yellow
 
-    $migrateParams = @{
-        ADOOrg     = $ADOOrg
-        ADOProject = $ADOProject
-        ADORepo    = $adoRepo
-        GHOrg      = $GHOrg
-        GHRepo     = $ghRepo
-        OutputDir  = $OutputDir
-    }
-    if ($SkipAudit) { $migrateParams['SkipAudit'] = $true }
-    if ($DryRun)    { $migrateParams['DryRun']    = $true }
+    Wait-ForSlot
 
-    try {
-        & $singleScript @migrateParams
-        $completedRepos += $adoRepo
-        Write-Host "  [$adoRepo] Finished successfully." -ForegroundColor Green
-    }
-    catch {
-        $failedRepos += $adoRepo
-        Write-Warning "  [$adoRepo] FAILED: $_"
-    }
+    $job = Start-Job -Name "migrate-$adoRepo" -ScriptBlock {
+        param($scriptPath, $adoOrg, $adoProject, $adoRepo, $ghOrg, $ghRepo, $outputDir, $skipAudit, $dryRun, $ghPat, $adoPat)
+
+        $env:GH_PAT  = $ghPat
+        $env:ADO_PAT = $adoPat
+        $env:GH_TOKEN = $ghPat
+
+        $args = @(
+            '-ADOOrg',     $adoOrg,
+            '-ADOProject', $adoProject,
+            '-ADORepo',    $adoRepo,
+            '-GHOrg',      $ghOrg,
+            '-GHRepo',     $ghRepo,
+            '-OutputDir',  $outputDir
+        )
+        if ($skipAudit) { $args += '-SkipAudit' }
+        if ($dryRun)    { $args += '-DryRun' }
+
+        & pwsh -NoLogo -NonInteractive -File $scriptPath @args
+    } -ArgumentList $singleScript, $ADOOrg, $ADOProject, $adoRepo, $GHOrg, $ghRepo, $OutputDir, $SkipAudit.IsPresent, $DryRun.IsPresent, $env:GH_PAT, $env:ADO_PAT
+
+    $jobs += $job
+    Write-Host "  Job started: $($job.Name) (Id $($job.Id))" -ForegroundColor Gray
+}
+
+# ── Wait for all remaining jobs ───────────────────────────────────────────────
+Write-Host "`nWaiting for all migration jobs to finish..." -ForegroundColor Cyan
+Wait-Job -Job $jobs | Out-Null
+
+foreach ($j in $jobs) {
+    $out = Receive-Job -Job $j
+    $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
+    if ($j.State -eq 'Completed') { $completed += $j } else { $failed += $j }
+    Remove-Job -Job $j
 }
 
 # ── Collect per-repo results into a batch summary ─────────────────────────────
@@ -200,8 +175,8 @@ Write-Host "`nGenerating batch summary report..." -ForegroundColor Cyan
 
 $batchResults = @()
 foreach ($entry in $repoList) {
-    $ghRepo    = $entry.GHRepo
-    $adoRepo   = $entry.ADORepo
+    $ghRepo    = $entry['GHRepo']
+    $adoRepo   = $entry['ADORepo']
     $stateFile = "$OutputDir\logs\migration-state-$ghRepo.txt"
     $auditDir  = "$OutputDir\audit\$ghRepo"
 
@@ -226,9 +201,8 @@ foreach ($entry in $repoList) {
     }
 }
 
-$sliceSuffix = if ($SliceTotal -gt 1) { "-agent$SliceIndex" } else { "" }
-$summaryJson = "$reportDir\batch-migration-summary$sliceSuffix.json"
-$summaryCsv  = "$reportDir\batch-migration-summary$sliceSuffix.csv"
+$summaryJson = "$reportDir\batch-migration-summary.json"
+$summaryCsv  = "$reportDir\batch-migration-summary.csv"
 $batchResults | ConvertTo-Json -Depth 3 | Out-File $summaryJson -Encoding utf8
 $batchResults | Export-Csv $summaryCsv -NoTypeInformation -Encoding utf8
 
@@ -239,8 +213,8 @@ Write-Host "  BATCH MIGRATION SUMMARY"
 Write-Host "======================================================"
 $batchResults | Format-Table ADORepo, GHRepo, State, Branches, Commits, RepoSize -AutoSize
 
-$successCount = @($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
-$failCount    = @($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
+$successCount = ($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
+$failCount    = ($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
 
 Write-Host "  Total   : $($batchResults.Count)"
 Write-Host "  Success : $successCount" -ForegroundColor Green
