@@ -42,6 +42,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# ── Normalize ADOOrg — strip full URL if user set it as https://dev.azure.com/<org> ──
+if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
+    Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
+    $ADOOrg = $Matches[1]
+}
+
 # ── Validate PATs ────────────────────────────────────────────────────────────
 $ghPat  = $env:GH_PAT
 $adoPat = $env:ADO_PAT
@@ -150,12 +156,18 @@ else {
         }
         else {
             "FAILED" | Out-File $stateFile -Encoding utf8
-            Write-Error "Migration did not complete within 30 minutes."
+            Write-Warning "Migration did not complete within 30 minutes. Check GEI logs."
         }
     }
     else {
         "FAILED" | Out-File $stateFile -Encoding utf8
-        Write-Error "Migration failed (exit code $LASTEXITCODE). Check output above."
+        Write-Warning @"
+Migration failed (exit code $LASTEXITCODE). Common causes:
+  1. ADO_PAT scope: needs 'Code (Read)' + 'Identity (Read)' on the ADO organisation.
+  2. ADOOrg name mismatch: check the value in the repo-migration-discover variable group.
+  3. GHOrg name mismatch or GH_PAT lacks 'repo' + 'admin:org' scopes.
+GEI output above should contain a more specific error message.
+"@
     }
 }
 
