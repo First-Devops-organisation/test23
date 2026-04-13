@@ -74,8 +74,10 @@ Write-Host "============================================"
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 1] Authenticate GitHub CLI..." -ForegroundColor Cyan
 $env:GH_TOKEN = $ghPat
-echo $ghPat | gh auth login --with-token
-gh auth status
+# When GH_TOKEN is set the CLI uses it directly — gh auth login is not needed
+# and returns exit code 1 (polluting the job error stream). Skip it.
+Write-Host "  Authenticating via GH_TOKEN environment variable."
+gh auth status 2>&1 | ForEach-Object { Write-Host "  $_" }
 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
 gh extension list
 
@@ -184,7 +186,7 @@ else {
         Push-Location $cloneDir
 
         # Branches
-        $branches     = git branch | ForEach-Object { $_.Trim().TrimStart("* ") } | Where-Object { $_ -ne "" }
+        $branches     = @(git branch | ForEach-Object { $_.Trim().TrimStart("* ") } | Where-Object { $_ -ne "" })
         $branchCount  = $branches.Count
         $branches     | Out-File "$auditDir\gh-branches.txt" -Encoding utf8
         Write-Host "  Branches: $branchCount"
@@ -318,13 +320,13 @@ else {
         # PR audit via GitHub API
         $allPRs = @(); $page = 1
         do {
-            $prs = gh api "repos/$GHOrg/$GHRepo/pulls?state=all&per_page=100&page=$page" 2>$null | ConvertFrom-Json
-            if ($prs -and $prs.Count -gt 0) { $allPRs += $prs; $page++ } else { break }
+            $prs = @(gh api "repos/$GHOrg/$GHRepo/pulls?state=all&per_page=100&page=$page" 2>$null | ConvertFrom-Json)
+            if ($prs.Count -gt 0) { $allPRs += $prs; $page++ } else { break }
         } while ($prs.Count -eq 100)
 
         $totalPRs    = $allPRs.Count
-        $totalOpen   = ($allPRs | Where-Object { $_.state -eq "open" }).Count
-        $totalMerged = ($allPRs | Where-Object { $_.merged_at }).Count
+        $totalOpen   = @($allPRs | Where-Object { $_.state -eq "open" }).Count
+        $totalMerged = @($allPRs | Where-Object { $_.merged_at }).Count
         $totalClosed = $totalPRs - $totalOpen - $totalMerged
 
         # Write metric text files
