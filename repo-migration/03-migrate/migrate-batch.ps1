@@ -73,7 +73,7 @@ else {
     # ── From config JSON ──
     if (-not (Test-Path $ConfigPath)) { Write-Error "Config not found: $ConfigPath" }
     $config  = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-    $batches = $config.batches
+    $batches = @($config.batches)
     if (-not [string]::IsNullOrWhiteSpace($BatchName)) {
         $batches = @($batches | Where-Object { $_.name -eq $BatchName.Trim() })
         if ($batches.Count -eq 0) { Write-Error "Batch '$BatchName' not found in config" }
@@ -103,6 +103,20 @@ Write-Host "  MaxParallel: $MaxParallel"
 Write-Host "  DryRun:      $DryRun"
 Write-Host "======================================================" -ForegroundColor Cyan
 
+# ── Free disk space pre-check (fail fast before any migration starts) ────────
+$minFreeGB  = 10 * $repoList.Count   # rough estimate: 10 GB headroom per repo
+$drive      = Split-Path -Qualifier $OutputDir
+if (-not $drive) { $drive = (Get-Location).Drive.Root }
+try {
+    $freeGB = [math]::Round((Get-PSDrive ($drive.TrimEnd(':\')) -ErrorAction SilentlyContinue).Free / 1GB, 1)
+    Write-Host "  Free disk on ${drive}: ${freeGB} GB  (recommended >= ${minFreeGB} GB for $($repoList.Count) repos)" -ForegroundColor Gray
+    if ($freeGB -lt $minFreeGB) {
+        Write-Warning "Low disk space: ${freeGB} GB free. Recommend >= ${minFreeGB} GB. Migration continues but may fail mid-run."
+    }
+} catch {
+    Write-Warning "Could not check free disk space: $_"
+}
+
 # ── Run migrations in parallel using PowerShell background jobs ───────────────
 $jobs      = @()
 $completed = @()
@@ -110,10 +124,10 @@ $failed    = @()
 $repoIndex = 0
 
 function Wait-ForSlot {
-    while (($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
+    while (@($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
         Start-Sleep -Seconds 10
         # Harvest finished jobs
-        foreach ($j in ($jobs | Where-Object { $_.State -in @('Completed','Failed') })) {
+        foreach ($j in @($jobs | Where-Object { $_.State -in @('Completed','Failed') })) {
             if ($j.Name -notin ($completed + $failed | ForEach-Object { $_.Name })) {
                 $out = Receive-Job -Job $j
                 $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
@@ -175,8 +189,8 @@ Write-Host "`nGenerating batch summary report..." -ForegroundColor Cyan
 
 $batchResults = @()
 foreach ($entry in $repoList) {
-    $ghRepo    = $entry['GHRepo']
-    $adoRepo   = $entry['ADORepo']
+    $ghRepo    = $entry.GHRepo
+    $adoRepo   = $entry.ADORepo
     $stateFile = "$OutputDir\logs\migration-state-$ghRepo.txt"
     $auditDir  = "$OutputDir\audit\$ghRepo"
 
@@ -213,8 +227,8 @@ Write-Host "  BATCH MIGRATION SUMMARY"
 Write-Host "======================================================"
 $batchResults | Format-Table ADORepo, GHRepo, State, Branches, Commits, RepoSize -AutoSize
 
-$successCount = ($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
-$failCount    = ($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
+$successCount = @($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
+$failCount    = @($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
 
 Write-Host "  Total   : $($batchResults.Count)"
 Write-Host "  Success : $successCount" -ForegroundColor Green
