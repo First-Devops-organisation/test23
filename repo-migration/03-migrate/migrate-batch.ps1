@@ -110,11 +110,11 @@ $failed    = @()
 $repoIndex = 0
 
 function Wait-ForSlot {
-    while (($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
+    while (@($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
         Start-Sleep -Seconds 10
         # Harvest finished jobs
-        foreach ($j in ($jobs | Where-Object { $_.State -in @('Completed','Failed') })) {
-            if ($j.Name -notin ($completed + $failed | ForEach-Object { $_.Name })) {
+        foreach ($j in @($jobs | Where-Object { $_.State -in @('Completed','Failed') })) {
+            if ($j.Name -notin @($completed + $failed | ForEach-Object { $_.Name })) {
                 $out = Receive-Job -Job $j
                 $out | ForEach-Object { Write-Host "  [$($j.Name)] $_" }
                 if ($j.State -eq 'Completed') { $script:completed += $j }
@@ -213,8 +213,8 @@ Write-Host "  BATCH MIGRATION SUMMARY"
 Write-Host "======================================================"
 $batchResults | Format-Table ADORepo, GHRepo, State, Branches, Commits, RepoSize -AutoSize
 
-$successCount = ($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
-$failCount    = ($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
+$successCount = @($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
+$failCount    = @($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
 
 Write-Host "  Total   : $($batchResults.Count)"
 Write-Host "  Success : $successCount" -ForegroundColor Green
