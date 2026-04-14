@@ -10,7 +10,7 @@ jobs:
 - job: AuditPipelines
   displayName: 'Run Azure DevOps pipeline audit'
   pool:
-    vmImage: 'windows-latest'
+    vmImage: 'ubuntu-latest'
   steps:
   - checkout: self
 
