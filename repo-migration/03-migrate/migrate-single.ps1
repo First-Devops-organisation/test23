@@ -3,12 +3,12 @@
     Migrates a SINGLE repo from ADO to GitHub using GEI (gh ado2gh).
     Converted from yaml.yaml pipeline logic into a reusable PS1 script.
 .DESCRIPTION
-    Steps performed (mirrors yaml.yaml Steps 1-5):
+    Steps performed:
       1. Authenticate gh CLI with GH_PAT
       2. Pre-check: does the GitHub repo already exist?
       3. Run gh ado2gh migrate-repo (with "already queued" handling & retry)
-      4. Branch-wise post-migration audit (branches, tags, commits, PRs, files)
-      5. Download GEI migration log
+      4. Branch-wise post-migration audit (branches, tags, commits, PRs, files, repo size)
+      5. Download GEI migration log (exponential backoff)
       6. Generate HTML dashboard + Markdown summary
 .PARAMETER ADOOrg
     Azure DevOps organisation name (e.g. "mycompany")
@@ -73,6 +73,20 @@ $adoPat = $env:ADO_PAT
 if ([string]::IsNullOrWhiteSpace($ghPat))  { Write-Error "Set GH_PAT environment variable" }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
+# ── Set GH_TOKEN once for all gh CLI calls ────────────────────────────────────
+$env:GH_TOKEN = $ghPat
+
+# ── Script-level state tracking (avoids re-reading from disk) ─────────────────
+$migState = "UNKNOWN"
+
+# ── In-memory audit data (avoids re-reading .txt files in Step 6) ─────────────
+$auditData = @{
+    BranchCount   = "N/A"; TagCount      = "N/A"; CommitCount   = "N/A"
+    PRCount       = "N/A"; PROpen        = "N/A"; PRMerged      = "N/A"
+    PRClosed      = "N/A"; RepoSize      = "N/A"; DefaultBranch = "N/A"
+    LatestHash    = "N/A"
+}
+
 # ── Output directories ───────────────────────────────────────────────────────
 $reportDir  = "$OutputDir\reports"
 $logDir     = "$OutputDir\logs"
@@ -98,9 +112,7 @@ Write-Host "============================================"
 # STEP 1 – Authenticate & install ado2gh extension
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 1] Authenticate GitHub CLI..." -ForegroundColor Cyan
-$env:GH_TOKEN = $ghPat
-# When GH_TOKEN is set the CLI uses it directly — gh auth login is not needed
-# and conflicts with GH_TOKEN (returns exit code 1), so we skip it.
+# GH_TOKEN is already set once at script init — gh CLI uses it directly.
 Write-Host "  Authenticating via GH_TOKEN environment variable."
 $ErrorActionPreference = 'SilentlyContinue'
 gh auth status 2>&1 | ForEach-Object { Write-Host "  $_" }
@@ -141,22 +153,25 @@ Write-Host "  Status: $repoStatus"
 # ════════════════════════════════════════════════════════════════════════════
 if ($repoStatus -eq "ALREADY_EXISTS") {
     Write-Host "`n[Step 3] SKIPPED — repo already exists in GitHub." -ForegroundColor Yellow
-    "SKIPPED" | Out-File $stateFile -Encoding utf8
+    $migState = "SKIPPED"
+    $migState | Out-File $stateFile -Encoding utf8
 }
 elseif ($DryRun) {
     Write-Host "`n[Step 3] DRY RUN — GEI command that would run:" -ForegroundColor DarkYellow
     Write-Host "  gh ado2gh migrate-repo --ado-org `"$ADOOrg`" --ado-team-project `"$ADOProject`" --ado-repo `"$ADORepo`" --github-org `"$GHOrg`" --github-repo `"$GHRepo`""
-    "DRY_RUN" | Out-File $stateFile -Encoding utf8
+    $migState = "DRY_RUN"
+    $migState | Out-File $stateFile -Encoding utf8
 }
 else {
     Write-Host "`n[Step 3] Migrating repo..." -ForegroundColor Cyan
     $env:ADO_PAT  = $adoPat
     $env:GH_PAT   = $ghPat
-    $env:GH_TOKEN = $ghPat
-    "PENDING" | Out-File $stateFile -Encoding utf8
+    $migState = "PENDING"
+    $migState | Out-File $stateFile -Encoding utf8
 
     Write-Host "  State: EXPORTING from ADO..."
-    "EXPORTING" | Out-File $stateFile -Encoding utf8
+    $migState = "EXPORTING"
+    $migState | Out-File $stateFile -Encoding utf8
 
     # GEI reads ADO_PAT and GH_PAT from environment variables automatically.
     # Passing PATs as CLI args causes quoting issues when PATs contain +, =, / chars.
@@ -171,12 +186,13 @@ else {
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  State: COMPLETE" -ForegroundColor Green
-        "COMPLETE" | Out-File $stateFile -Encoding utf8
+        $migState = "COMPLETE"
+        $migState | Out-File $stateFile -Encoding utf8
     }
     elseif (($migOutput -join "") -match "already been queued") {
         Write-Host "  Migration already queued — polling until repo appears..." -ForegroundColor Yellow
-        "WAITING" | Out-File $stateFile -Encoding utf8
-        $env:GH_TOKEN = $ghPat
+        $migState = "WAITING"
+        $migState | Out-File $stateFile -Encoding utf8
         $found = $false
         for ($w = 1; $w -le 30; $w++) {
             Start-Sleep -Seconds 60
@@ -187,16 +203,19 @@ else {
             if ($LASTEXITCODE -eq 0) { $found = $true; break }
         }
         if ($found) {
-            "COMPLETE" | Out-File $stateFile -Encoding utf8
+            $migState = "COMPLETE"
+            $migState | Out-File $stateFile -Encoding utf8
             Write-Host "  State: COMPLETE (queued migration finished)" -ForegroundColor Green
         }
         else {
-            "FAILED" | Out-File $stateFile -Encoding utf8
+            $migState = "FAILED"
+            $migState | Out-File $stateFile -Encoding utf8
             Write-Warning "Migration did not complete within 30 minutes. Check GEI logs."
         }
     }
     else {
-        "FAILED" | Out-File $stateFile -Encoding utf8
+        $migState = "FAILED"
+        $migState | Out-File $stateFile -Encoding utf8
         $outputStr = $migOutput -join "`n"
         if ($outputStr -match 'lookup the Organization ID|Failed to lookup') {
             Write-Warning @"
@@ -226,19 +245,16 @@ GEI output above should contain a more specific error message.
 # ════════════════════════════════════════════════════════════════════════════
 # STEP 4 – Branch-wise post-migration audit
 # ════════════════════════════════════════════════════════════════════════════
-$migStateNow = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { "UNKNOWN" }
-
 if ($SkipAudit) {
     Write-Host "`n[Step 4] SKIPPED (–SkipAudit flag set)." -ForegroundColor Yellow
 }
-elseif ($migStateNow -in @("FAILED", "DRY_RUN", "UNKNOWN")) {
-    Write-Host "`n[Step 4] SKIPPED — migration state is '$migStateNow', no repo to audit." -ForegroundColor Yellow
+elseif ($migState -in @("FAILED", "DRY_RUN", "UNKNOWN")) {
+    Write-Host "`n[Step 4] SKIPPED — migration state is '$migState', no repo to audit." -ForegroundColor Yellow
 }
 else {
     Write-Host "`n[Step 4] Post-migration audit (branch-wise)..." -ForegroundColor Cyan
 
     $ProgressPreference = 'SilentlyContinue'
-    $env:GH_TOKEN = $ghPat
 
     $cloneDir = "$OutputDir\tmp\$GHRepo-mirror"
     if (Test-Path $cloneDir) { Remove-Item $cloneDir -Recurse -Force }
@@ -299,8 +315,8 @@ else {
         $branchCsvRows    = @()
         $csvFolderFile    = "$auditDir\gh-folder-wise-files.csv"
         $csvFolderSummary = "$auditDir\gh-folder-summary.csv"
-        $csvHeaderWritten = $false
-        $totalFolderFiles = 0
+        $folderFileRows   = [System.Collections.Generic.List[PSCustomObject]]::new()
+        $folderSummRows   = [System.Collections.Generic.List[PSCustomObject]]::new()
         $bIdx = 0
 
         foreach ($branch in $branches) {
@@ -348,16 +364,12 @@ else {
                     $folderSummaryMd += "| **Total** | **$folderTotal** |`n"
                     $folderSummaryMd | Out-File "$auditDir\gh-folder-summary-default.md" -Encoding utf8
 
-                    # Stream folder CSVs
+                    # Batch-collect folder CSV rows (single write at end — avoids N disk I/O ops)
                     foreach ($folder in $filesByFolder.Keys) {
-                        [PSCustomObject]@{ Branch=$b; Folder=$folder; FileCount=$filesByFolder[$folder].Count } |
-                            Export-Csv -Path $csvFolderSummary -NoTypeInformation -Encoding utf8 -Append:$csvHeaderWritten -Force
+                        $folderSummRows.Add([PSCustomObject]@{ Branch=$b; Folder=$folder; FileCount=$filesByFolder[$folder].Count })
                         foreach ($file in $filesByFolder[$folder]) {
-                            [PSCustomObject]@{ Branch=$b; Folder=$folder; FileName=$file } |
-                                Export-Csv -Path $csvFolderFile -NoTypeInformation -Encoding utf8 -Append:$csvHeaderWritten -Force
-                            $totalFolderFiles++
+                            $folderFileRows.Add([PSCustomObject]@{ Branch=$b; Folder=$folder; FileName=$file })
                         }
-                        if (-not $csvHeaderWritten) { $csvHeaderWritten = $true }
                     }
                     $bFiles = $null; $filesByFolder = $null
                 }
@@ -377,6 +389,12 @@ else {
             }
         }
         $branchCsvRows | Export-Csv "$auditDir\gh-branch-wise-data.csv" -NoTypeInformation -Encoding utf8
+
+        # Write folder CSVs in one batch (instead of per-file appends)
+        if ($folderSummRows.Count -gt 0) { $folderSummRows | Export-Csv -Path $csvFolderSummary -NoTypeInformation -Encoding utf8 -Force }
+        if ($folderFileRows.Count -gt 0) { $folderFileRows | Export-Csv -Path $csvFolderFile    -NoTypeInformation -Encoding utf8 -Force }
+        Write-Host "  Folder CSVs: $($folderFileRows.Count) file rows, $($folderSummRows.Count) folder rows"
+        $folderFileRows = $null; $folderSummRows = $null
 
         # Top 5 key branches with commit counts
         $topBranches = $branchCsvRows | Sort-Object {
@@ -464,35 +482,66 @@ else {
         $totalClosed  | Out-File "$auditDir\gh-pr-closed.txt"     -Encoding utf8
         $latestHash   | Out-File "$auditDir\gh-latest-hash.txt"   -Encoding utf8
 
-        Write-Host "  Audit complete. PRs: $totalPRs (Open:$totalOpen Merged:$totalMerged Closed:$totalClosed)" -ForegroundColor Green
+        # ── Repo size from GitHub API (merged here to avoid separate Step 6) ──────
+        $actualSize = "N/A"
+        $ErrorActionPreference = 'SilentlyContinue'
+        $rawSize = gh api "repos/$GHOrg/$GHRepo" --jq '.size' 2>$null
+        $ErrorActionPreference = 'Stop'
+        if ($rawSize -and $rawSize -match '^\d+$' -and [long]$rawSize -gt 0) {
+            $sizeKB = [long]$rawSize
+            if     ($sizeKB -ge 1048576) { $actualSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
+            elseif ($sizeKB -ge 1024)    { $actualSize = "{0:N2} MB" -f ($sizeKB / 1024) }
+            else                         { $actualSize = "$sizeKB KB" }
+        }
+        # Fallback: size-pack from blobless clone metadata
+        if ($actualSize -eq "N/A") {
+            $repoSizeFile = "$auditDir\gh-repo-size.txt"
+            if (Test-Path $repoSizeFile) {
+                $sizePack = (Get-Content $repoSizeFile | Where-Object { $_ -match '^size-pack:' }) -replace 'size-pack:\s*',''
+                if ($sizePack) { $actualSize = $sizePack.Trim() }
+            }
+        }
+        $actualSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
+
+        # ── Populate in-memory audit data for Step 6 (dashboard) ───────────────
+        $auditData.BranchCount   = "$branchCount"
+        $auditData.TagCount      = "$tagCount"
+        $auditData.CommitCount   = "$totalCommits"
+        $auditData.PRCount       = "$totalPRs"
+        $auditData.PROpen        = "$totalOpen"
+        $auditData.PRMerged      = "$totalMerged"
+        $auditData.PRClosed      = "$totalClosed"
+        $auditData.RepoSize      = $actualSize
+        $auditData.DefaultBranch = $defaultBranch
+        $auditData.LatestHash    = $latestHash
+
+        Write-Host "  Audit complete. PRs: $totalPRs (Open:$totalOpen Merged:$totalMerged Closed:$totalClosed) | Size: $actualSize" -ForegroundColor Green
     }
 }
 
 # ════════════════════════════════════════════════════════════════════════════
 # STEP 5 – Download GEI migration log
 # ════════════════════════════════════════════════════════════════════════════
-$migState = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { "UNKNOWN" }
-
 if ($migState -in @("SKIPPED","DRY_RUN","FAILED")) {
     Write-Host "`n[Step 5] Skipping log download (state: $migState)." -ForegroundColor Yellow
 }
 else {
-    Write-Host "`n[Step 5] Downloading GEI migration log (waiting 300s for large repos)..." -ForegroundColor Cyan
-    Start-Sleep -Seconds 300
+    Write-Host "`n[Step 5] Downloading GEI migration log..." -ForegroundColor Cyan
     $migLogFile = "$logDir\migration-log-$GHRepo.log"
-    $env:GH_TOKEN = $ghPat
     $success = $false
-    for ($i = 1; $i -le 15; $i++) {
-        Write-Host "  Attempt $i/15..."
+    $backoff = 30   # initial wait in seconds
+    for ($i = 1; $i -le 8; $i++) {
+        Write-Host "  Attempt $i/8 (waiting ${backoff}s)..."
+        Start-Sleep -Seconds $backoff
         $ErrorActionPreference = 'SilentlyContinue'
         $out = gh ado2gh download-logs --github-org $GHOrg --github-repo $GHRepo --migration-log-file $migLogFile --overwrite 2>&1
         $ErrorActionPreference = 'Stop'
         if ($LASTEXITCODE -eq 0) { $success = $true; break }
-        Start-Sleep -Seconds 60
+        $backoff = [math]::Min($backoff * 2, 240)   # exponential backoff, max 4 min
     }
     if (-not $success) {
-        "Log download failed after 15 retries" | Out-File $migLogFile -Encoding utf8
-        Write-Warning "  Logs unavailable after 15 retries (normal for large repos)."
+        "Log download failed after 8 retries" | Out-File $migLogFile -Encoding utf8
+        Write-Warning "  Logs unavailable after 8 retries (normal for large repos)."
     }
     else {
         Write-Host "  Log saved: $migLogFile" -ForegroundColor Green
@@ -500,64 +549,21 @@ else {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 6 – Repo size from GitHub API
+# STEP 6 – Generate HTML dashboard + Markdown summary
 # ════════════════════════════════════════════════════════════════════════════
-Write-Host "`n[Step 6] Getting repo size from GitHub API..." -ForegroundColor Cyan
-$env:GH_TOKEN = $ghPat
-$actualSize = "N/A"
-$sizeKB = 0
-for ($i = 1; $i -le 5; $i++) {
-    $ErrorActionPreference = 'SilentlyContinue'
-    $rawSize = gh api "repos/$GHOrg/$GHRepo" --jq '.size' 2>$null
-    $ErrorActionPreference = 'Stop'
-    if ($rawSize -and $rawSize -match '^\d+$' -and [long]$rawSize -gt 0) { $sizeKB = [long]$rawSize; break }
-    if ($i -lt 5) { Start-Sleep -Seconds 20 }
-}
-if ($sizeKB -gt 0) {
-    if     ($sizeKB -ge 1048576) { $actualSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
-    elseif ($sizeKB -ge 1024)    { $actualSize = "{0:N2} MB" -f ($sizeKB / 1024) }
-    else                         { $actualSize = "$sizeKB KB" }
-    Write-Host "  Repo size (GitHub API): $actualSize"
-}
+Write-Host "`n[Step 6] Generating HTML dashboard..." -ForegroundColor Cyan
 
-# Fallback: size-pack from blobless clone metadata
-if ($actualSize -eq "N/A") {
-    $repoSizeFile = "$auditDir\gh-repo-size.txt"
-    if (Test-Path $repoSizeFile) {
-        $sizePack = (Get-Content $repoSizeFile | Where-Object { $_ -match '^size-pack:' }) -replace 'size-pack:\s*',''
-        if ($sizePack) {
-            $actualSize = $sizePack.Trim()
-            Write-Host "  Repo size (clone metadata fallback): $actualSize"
-        }
-    }
-}
-$actualSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
-Write-Host "  Repo size: $actualSize"
-
-# ════════════════════════════════════════════════════════════════════════════
-# STEP 7 – Generate HTML dashboard + Markdown summary
-# ════════════════════════════════════════════════════════════════════════════
-Write-Host "`n[Step 7] Generating HTML dashboard..." -ForegroundColor Cyan
-
-function Get-AuditVal($file) {
-    $p = "$auditDir\$file"
-    if (Test-Path $p) { return (Get-Content $p -Raw).Trim() }
-    return "N/A"
-}
-
-$branchCount   = Get-AuditVal "gh-branch-count.txt"
-$tagCount      = Get-AuditVal "gh-tag-count.txt"
-$commitCount   = Get-AuditVal "gh-commit-count.txt"
-$prCount       = Get-AuditVal "gh-pr-count.txt"
-$prOpen        = Get-AuditVal "gh-pr-open.txt"
-$prMerged      = Get-AuditVal "gh-pr-merged.txt"
-$prClosed      = Get-AuditVal "gh-pr-closed.txt"
-$repoSize      = Get-AuditVal "gh-repo-size-actual.txt"
-$defaultBranch = Get-AuditVal "gh-default-branch.txt"
+# Use in-memory audit data (populated in Step 4) — no file re-reads
+$branchCount   = $auditData.BranchCount
+$tagCount      = $auditData.TagCount
+$commitCount   = $auditData.CommitCount
+$prCount       = $auditData.PRCount
+$prOpen        = $auditData.PROpen
+$prMerged      = $auditData.PRMerged
+$prClosed      = $auditData.PRClosed
+$repoSize      = $auditData.RepoSize
+$defaultBranch = $auditData.DefaultBranch
 $migDate       = Get-Date -Format 'dd MMM yyyy · HH:mm'
-
-# Determine migration result + status styling
-$migState = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { "UNKNOWN" }
 
 if ($migState -eq "SKIPPED") {
     $migResult   = "Already Exists"; $statusColor = "#f0ad4e"; $statusBg = "#fff8e1"
