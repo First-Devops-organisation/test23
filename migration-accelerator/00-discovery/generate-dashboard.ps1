@@ -58,6 +58,13 @@ function Get-PipelineList {
     return @()
 }
 
+# If no pipelines found for any category, output the full content for debugging
+$allPipelines = $successPipelines + $partialPipelines + $unsupportedPipelines + $failedPipelines
+if ($allPipelines.Count -eq 0) {
+    Write-Host "No pipelines found in any category. Full audit_summary.md content:"
+    Write-Host $content
+}
+
 $successPipelines = Get-PipelineList "Successful"
 $partialPipelines = Get-PipelineList "Partially successful"
 $unsupportedPipelines = Get-PipelineList "Unsupported"
