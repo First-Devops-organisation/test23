@@ -30,7 +30,7 @@ jobs:
     inputs:
       targetType: 'filePath'
       filePath: 'migration-accelerator/00-discovery/audit-pipelines.ps1'
-      arguments: '-AdoOrg "$(ADO_Org)" -AdoProject "$(ADO_Project)" -AdoPat "$(ADO_PAT)" -GitHubPat "$(GH_PAT)" -OutputDir "$(outputDir)"'
+      arguments: '-AdoOrg "$(ADO_Org)" -AdoProject "$(ADO_Project)" -AdoPat "$(ADO_PAT)" -GitHubPat "$(GH_PAT)" -OutputDir "migration-accelerator/output/pipeline-audit"'
       pwsh: true
     env:
       ADO_PAT: $(ADO_PAT)
