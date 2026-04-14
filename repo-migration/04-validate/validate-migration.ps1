@@ -254,7 +254,15 @@ foreach ($entry in $repoList) {
 
     # ── 10. Repo size > 0 ────────────────────────────────────────────────────
     $sizeKB = $ghRepo.size
-    Add-Check "Repo Size > 0" "> 0 KB" "$sizeKB KB" ($sizeKB -gt 0)
+    if     ($sizeKB -ge 1048576) { $formattedSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
+    elseif ($sizeKB -ge 1024)    { $formattedSize = "{0:N2} MB" -f ($sizeKB / 1024) }
+    elseif ($sizeKB -gt 0)       { $formattedSize = "$sizeKB KB" }
+    else                         { $formattedSize = "0 KB" }
+    Add-Check "Repo Size" "> 0 KB" $formattedSize ($sizeKB -gt 0)
+    # Write actual size to audit dir so migration dashboard can pick it up
+    if (Test-Path $auditDir) {
+        $formattedSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
+    }
 
     # ── 11. Latest commit reachable ──────────────────────────────────────────
     $auditHash = Get-AuditVal $auditDir "gh-latest-hash.txt"
@@ -297,6 +305,7 @@ foreach ($entry in $repoList) {
         PassCount  = $passCount
         FailCount  = $failCount
         WarnCount  = $warnCount
+        RepoSize   = $formattedSize
         Checks     = $checks
     }
 }
@@ -340,10 +349,11 @@ foreach ($r in $allResults) {
       <td><code>$($r.ADORepo)</code></td>
       <td><code>$($r.GHRepo)</code></td>
       <td>$badge</td>
+      <td style='text-align:center;font-weight:600;'>$($r.RepoSize)</td>
       <td style='text-align:center;color:#28a745;font-weight:600;'>$($r.PassCount)</td>
       <td style='text-align:center;color:#dc3545;font-weight:600;'>$($r.FailCount)</td>
     </tr>
-    <tr><td colspan='5' style='padding:0;'>
+    <tr><td colspan='6' style='padding:0;'>
       <details style='margin:0 8px 8px;'><summary style='cursor:pointer;font-size:13px;color:#0969da;padding:6px;'>View check details</summary>
         <table style='width:100%;font-size:13px;margin-top:4px;'>
           <thead><tr style='background:#f6f8fa;'><th style='padding:6px 12px;'>Check</th><th style='padding:6px 12px;'>Source</th><th style='padding:6px 12px;'>Target</th><th style='padding:6px 12px;'>Notes</th></tr></thead>
@@ -379,7 +389,7 @@ $html += "<div class='stat-box'><div class='num'>$totalPass</div><div class='lab
 $html += "<div class='stat-box'><div class='num' style='color:#dc3545;'>$totalFail</div><div class='label'>Total Checks Failed</div></div>"
 $html += "</div></div>" + $nl
 $html += "<div class='card'><h2>&#x1F4CB; Repo-by-Repo Results</h2><table>"
-$html += "<thead><tr><th>ADO Repo</th><th>GitHub Repo</th><th>Status</th><th style='text-align:center;'>Pass</th><th style='text-align:center;'>Fail</th></tr></thead>"
+$html += "<thead><tr><th>ADO Repo</th><th>GitHub Repo</th><th>Status</th><th style='text-align:center;'>Size</th><th style='text-align:center;'>Pass</th><th style='text-align:center;'>Fail</th></tr></thead>"
 $html += "<tbody>$tableRows</tbody></table></div>" + $nl
 $html += "<div class='footer'>Generated $migDate &bull; ADO-to-GitHub Migration Validation</div></div></body></html>"
 
