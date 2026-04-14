@@ -177,7 +177,7 @@ foreach ($entry in $repoList) {
     try {
         $page = 1
         do {
-            $br = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/branches?per_page=100&page=$page" -Headers $ghHeaders
+            $br = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/branches?per_page=100&page=$page" -Headers $ghHeaders)
             $ghBranches += $br | ForEach-Object { $_.name }
             $page++
         } while ($br.Count -eq 100)
