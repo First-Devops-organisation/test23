@@ -1,6 +1,7 @@
 trigger: none
 
-pool: migration-pool
+pool: 
+ vmImage: windows-latest
 
 # =============================================================================
 # PARAMETERS — choose at queue time
