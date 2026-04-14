@@ -110,6 +110,14 @@ function Get-AuditVal($auditDir, $file) {
     return $null
 }
 
+# Safe property accessor — avoids PropertyNotFoundStrict under Set-StrictMode
+function Get-JsonProp($obj, [string]$name, $default = $null) {
+    if ($null -eq $obj) { return $default }
+    $member = $obj.PSObject.Properties[$name]
+    if ($null -ne $member) { return $member.Value }
+    return $default
+}
+
 $allResults  = @()
 $totalPass   = 0
 $totalFail   = 0
@@ -160,6 +168,10 @@ foreach ($entry in $repoList) {
         continue
     }
     Add-Check "Repo Exists on GitHub" "yes" "yes" $true
+
+    # DEBUG — show what properties GitHub API returned
+    Write-Host "      [DEBUG] ghRepo type=$($ghRepo.GetType().FullName)  propCount=$($ghRepo.PSObject.Properties.Name.Count)" -ForegroundColor DarkGray
+    Write-Host "      [DEBUG] has default_branch=$(($null -ne $ghRepo.PSObject.Properties['default_branch']))  has visibility=$(($null -ne $ghRepo.PSObject.Properties['visibility']))  has size=$(($null -ne $ghRepo.PSObject.Properties['size']))" -ForegroundColor DarkGray
 
     # ── 2. ADO source data ───────────────────────────────────────────────────
     $adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$adoRepoName"
@@ -246,8 +258,7 @@ foreach ($entry in $repoList) {
     }
 
     # ── 6. Default branch ────────────────────────────────────────────────────
-    $ghDefault = $ghRepo.default_branch
-    if (-not $ghDefault) { $ghDefault = "N/A" }
+    $ghDefault = Get-JsonProp $ghRepo 'default_branch' 'N/A'
     Write-Host "      Default Branch: ADO=[$adoDefault] GH=[$ghDefault]" -ForegroundColor DarkGray
     if ($adoDefault) {
         Add-Check "Default Branch" $adoDefault $ghDefault ($adoDefault -eq $ghDefault)
@@ -312,13 +323,12 @@ foreach ($entry in $repoList) {
     }
 
     # ── 9. Repo visibility ───────────────────────────────────────────────────
-    $ghVisibility = $ghRepo.visibility
-    if (-not $ghVisibility) { $ghVisibility = "unknown" }
+    $ghVisibility = Get-JsonProp $ghRepo 'visibility' 'unknown'
     Write-Host "      Visibility   : $ghVisibility" -ForegroundColor DarkGray
     Add-Check "Visibility" $ExpectedVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
 
     # ── 10. Repo size > 0 ────────────────────────────────────────────────────
-    $sizeKB = [int]$ghRepo.size
+    $sizeKB = [int](Get-JsonProp $ghRepo 'size' 0)
     Write-Host "      Repo Size    : $sizeKB KB" -ForegroundColor DarkGray
     if     ($sizeKB -ge 1048576) { $formattedSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
     elseif ($sizeKB -ge 1024)    { $formattedSize = "{0:N2} MB" -f ($sizeKB / 1024) }
