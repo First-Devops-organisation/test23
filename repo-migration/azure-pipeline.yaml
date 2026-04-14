@@ -284,7 +284,7 @@ stages:
                 gh auth status
 
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
-                gh extension upgrade ado2gh
+                gh extension upgrade github/gh-ado2gh
                 gh extension list
               pwsh: true
             env:
