@@ -49,6 +49,12 @@ $ADORepo   = $ADORepo.Trim()
 $GHOrg     = $GHOrg.Trim()
 $GHRepo    = $GHRepo.Trim()
 
+# ── Fallback: if GHRepo is empty after trimming, default to ADORepo ──────────
+if ([string]::IsNullOrWhiteSpace($GHRepo)) {
+    Write-Host "  GHRepo was empty — defaulting to ADORepo: '$ADORepo'"
+    $GHRepo = $ADORepo
+}
+
 # ── Normalize ADOOrg — strip full URL if user set it as https://dev.azure.com/<org> ──
 if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
     Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
