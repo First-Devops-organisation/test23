@@ -19,11 +19,14 @@ if (!(Test-Path $AuditSummaryFile)) {
 
 $content = Get-Content $AuditSummaryFile -Raw
 
-# Extract values
-$success = ([regex]::Match($content, "Successful:\s*(\d+)")).Groups[1].Value
-$partial = ([regex]::Match($content, "Partially successful:\s*(\d+)")).Groups[1].Value
-$unsupported = ([regex]::Match($content, "Unsupported:\s*(\d+)")).Groups[1].Value
-$failed = ([regex]::Match($content, "Failed:\s*(\d+)")).Groups[1].Value
+Write-Host "Audit summary content length: $($content.Length)"
+Write-Host "First 500 chars: $($content.Substring(0, [Math]::Min(500, $content.Length)))"
+
+# Extract values with more flexible regex with more flexible regex
+$success = ([regex]::Match($content, "(?i)successful.*?(\d+)")).Groups[1].Value
+$partial = ([regex]::Match($content, "(?i)partially.*?(\d+)")).Groups[1].Value
+$unsupported = ([regex]::Match($content, "(?i)unsupported.*?(\d+)")).Groups[1].Value
+$failed = ([regex]::Match($content, "(?i)failed.*?(\d+)")).Groups[1].Value
 
 # Default to 0 if empty
 $success = if ($success) { [int]$success } else { 0 }
