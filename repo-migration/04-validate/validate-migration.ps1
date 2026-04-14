@@ -148,7 +148,9 @@ foreach ($entry in $repoList) {
     # ── 1. Repo exists on GitHub ─────────────────────────────────────────────
     $ghRepo = $null
     try {
-        $ghRepo = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName" -Headers $ghHeaders -ErrorAction Stop
+        # Use Invoke-WebRequest + ConvertFrom-Json to guarantee PSCustomObject (PS 5.1 safe)
+        $resp   = Invoke-WebRequest -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName" -Headers $ghHeaders -UseBasicParsing -ErrorAction Stop
+        $ghRepo = $resp.Content | ConvertFrom-Json
     }
     catch { <# repo not found or API error #> }
 
@@ -184,7 +186,7 @@ foreach ($entry in $repoList) {
     catch { Add-Warn "ADO Branch API" "Cannot fetch ADO branches: $_" }
 
     try {
-        $prResp     = Invoke-RestMethod -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=all&`$top=1&api-version=7.1" -Headers $adoHeaders
+        $prResp     = Invoke-RestMethod -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=all&api-version=7.1" -Headers $adoHeaders
         $adoPrCount = $prResp.count
     }
     catch { Add-Warn "ADO PR API" "Cannot fetch ADO PR count: $_" }
@@ -244,8 +246,9 @@ foreach ($entry in $repoList) {
     }
 
     # ── 6. Default branch ────────────────────────────────────────────────────
-    $ghDefault = "N/A"
-    try { if ($ghRepo.default_branch) { $ghDefault = $ghRepo.default_branch } } catch { }
+    $ghDefault = $ghRepo.default_branch
+    if (-not $ghDefault) { $ghDefault = "N/A" }
+    Write-Host "      Default Branch: ADO=[$adoDefault] GH=[$ghDefault]" -ForegroundColor DarkGray
     if ($adoDefault) {
         Add-Check "Default Branch" $adoDefault $ghDefault ($adoDefault -eq $ghDefault)
     }
@@ -309,13 +312,14 @@ foreach ($entry in $repoList) {
     }
 
     # ── 9. Repo visibility ───────────────────────────────────────────────────
-    $ghVisibility = "unknown"
-    try { if ($ghRepo.visibility) { $ghVisibility = $ghRepo.visibility } } catch { }
+    $ghVisibility = $ghRepo.visibility
+    if (-not $ghVisibility) { $ghVisibility = "unknown" }
+    Write-Host "      Visibility   : $ghVisibility" -ForegroundColor DarkGray
     Add-Check "Visibility" $ExpectedVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
 
     # ── 10. Repo size > 0 ────────────────────────────────────────────────────
-    $sizeKB = 0
-    try { if ($ghRepo.size -ne $null) { $sizeKB = [int]$ghRepo.size } } catch { }
+    $sizeKB = [int]$ghRepo.size
+    Write-Host "      Repo Size    : $sizeKB KB" -ForegroundColor DarkGray
     if     ($sizeKB -ge 1048576) { $formattedSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
     elseif ($sizeKB -ge 1024)    { $formattedSize = "{0:N2} MB" -f ($sizeKB / 1024) }
     elseif ($sizeKB -gt 0)       { $formattedSize = "$sizeKB KB" }
