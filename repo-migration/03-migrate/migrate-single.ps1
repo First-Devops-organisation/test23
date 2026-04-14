@@ -576,34 +576,33 @@ else {
         # ── Repo size from GitHub API (with retry — GitHub may not have computed size yet) ──
         $actualSize = "N/A"
         $sizeKB = 0
-        for ($ri = 1; $ri -le 5; $ri++) {
-            $rawSize = gh api "repos/$GHOrg/$GHRepo" --jq '.size' 2>$null
-            if ($rawSize -and $rawSize -match '^\d+$' -and [long]$rawSize -gt 0) {
-                $sizeKB = [long]$rawSize
-                break
-            }
-            Write-Host "    Attempt $ri/5 — Waiting for GitHub to calculate repo size..."
-            Start-Sleep -Seconds 20
+
+        # Use already-fetched $repoInfo.size first (avoids extra API call)
+        if ($repoInfo.PSObject.Properties['size']) {
+            $sizeKB = [long]$repoInfo.size
+            Write-Host "    Repo size from initial API call: $sizeKB KB"
         }
 
-        if ($sizeKB -gt 0) {
-            if     ($sizeKB -ge 1048576) { $actualSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
-            elseif ($sizeKB -ge 1024)    { $actualSize = "{0:N2} MB" -f ($sizeKB / 1024) }
-            else                         { $actualSize = "$sizeKB KB" }
-        }
-
-        # Fallback: size-pack from blobless clone metadata
-        if ($actualSize -eq "N/A") {
-            $repoSizeFile = "$auditDir\gh-repo-size.txt"
-            if (Test-Path $repoSizeFile) {
-                $sizePack = (Get-Content $repoSizeFile | Where-Object { $_ -match '^size-pack:' }) -replace 'size-pack:\s*',''
-                if ($sizePack) { $actualSize = $sizePack.Trim() }
+        # If still 0, retry with fresh API calls (GitHub may not have computed size yet)
+        if ($sizeKB -eq 0) {
+            for ($ri = 1; $ri -le 5; $ri++) {
+                Write-Host "    Attempt $ri/5 — Waiting for GitHub to calculate repo size..."
+                Start-Sleep -Seconds 20
+                $rawSize = gh api "repos/$GHOrg/$GHRepo" --jq '.size' 2>$null
+                if ($rawSize -and $rawSize -match '^\d+$' -and [long]$rawSize -gt 0) {
+                    $sizeKB = [long]$rawSize
+                    Write-Host "    Repo size from retry: $sizeKB KB"
+                    break
+                }
             }
         }
 
-        if ($actualSize -eq "N/A") {
-            Write-Host "    All size methods returned 0" -ForegroundColor Yellow
-        }
+        if     ($sizeKB -ge 1048576) { $actualSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
+        elseif ($sizeKB -ge 1024)    { $actualSize = "{0:N2} MB" -f ($sizeKB / 1024) }
+        elseif ($sizeKB -gt 0)       { $actualSize = "$sizeKB KB" }
+        else                         { $actualSize = "< 1 KB" }
+
+        Write-Host "    Final repo size: $actualSize"
         $actualSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
 
         # ── Populate in-memory audit data for Step 6 (dashboard) ───────────────
