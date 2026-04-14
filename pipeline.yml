@@ -1,24 +1,10 @@
 trigger:
   branches:
     include:
-      - main
-
-pr:
-  branches:
-    include:
-      - main
+      - pipeline-migration
 
 variables:
-  - name: adoOrg
-    value: ''
-  - name: adoProject
-    value: ''
-  - name: adoPat
-    value: ''
-  - name: githubPat
-    value: ''
-  - name: outputDir
-    value: 'migration-accelerator/output/pipeline-audit'
+      - group: ankit-adotogit
 
 jobs:
 - job: AuditPipelines
@@ -42,12 +28,12 @@ jobs:
       targetType: 'filePath'
       filePath: 'migration-accelerator/00-discovery/audit-pipelines.ps1'
       arguments: |
-        -AdoOrg "$(adoOrg)"
-        -AdoProject "$(adoProject)"
-        -AdoPat "$(adoPat)"
-        -GitHubPat "$(githubPat)"
+        -AdoOrg "$(ADO_Org)"
+        -AdoProject "$(ADO_Project)"
+        -AdoPat "$(ADO_PAT)"
+        -GitHubPat "$(GH_PAT)"
         -OutputDir "$(outputDir)"
       pwsh: true
     env:
-      ADO_PAT: $(adoPat)
-      GH_PAT: $(githubPat)
+      ADO_PAT: $(ADO_PAT)
+      GH_PAT: $(GH_PAT)
