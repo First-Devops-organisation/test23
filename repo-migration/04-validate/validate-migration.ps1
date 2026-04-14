@@ -184,9 +184,16 @@ foreach ($entry in $repoList) {
     $adoDefault  = ""
 
     try {
-        $adoRepo = Invoke-RestMethod -Uri "$adoRepoUrl`?api-version=7.1" -Headers $adoHeaders
-        if ($adoRepo -and $adoRepo.PSObject.Properties['defaultBranch'] -and $adoRepo.defaultBranch) {
-            $adoDefault = $adoRepo.defaultBranch -replace '^refs/heads/', ''
+        $adoRepo = Invoke-RestMethod -Uri "${adoRepoUrl}?api-version=7.1" -Headers $adoHeaders
+        if ($adoRepo -is [string]) {
+            try { $adoRepo = $adoRepo | ConvertFrom-Json } catch { $adoRepo = $null }
+        }
+        if ($adoRepo) {
+            $rawDefault = Get-JsonProp $adoRepo 'defaultBranch' $null
+            Write-Host "      [DEBUG] ADO defaultBranch raw=[$rawDefault]" -ForegroundColor DarkGray
+            if ($rawDefault) {
+                $adoDefault = $rawDefault -replace '^refs/heads/', ''
+            }
         }
     }
     catch {
