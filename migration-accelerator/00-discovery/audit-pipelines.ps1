@@ -30,6 +30,9 @@ param(
 )
 
 $AdoOrg = if ($AdoOrg) { $AdoOrg } elseif ($env:ADO_Org) { $env:ADO_Org } elseif ($env:ADO_ORG) { $env:ADO_ORG } elseif ($env:ADOORG) { $env:ADOORG } else { $null }
+if ($AdoOrg -match "^https://dev\.azure\.com/(.+)$") {
+    $AdoOrg = $matches[1]
+}
 $AdoPat = if ($AdoPat) { $AdoPat } elseif ($env:ADO_PAT) { $env:ADO_PAT } elseif ($env:AZDO_PAT) { $env:AZDO_PAT } else { $null }
 $GitHubPat = if ($GitHubPat) { $GitHubPat } elseif ($env:GH_PAT) { $env:GH_PAT } elseif ($env:GITHUB_PAT) { $env:GITHUB_PAT } else { $null }
 $OutputDir = if ($OutputDir -and -not [string]::IsNullOrWhiteSpace($OutputDir)) { $OutputDir } else { "./output/pipeline-audit" }
