@@ -68,7 +68,15 @@ New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 # ── Build repo list to validate ───────────────────────────────────────────────
 $repoList = @()   # array of @{ ADORepo; GHRepo }
 
-if ($GHRepo) {
+# Trim whitespace — pipeline parameters may pass " " (space default)
+if ($GHRepo)  { $GHRepo  = $GHRepo.Trim() }
+if ($ADORepo) { $ADORepo = $ADORepo.Trim() }
+if ([string]::IsNullOrWhiteSpace($GHRepo) -and -not [string]::IsNullOrWhiteSpace($ADORepo)) {
+    Write-Host "  GHRepo was empty — defaulting to ADORepo: '$ADORepo'"
+    $GHRepo = $ADORepo
+}
+
+if (-not [string]::IsNullOrWhiteSpace($GHRepo)) {
     $adoName = if ($ADORepo) { $ADORepo } else { $GHRepo }
     $repoList += @{ ADORepo = $adoName; GHRepo = $GHRepo }
 }
