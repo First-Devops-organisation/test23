@@ -42,6 +42,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# ── Trim whitespace from all string parameters ─────────────────────────────────────────────
+$ADOOrg    = $ADOOrg.Trim()
+$ADOProject = $ADOProject.Trim()
+$ADORepo   = $ADORepo.Trim()
+$GHOrg     = $GHOrg.Trim()
+$GHRepo    = $GHRepo.Trim()
+
 # ── Normalize ADOOrg — strip full URL if user set it as https://dev.azure.com/<org> ──
 if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
     Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
