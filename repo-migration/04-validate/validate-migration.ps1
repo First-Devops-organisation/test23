@@ -282,11 +282,11 @@ foreach ($entry in $repoList) {
     }
 
     # ── Overall ──────────────────────────────────────────────────────────────
-    $failedChecks = $checks | Where-Object { $_.Status -eq "FAIL" }
+    $failedChecks = @($checks | Where-Object { $_.Status -eq "FAIL" })
     $repoStatus   = if ($failedChecks.Count -eq 0) { "PASS" } else { "FAIL" }
-    $passCount    = ($checks | Where-Object { $_.Status -eq "PASS" }).Count
-    $failCount    = ($checks | Where-Object { $_.Status -eq "FAIL" }).Count
-    $warnCount    = ($checks | Where-Object { $_.Status -eq "WARN" }).Count
+    $passCount    = @($checks | Where-Object { $_.Status -eq "PASS" }).Count
+    $failCount    = $failedChecks.Count
+    $warnCount    = @($checks | Where-Object { $_.Status -eq "WARN" }).Count
 
     Write-Host "  ─── Result: $repoStatus ($passCount PASS / $failCount FAIL / $warnCount WARN) ───" -ForegroundColor $(if ($repoStatus -eq "PASS") {"Green"} else {"Red"})
 
@@ -322,8 +322,8 @@ $flatRows | Export-Csv $csvPath -NoTypeInformation -Encoding utf8
 # ── HTML report ───────────────────────────────────────────────────────────────
 $migDate    = Get-Date -Format 'dd MMM yyyy · HH:mm'
 $totalRepos = $allResults.Count
-$passRepos  = ($allResults | Where-Object { $_.Status -eq "PASS" }).Count
-$failRepos  = ($allResults | Where-Object { $_.Status -eq "FAIL" }).Count
+$passRepos  = @($allResults | Where-Object { $_.Status -eq "PASS" }).Count
+$failRepos  = @($allResults | Where-Object { $_.Status -eq "FAIL" }).Count
 
 $tableRows = ""
 foreach ($r in $allResults) {
