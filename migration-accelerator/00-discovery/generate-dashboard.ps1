@@ -33,7 +33,35 @@ $success = if ($success) { [int]$success } else { 0 }
 $partial = if ($partial) { [int]$partial } else { 0 }
 $unsupported = if ($unsupported) { [int]$unsupported } else { 0 }
 $failed = if ($failed) { [int]$failed } else { 0 }
+# Extract pipeline lists
+function Get-PipelineList {
+    param([string]$sectionName)
+    $sectionMatch = [regex]::Match($content, "(?is)## $sectionName(.*?)(?=##|$)")
+    if ($sectionMatch.Success) {
+        $lines = $sectionMatch.Groups[1].Value -split "`n"
+        $pipelines = $lines | Where-Object { $_ -match "^-\s*(.+)" } | ForEach-Object { $matches[1].Trim() }
+        return $pipelines
+    }
+    return @()
+}
 
+$successPipelines = Get-PipelineList "Successful"
+$partialPipelines = Get-PipelineList "Partially successful"
+$unsupportedPipelines = Get-PipelineList "Unsupported"
+$failedPipelines = Get-PipelineList "Failed"
+
+# Helper function to generate HTML list
+function Get-HtmlList {
+    param([string[]]$pipelines)
+    if ($pipelines.Count -eq 0) { return "" }
+    $listItems = $pipelines | ForEach-Object { "<li>$_</li>" }
+    return "<ul class='pipeline-list'>$($listItems -join '')</ul>"
+}
+
+$successList = Get-HtmlList $successPipelines
+$partialList = Get-HtmlList $partialPipelines
+$unsupportedList = Get-HtmlList $unsupportedPipelines
+$failedList = Get-HtmlList $failedPipelines
 # Create HTML Dashboard
 $html = @"
 <!DOCTYPE html>
@@ -55,12 +83,14 @@ $html = @"
             justify-content: center;
             gap: 20px;
             margin-top: 40px;
+            flex-wrap: wrap;
         }
         .card {
             padding: 20px;
             border-radius: 12px;
-            width: 220px;
+            width: 300px;
             box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
         }
         .success { background: #16a34a; }
         .partial { background: #f59e0b; }
@@ -76,6 +106,18 @@ $html = @"
             font-size: 18px;
             margin-top: 10px;
         }
+
+        .pipeline-list {
+            text-align: left;
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .pipeline-list li {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
@@ -86,21 +128,25 @@ $html = @"
         <div class="card success">
             <div class="number">$success</div>
             <div class="label">Fully Convertible</div>
+            $successList
         </div>
 
         <div class="card partial">
             <div class="number">$partial</div>
             <div class="label">Partially Convertible</div>
+            $partialList
         </div>
 
         <div class="card unsupported">
             <div class="number">$unsupported</div>
             <div class="label">Unsupported</div>
+            $unsupportedList
         </div>
 
         <div class="card failed">
             <div class="number">$failed</div>
             <div class="label">Failed</div>
+            $failedList
         </div>
     </div>
 
