@@ -36,12 +36,23 @@ $failed = if ($failed) { [int]$failed } else { 0 }
 # Extract pipeline lists
 function Get-PipelineList {
     param([string]$sectionName)
-    $sectionMatch = [regex]::Match($content, "(?is)## $sectionName(.*?)(?=##|$)")
-    if ($sectionMatch.Success) {
-        $lines = $sectionMatch.Groups[1].Value -split "`n"
-        $pipelines = $lines | Where-Object { $_ -match "^-\s*(.+)" } | ForEach-Object { $matches[1].Trim() }
-        return $pipelines
+    $possibleSections = @("$sectionName", "$sectionName pipelines", "$sectionName conversions")
+    foreach ($sec in $possibleSections) {
+        $sectionMatch = [regex]::Match($content, "(?is)#+\s*$sec(.*?)(?=#+\s*|$)")
+        if ($sectionMatch.Success) {
+            $lines = $sectionMatch.Groups[1].Value -split "`n"
+            $pipelines = $lines | Where-Object { $_ -match "^-\s*(.+)" } | ForEach-Object { $matches[1].Trim() }
+            if ($pipelines.Count -eq 0) {
+                # Try table format | pipeline | status |
+                $pipelines = $lines | Where-Object { $_ -match "\|\s*([^|]+)\s*\|\s*$sectionName\s*\|" } | ForEach-Object { $matches[1].Trim() }
+            }
+            if ($pipelines.Count -gt 0) { 
+                Write-Host "Found $sec pipelines: $($pipelines.Count)"
+                return $pipelines 
+            }
+        }
     }
+    Write-Host "No pipelines found for $sectionName"
     return @()
 }
 
