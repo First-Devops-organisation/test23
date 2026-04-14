@@ -52,6 +52,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# ── Normalize ADOOrg — strip full URL if passed as https://dev.azure.com/<org> ──
+if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
+    Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
+    $ADOOrg = $Matches[1]
+}
+
 # ── Validate PATs ────────────────────────────────────────────────────────────
 $adoPat = $env:ADO_PAT
 $ghPat  = $env:GH_PAT
@@ -211,7 +217,7 @@ foreach ($entry in $repoList) {
     }
 
     # ── 6. Default branch ────────────────────────────────────────────────────
-    $ghDefault = $ghRepo.default_branch
+    $ghDefault = if ($ghRepo.PSObject.Properties['default_branch']) { $ghRepo.default_branch } else { "N/A" }
     if ($adoDefault) {
         Add-Check "Default Branch" $adoDefault $ghDefault ($adoDefault -eq $ghDefault)
     }
@@ -258,10 +264,11 @@ foreach ($entry in $repoList) {
     }
 
     # ── 9. Repo visibility ───────────────────────────────────────────────────
-    Add-Check "Visibility" $ExpectedVisibility $ghRepo.visibility ($ghRepo.visibility -eq $ExpectedVisibility)
+    $ghVisibility = if ($ghRepo.PSObject.Properties['visibility']) { $ghRepo.visibility } else { "unknown" }
+    Add-Check "Visibility" $ExpectedVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
 
     # ── 10. Repo size > 0 ────────────────────────────────────────────────────
-    $sizeKB = $ghRepo.size
+    $sizeKB = if ($ghRepo.PSObject.Properties['size']) { $ghRepo.size } else { 0 }
     if     ($sizeKB -ge 1048576) { $formattedSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
     elseif ($sizeKB -ge 1024)    { $formattedSize = "{0:N2} MB" -f ($sizeKB / 1024) }
     elseif ($sizeKB -gt 0)       { $formattedSize = "$sizeKB KB" }
@@ -289,12 +296,12 @@ foreach ($entry in $repoList) {
 
     # ── 12. Branch protection on default branch ──────────────────────────────
     try {
-        $bp = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/branches/$($ghRepo.default_branch)/protection" -Headers $ghHeaders -ErrorAction SilentlyContinue
+        $bp = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/branches/$ghDefault/protection" -Headers $ghHeaders -ErrorAction SilentlyContinue
         if ($bp) { Add-Check "Branch Protection" "configured" "configured" $true }
-        else     { Add-Warn  "Branch Protection" "No branch protection on default branch '$($ghRepo.default_branch)' — configure after migration" }
+        else     { Add-Warn  "Branch Protection" "No branch protection on default branch '$ghDefault' — configure after migration" }
     }
     catch {
-        Add-Warn "Branch Protection" "No branch protection on default branch '$($ghRepo.default_branch)' — configure after migration"
+        Add-Warn "Branch Protection" "No branch protection on default branch '$ghDefault' — configure after migration"
     }
 
     # ── Overall ──────────────────────────────────────────────────────────────
