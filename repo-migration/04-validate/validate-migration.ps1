@@ -67,6 +67,9 @@ $adoBase64  = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPa
 $adoHeaders = @{ Authorization = "Basic $adoBase64" }
 $ghHeaders  = @{ Authorization = "Bearer $ghPat"; Accept = "application/vnd.github+json" }
 
+# Set GH_TOKEN for gh CLI — more reliable than Invoke-RestMethod on PS 5.1/7
+$env:GH_TOKEN = $ghPat
+
 $reportDir = "$OutputDir\reports"
 New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 
@@ -153,32 +156,24 @@ foreach ($entry in $repoList) {
         $script:totalWarn++
     }
 
-    # ── 1. Repo exists on GitHub ─────────────────────────────────────────────
-    $ghRepo = $null
-    try {
-        $ghRepo = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName" -Headers $ghHeaders -ErrorAction Stop
-    }
-    catch {
-        Write-Host "      [DEBUG] GitHub API error: $_" -ForegroundColor DarkGray
-        Write-Host "      [DEBUG] URL: https://api.github.com/repos/$GHOrg/$ghRepoName" -ForegroundColor DarkGray
-    }
-
-    # PS 5.1 on hosted agents: Invoke-RestMethod sometimes returns raw string
-    if ($ghRepo -is [string]) {
-        try { $ghRepo = $ghRepo | ConvertFrom-Json } catch { $ghRepo = $null }
-    }
-
-    if (-not $ghRepo) {
+    # ── 1. Repo exists on GitHub (via gh CLI — avoids PS 5.1 Invoke-RestMethod issues) ──
+    $ghRepoCheck = $null
+    $ErrorActionPreference = 'SilentlyContinue'
+    $ghRepoCheck = gh repo view "$GHOrg/$ghRepoName" --json name --jq .name 2>&1
+    $ErrorActionPreference = 'Stop'
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ghRepoCheck)) {
+        Write-Host "      [DEBUG] gh repo view failed: $ghRepoCheck" -ForegroundColor Yellow
         Add-Check "Repo Exists on GitHub" "expected" "NOT FOUND" $false
         $allResults += [PSCustomObject]@{ ADORepo=$adoRepoName; GHRepo=$ghRepoName; Status="FAIL_NOT_FOUND"; Accuracy=0; PassCount=0; FailCount=1; WarnCount=0; Checks=$checks }
         continue
     }
     Add-Check "Repo Exists on GitHub" "yes" "yes" $true
 
-    # DEBUG — show what properties GitHub API returned
-    $propNames = @($ghRepo.PSObject.Properties | Select-Object -First 10 | ForEach-Object { $_.Name })
-    Write-Host "      [DEBUG] ghRepo type=$($ghRepo.GetType().FullName)  props=[$($propNames -join ', ')]" -ForegroundColor DarkGray
-    Write-Host "      [DEBUG] default_branch=$(Get-JsonProp $ghRepo 'default_branch' '<missing>')  visibility=$(Get-JsonProp $ghRepo 'visibility' '<missing>')  size=$(Get-JsonProp $ghRepo 'size' '<missing>')  private=$(Get-JsonProp $ghRepo 'private' '<missing>')" -ForegroundColor DarkGray
+    # Fetch default branch and visibility via gh CLI (returns plain strings)
+    $ghDefault    = (gh repo view "$GHOrg/$ghRepoName" --json defaultBranchRef --jq .defaultBranchRef.name 2>$null)
+    $ghVisibility = (gh repo view "$GHOrg/$ghRepoName" --json visibility --jq .visibility 2>$null)
+    if ($ghVisibility) { $ghVisibility = $ghVisibility.ToLower() }   # gh returns PRIVATE/INTERNAL/PUBLIC
+    Write-Host "      [DEBUG] default_branch=$ghDefault  visibility=$ghVisibility" -ForegroundColor DarkGray
 
     # ── 2. ADO source data ───────────────────────────────────────────────────
     $adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$adoRepoName"
@@ -216,15 +211,17 @@ foreach ($entry in $repoList) {
     }
     catch { Add-Warn "ADO Tag API" "Cannot fetch ADO tags: $_" }
 
-    # ── 3. GitHub branch list ────────────────────────────────────────────────
+    # ── 3. GitHub branch list (via gh api — paginated) ────────────────────────
     $ghBranches = @()
     try {
         $page = 1
         do {
-            $br = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/branches?per_page=100&page=$page" -Headers $ghHeaders)
-            $ghBranches += $br | ForEach-Object { $_.name }
+            $brRaw = gh api "repos/$GHOrg/$ghRepoName/branches?per_page=100&page=$page" 2>$null
+            $brList = @()
+            if ($brRaw) { $brList = @($brRaw | ConvertFrom-Json) }
+            $ghBranches += $brList | ForEach-Object { $_.name }
             $page++
-        } while ($br.Count -eq 100)
+        } while ($brList.Count -eq 100)
     }
     catch { Add-Warn "GitHub Branch API" "Could not fetch branches: $_" }
 
@@ -265,7 +262,7 @@ foreach ($entry in $repoList) {
     }
 
     # ── 6. Default branch ────────────────────────────────────────────────────
-    $ghDefault = Get-JsonProp $ghRepo 'default_branch' 'N/A'
+    if ([string]::IsNullOrWhiteSpace($ghDefault)) { $ghDefault = 'N/A' }
     Write-Host "      Default Branch: ADO=[$adoDefault] GH=[$ghDefault]" -ForegroundColor DarkGray
     if ($adoDefault) {
         Add-Check "Default Branch" $adoDefault $ghDefault ($adoDefault -eq $ghDefault)
@@ -281,7 +278,8 @@ foreach ($entry in $repoList) {
     $ghTagNames  = @()
     $adoTagNames = @()
     try {
-        $ghTags = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/tags?per_page=100" -Headers $ghHeaders)
+        $tagRaw = gh api "repos/$GHOrg/$ghRepoName/tags?per_page=100" 2>$null
+        if ($tagRaw) { $ghTags = @($tagRaw | ConvertFrom-Json) }
         $ghTagNames = @($ghTags | ForEach-Object { $_.name })
     }
     catch { }
@@ -314,8 +312,11 @@ foreach ($entry in $repoList) {
     # ── 8. PR count ──────────────────────────────────────────────────────────
     $ghPrCount = 0
     try {
-        $prSearch  = Invoke-RestMethod -Uri "https://api.github.com/search/issues?q=repo:$GHOrg/$ghRepoName+type:pr" -Headers $ghHeaders
-        $ghPrCount = $prSearch.total_count
+        $prSearchRaw = gh api "search/issues?q=repo:$GHOrg/$ghRepoName+type:pr" 2>$null
+        if ($prSearchRaw) {
+            $prSearch  = $prSearchRaw | ConvertFrom-Json
+            $ghPrCount = $prSearch.total_count
+        }
     }
     catch { }
     if ($adoPrCount -gt 0) {
@@ -330,28 +331,20 @@ foreach ($entry in $repoList) {
     }
 
     # ── 9. Repo visibility ───────────────────────────────────────────────────
-    $ghVisibility = Get-JsonProp $ghRepo 'visibility' $null
-    if (-not $ghVisibility) {
-        # Fallback: infer from 'private' field (visibility may need admin scope on PAT)
-        $isPrivate = Get-JsonProp $ghRepo 'private' $null
-        if ($null -ne $isPrivate) {
-            $ghVisibility = if ($isPrivate -eq $true) { "private" } else { "internal" }
-            Write-Host "      Visibility (inferred from private=$isPrivate): $ghVisibility" -ForegroundColor DarkGray
-        } else {
-            $ghVisibility = "unknown"
-        }
-    }
+    if ([string]::IsNullOrWhiteSpace($ghVisibility)) { $ghVisibility = "unknown" }
     Write-Host "      Visibility   : $ghVisibility" -ForegroundColor DarkGray
     Add-Check "Visibility" $ExpectedVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
 
     # ── 10. Latest commit reachable ──────────────────────────────────────────────
     $auditHash = Get-AuditVal $auditDir "gh-latest-hash.txt"
     if ($auditHash -and $auditHash -ne "N/A") {
-        try {
-            $commitCheck = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/git/commits/$auditHash" -Headers $ghHeaders -ErrorAction SilentlyContinue
+        $ErrorActionPreference = 'SilentlyContinue'
+        $commitRaw = gh api "repos/$GHOrg/$ghRepoName/git/commits/$auditHash" 2>$null
+        $ErrorActionPreference = 'Stop'
+        if ($LASTEXITCODE -eq 0 -and $commitRaw) {
             Add-Check "Latest Commit Reachable" $auditHash.Substring(0,12) "found" $true
         }
-        catch {
+        else {
             Add-Check "Latest Commit Reachable" $auditHash.Substring(0,12) "not found" $false "Commit SHA from audit not found in GitHub"
         }
     }
@@ -360,12 +353,13 @@ foreach ($entry in $repoList) {
     }
 
     # ── 12. Branch protection on default branch ──────────────────────────────
-    try {
-        $bp = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/branches/$ghDefault/protection" -Headers $ghHeaders -ErrorAction SilentlyContinue
-        if ($bp) { Add-Check "Branch Protection" "configured" "configured" $true }
-        else     { Add-Warn  "Branch Protection" "No branch protection on default branch '$ghDefault' — configure after migration" }
+    $ErrorActionPreference = 'SilentlyContinue'
+    $bpRaw = gh api "repos/$GHOrg/$ghRepoName/branches/$ghDefault/protection" 2>$null
+    $ErrorActionPreference = 'Stop'
+    if ($LASTEXITCODE -eq 0 -and $bpRaw) {
+        Add-Check "Branch Protection" "configured" "configured" $true
     }
-    catch {
+    else {
         Add-Warn "Branch Protection" "No branch protection on default branch '$ghDefault' — configure after migration"
     }
 
