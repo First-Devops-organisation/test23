@@ -40,6 +40,8 @@ function Get-PipelineList {
     foreach ($sec in $possibleSections) {
         $sectionMatch = [regex]::Match($content, "(?is)#+\s*$sec(.*?)(?=#+\s*|$)")
         if ($sectionMatch.Success) {
+            Write-Host "Found section '$sec', content length: $($sectionMatch.Groups[1].Value.Length)"
+            Write-Host "Section content preview: $($sectionMatch.Groups[1].Value.Substring(0, [Math]::Min(200, $sectionMatch.Groups[1].Value.Length)))"
             $lines = $sectionMatch.Groups[1].Value -split "`n"
             $pipelines = $lines | Where-Object { $_ -match "^-\s*(.+)" } | ForEach-Object { $matches[1].Trim() }
             if ($pipelines.Count -eq 0) {

@@ -37,6 +37,13 @@ jobs:
       GH_PAT: $(GH_PAT)
       GH_TOKEN: $(GH_PAT)
 
+  - task: DownloadBuildArtifacts@0
+    displayName: 'Download Audit Report Artifact'
+    inputs:
+      downloadType: 'single'
+      artifactName: 'AuditReport'  # Replace with actual artifact name
+      downloadPath: '$(System.ArtifactsDirectory)'
+
   - task: PowerShell@2
     displayName: 'Generate HTML Dashboard'
     inputs:
