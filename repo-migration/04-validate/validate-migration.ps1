@@ -157,11 +157,14 @@ foreach ($entry in $repoList) {
     # ── 1. Repo exists on GitHub ─────────────────────────────────────────────
     $ghRepo = $null
     try {
-        # Use Invoke-WebRequest + ConvertFrom-Json to guarantee PSCustomObject (PS 5.1 safe)
-        $resp   = Invoke-WebRequest -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName" -Headers $ghHeaders -UseBasicParsing -ErrorAction Stop
-        $ghRepo = $resp.Content | ConvertFrom-Json
+        $ghRepo = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName" -Headers $ghHeaders -ErrorAction Stop
     }
     catch { <# repo not found or API error #> }
+
+    # PS 5.1 on hosted agents: Invoke-RestMethod sometimes returns raw string
+    if ($ghRepo -is [string]) {
+        try { $ghRepo = $ghRepo | ConvertFrom-Json } catch { $ghRepo = $null }
+    }
 
     if (-not $ghRepo) {
         Add-Check "Repo Exists on GitHub" "expected" "NOT FOUND" $false
