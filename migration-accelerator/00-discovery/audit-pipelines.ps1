@@ -17,19 +17,34 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
     [string]$AdoOrg,
 
     [string]$AdoProject,
 
-    [Parameter(Mandatory = $true)]
     [string]$AdoPat,
 
-    [Parameter(Mandatory = $true)]
     [string]$GitHubPat,
 
     [string]$OutputDir = "./output/pipeline-audit"
 )
+
+$AdoOrg = if ($AdoOrg) { $AdoOrg } elseif ($env:ADO_Org) { $env:ADO_Org } elseif ($env:ADO_ORG) { $env:ADO_ORG } elseif ($env:ADOORG) { $env:ADOORG } else { $null }
+$AdoPat = if ($AdoPat) { $AdoPat } elseif ($env:ADO_PAT) { $env:ADO_PAT } elseif ($env:AZDO_PAT) { $env:AZDO_PAT } else { $null }
+$GitHubPat = if ($GitHubPat) { $GitHubPat } elseif ($env:GH_PAT) { $env:GH_PAT } elseif ($env:GITHUB_PAT) { $env:GITHUB_PAT } else { $null }
+$OutputDir = if ($OutputDir -and -not [string]::IsNullOrWhiteSpace($OutputDir)) { $OutputDir } else { "./output/pipeline-audit" }
+
+if (-not $AdoOrg) {
+    Write-Host "ERROR: Azure DevOps organization is required. Provide -AdoOrg or set ADO_Org / ADO_ORG." -ForegroundColor Red
+    exit 1
+}
+if (-not $AdoPat) {
+    Write-Host "ERROR: Azure DevOps PAT is required. Provide -AdoPat or set ADO_PAT." -ForegroundColor Red
+    exit 1
+}
+if (-not $GitHubPat) {
+    Write-Host "ERROR: GitHub PAT is required. Provide -GitHubPat or set GH_PAT / GITHUB_PAT." -ForegroundColor Red
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -53,11 +68,14 @@ Write-Host "=== Pipeline Audit: $AdoOrg ===" -ForegroundColor Cyan
 
 # --- Set environment variables for actions-importer ---
 $env:GITHUB_ACCESS_TOKEN = $GitHubPat
+$env:GITHUB_TOKEN = $GitHubPat
+$env:GH_TOKEN = $GitHubPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $AdoPat
+$env:ADO_PAT = $AdoPat
 
 # --- Configure ---
 Write-Host "Configuring actions-importer..." -ForegroundColor Yellow
-gh actions-importer configure --provider azure_devops 2>&1
+gh actions-importer configure --provider azure-devops 2>&1
 
 # --- Run Audit ---
 $auditArgs = @(

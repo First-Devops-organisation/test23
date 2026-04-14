@@ -6,9 +6,15 @@
     git-sizer, gitleaks, git-filter-repo, and Docker.
 #>
 [CmdletBinding()]
-param()
+param(
+    [string]$AdoPat,
+    [string]$GitHubPat
+)
 
 $ErrorActionPreference = "Continue"
+
+if (-not $AdoPat) { $AdoPat = $env:ADO_PAT }
+if (-not $GitHubPat) { $GitHubPat = $env:GH_PAT }
 
 Write-Host "=== Migration Tooling Installer ===" -ForegroundColor Cyan
 
@@ -77,12 +83,26 @@ foreach ($tool in $tools) {
 Write-Host "`n--- Python Packages ---" -ForegroundColor Cyan
 $pythonPackages = @("git-filter-repo")
 foreach ($pkg in $pythonPackages) {
-    $installed = pip show $pkg 2>&1
-    if ($LASTEXITCODE -eq 0) {
+    $installed = $null
+    try {
+        & python -m pip show $pkg 2>&1 | Out-Null
+        $installed = $true
+    }
+    catch {
+        try {
+            & pip show $pkg 2>&1 | Out-Null
+            $installed = $true
+        }
+        catch {
+            $installed = $false
+        }
+    }
+
+    if ($installed) {
         Write-Host "[OK] $pkg" -ForegroundColor Green
     }
     else {
-        Write-Host "[MISSING] $pkg — Install: pip install $pkg" -ForegroundColor Red
+        Write-Host "[MISSING] $pkg — Install: python -m pip install $pkg" -ForegroundColor Red
     }
 }
 
