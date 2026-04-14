@@ -85,7 +85,7 @@ gh actions-importer update 2>&1
 $auditArgs = @(
     "actions-importer", "audit", "azure-devops",
     "--output-dir", $OutputDir,
-    "--azure-devops-organization", "https://dev.azure.com/$AdoOrg"
+    "--azure-devops-organization", $AdoOrg
 )
 
 if ($AdoProject) {
