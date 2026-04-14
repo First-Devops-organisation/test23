@@ -1,7 +1,7 @@
 trigger: none
 
-pool: 
- vmImage: windows-latest
+pool:
+  vmImage: windows-latest
 
 # =============================================================================
 # PARAMETERS — choose at queue time
@@ -320,6 +320,7 @@ stages:
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
                 if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
                 & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-single.ps1' @params
+                Write-Host "##vso[task.setvariable variable=RESOLVED_REPO]$ghRepo"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -355,7 +356,7 @@ stages:
             displayName: "Show HTML on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\${{ coalesce(parameters.GHRepo, parameters.ADORepo) }}\migration-report-${{ coalesce(parameters.GHRepo, parameters.ADORepo) }}.html'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)\migration-report-$(RESOLVED_REPO).html'
               tabName: "Migration Report"
 
   # ===========================================================================
