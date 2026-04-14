@@ -541,7 +541,7 @@ stages:
             continueOnError: true
             inputs:
               artifact: "MigrationAudit-${{ parameters.ADORepo }}"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\audit\${{ coalesce(parameters.GHRepo, parameters.ADORepo) }}'
+              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Audit Data"
@@ -564,15 +564,19 @@ stages:
             displayName: "4.1 Validate Single Repo"
             condition: eq('${{ parameters.MigrationMode }}', 'Single')
             inputs:
-              filePath: '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1'
-              arguments: >-
-                -ADOOrg     "$(ADO_ORG)"
-                -ADOProject "$(ADO_PROJECT)"
-                -GHOrg      "$(GH_ORG)"
-                -GHRepo     "${{ coalesce(parameters.GHRepo, parameters.ADORepo) }}"
-                -ADORepo    "${{ parameters.ADORepo }}"
-                -OutputDir  "$(Build.SourcesDirectory)\repo-migration\output"
-                -ExpectedVisibility "internal"
+              targetType: inline
+              script: |
+                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
+                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
+                    -ADOOrg     '$(ADO_ORG)' `
+                    -ADOProject '$(ADO_PROJECT)' `
+                    -GHOrg      '$(GH_ORG)' `
+                    -GHRepo     $ghRepo `
+                    -ADORepo    $adoRepo `
+                    -OutputDir  '$(Build.SourcesDirectory)\repo-migration\output' `
+                    -ExpectedVisibility 'private'
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
