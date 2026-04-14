@@ -170,7 +170,7 @@ foreach ($entry in $repoList) {
     Add-Check "Repo Exists on GitHub" "yes" "yes" $true
 
     # DEBUG — show what properties GitHub API returned
-    Write-Host "      [DEBUG] ghRepo type=$($ghRepo.GetType().FullName)  propCount=$($ghRepo.PSObject.Properties.Name.Count)" -ForegroundColor DarkGray
+    Write-Host "      [DEBUG] ghRepo type=$($ghRepo.GetType().FullName)  propCount=$(@($ghRepo.PSObject.Properties).Count)" -ForegroundColor DarkGray
     Write-Host "      [DEBUG] has default_branch=$(($null -ne $ghRepo.PSObject.Properties['default_branch']))  has visibility=$(($null -ne $ghRepo.PSObject.Properties['visibility']))  has size=$(($null -ne $ghRepo.PSObject.Properties['size']))" -ForegroundColor DarkGray
 
     # ── 2. ADO source data ───────────────────────────────────────────────────
@@ -199,7 +199,7 @@ foreach ($entry in $repoList) {
 
     try {
         $prResp     = Invoke-RestMethod -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=all&api-version=7.1" -Headers $adoHeaders
-        $adoPrCount = $prResp.count
+        $adoPrCount = [int](Get-JsonProp $prResp 'count' 0)
     }
     catch { Add-Warn "ADO PR API" "Cannot fetch ADO PR count: $_" }
 
