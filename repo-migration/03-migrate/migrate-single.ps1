@@ -7,7 +7,7 @@
       1. Authenticate gh CLI with GH_PAT
       2. Pre-check: does the GitHub repo already exist?
       3. Run gh ado2gh migrate-repo (with "already queued" handling & retry)
-      4. Branch-wise post-migration audit (branches, tags, commits, PRs, files, repo size)
+      4. Branch-wise post-migration audit (branches, tags, commits, PRs, files)
       5. Download GEI migration log (exponential backoff)
       6. Generate HTML dashboard + Markdown summary
 .PARAMETER ADOOrg
@@ -84,7 +84,7 @@ $migLogUrl = $null   # captured from GEI output (Step 3) for direct download in 
 $auditData = @{
     BranchCount   = "N/A"; TagCount      = "N/A"; CommitCount   = "N/A"
     PRCount       = "N/A"; PROpen        = "N/A"; PRMerged      = "N/A"
-    PRClosed      = "N/A"; RepoSize      = "N/A"; DefaultBranch = "N/A"
+    PRClosed      = "N/A"; DefaultBranch = "N/A"
     LatestHash    = "N/A"
 }
 
@@ -382,11 +382,7 @@ else {
         $totalCommits = if ($commitCounts.ContainsKey($defaultBranch)) { "$($commitCounts[$defaultBranch])" } else { "N/A" }
         Write-Host "  Total commits (default branch): $totalCommits"
 
-        # ── 4g. Repo size from API ────────────────────────────────────────
-        $repoSizeInfo = "size: $($repoInfo.size) KB"
-        $repoSizeInfo | Out-File "$auditDir\gh-repo-size.txt" -Encoding utf8
-
-        # ── 4h. File listing via Trees API (default branch only) ──────────
+        # ── 4g. File listing via Trees API (default branch only) ──────────
         Write-Host "  Fetching file tree for default branch..."
         $csvFolderFile    = "$auditDir\gh-folder-wise-files.csv"
         $csvFolderSummary = "$auditDir\gh-folder-summary.csv"
@@ -573,20 +569,6 @@ else {
         $totalClosed  | Out-File "$auditDir\gh-pr-closed.txt"     -Encoding utf8
         $latestHash   | Out-File "$auditDir\gh-latest-hash.txt"   -Encoding utf8
 
-        # ── Repo size from initial API call (actual size computed in validation stage) ──
-        $sizeKB = 0
-        if ($repoInfo.PSObject.Properties['size']) {
-            $sizeKB = [long]$repoInfo.size
-        }
-
-        if     ($sizeKB -ge 1048576) { $actualSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
-        elseif ($sizeKB -ge 1024)    { $actualSize = "{0:N2} MB" -f ($sizeKB / 1024) }
-        elseif ($sizeKB -gt 0)       { $actualSize = "$sizeKB KB" }
-        else                         { $actualSize = "Pending (see validation)" }
-
-        Write-Host "    Repo size: $actualSize"
-        $actualSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
-
         # ── Populate in-memory audit data for Step 6 (dashboard) ───────────────
         $auditData.BranchCount   = "$branchCount"
         $auditData.TagCount      = "$tagCount"
@@ -595,11 +577,10 @@ else {
         $auditData.PROpen        = "$totalOpen"
         $auditData.PRMerged      = "$totalMerged"
         $auditData.PRClosed      = "$totalClosed"
-        $auditData.RepoSize      = $actualSize
         $auditData.DefaultBranch = $defaultBranch
         $auditData.LatestHash    = $latestHash
 
-        Write-Host "  Audit complete. PRs: $totalPRs (Open:$totalOpen Merged:$totalMerged Closed:$totalClosed) | Size: $actualSize" -ForegroundColor Green
+        Write-Host "  Audit complete. PRs: $totalPRs (Open:$totalOpen Merged:$totalMerged Closed:$totalClosed)" -ForegroundColor Green
     }
 }
 
@@ -662,7 +643,6 @@ $prCount       = $auditData.PRCount
 $prOpen        = $auditData.PROpen
 $prMerged      = $auditData.PRMerged
 $prClosed      = $auditData.PRClosed
-$repoSize      = $auditData.RepoSize
 $defaultBranch = $auditData.DefaultBranch
 $migDate       = Get-Date -Format 'dd MMM yyyy · HH:mm'
 
@@ -775,7 +755,6 @@ $html += "<div class='stat-box'><div class='num'>$branchCount</div><div class='l
 $html += "<div class='stat-box'><div class='num'>$tagCount</div><div class='label'>&#x1F3F7;&#xFE0F; Tags</div></div>" + $nl
 $html += "<div class='stat-box'><div class='num'>$commitCount</div><div class='label'>&#x1F4DD; Commits</div></div>" + $nl
 $html += "<div class='stat-box'><div class='num'>$prCount</div><div class='label'>&#x1F500; Pull Requests</div></div>" + $nl
-$html += "<div class='stat-box'><div class='num'>$repoSize</div><div class='label'>&#x1F4BE; Repo Size</div></div>" + $nl
 $html += "</div><div class='pr-pills' style='margin-top:14px;'><span class='pr-pill pr-open'>&#x1F7E2; $prOpen Open</span><span class='pr-pill pr-merged'>&#x1F7E3; $prMerged Merged</span><span class='pr-pill pr-closed'>&#x1F534; $prClosed Closed</span></div></div>" + $nl
 # Key branches
 $html += "<div class='card'><h2>&#x1F511; Key Branches</h2><table><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:right;'>Commits</th></tr></thead><tbody>$topBranchHtml</tbody></table></div>" + $nl
@@ -789,7 +768,7 @@ $html += "<li>Folder-wise file inventory (<code>gh-folder-wise-files.csv</code>,
 $html += "<li>PR breakdown by source branch (<code>gh-pr-by-source-branch.md</code>)</li>" + $nl
 $html += "<li>PR breakdown by target branch (<code>gh-pr-by-target-branch.md</code>)</li>" + $nl
 $html += "<li>Branch-wise commit table (<code>gh-branch-wise-table.md</code>)</li>" + $nl
-$html += "<li>Validation checks &amp; repo size</li></ul>" + $nl
+$html += "<li>Validation checks</li></ul>" + $nl
 $html += "<p style='margin-top:12px;font-size:15px;'>&#x2705; Recommended for audit &amp; compliance reviews.</p></div>" + $nl
 # Footer
 $html += "<div class='footer'>Generated $migDate &bull; ADO-to-GitHub Migration Pipeline</div></div></body></html>"
@@ -822,5 +801,4 @@ Write-Host "  MIGRATION COMPLETE: $GHRepo"
 Write-Host "  Status:   $migResult"
 Write-Host "  Branches: $branchCount | Tags: $tagCount | Commits: $commitCount"
 Write-Host "  PRs:      $prCount (Open:$prOpen Merged:$prMerged Closed:$prClosed)"
-Write-Host "  Size:     $repoSize"
 Write-Host "============================================"
