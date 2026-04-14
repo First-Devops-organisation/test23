@@ -284,7 +284,7 @@ stages:
                 gh auth status
 
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
-                gh extension upgrade github/gh-ado2gh
+                gh extension upgrade ado2gh
                 gh extension list
               pwsh: true
             env:
@@ -306,11 +306,11 @@ stages:
               targetType: inline
               script: |
                 $params = @{
-                    ADOOrg     = '$(ADO_ORG)'
-                    ADOProject = '$(ADO_PROJECT)'
-                    ADORepo    = '${{ parameters.ADORepo }}'
-                    GHOrg      = '$(GH_ORG)'
-                    GHRepo     = '${{ coalesce(parameters.GHRepo, parameters.ADORepo) }}'
+                    ADOOrg     = '$(ADO_ORG)'.Trim()
+                    ADOProject = '$(ADO_PROJECT)'.Trim()
+                    ADORepo    = '${{ parameters.ADORepo }}'.Trim()
+                    GHOrg      = '$(GH_ORG)'.Trim()
+                    GHRepo     = '${{ coalesce(parameters.GHRepo, parameters.ADORepo) }}'.Trim()
                     OutputDir  = '$(Build.SourcesDirectory)\repo-migration\output'
                 }
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
