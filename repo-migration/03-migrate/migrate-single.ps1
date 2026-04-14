@@ -348,10 +348,10 @@ else {
             foreach ($bn in $slice) {
                 $alias = "b$idx"
                 $qualName = "refs/heads/$bn"
-                $aliases += "  $alias`: ref(qualifiedName: \`"$qualName\`") { target { ... on Commit { history { totalCount } } } }"
+                $aliases += "  $alias`: ref(qualifiedName: `"$qualName`") { target { ... on Commit { history { totalCount } } } }"
                 $idx++
             }
-            $gqlQuery = "{ repository(owner: \`"$GHOrg\`", name: \`"$GHRepo\`") {`n" + ($aliases -join "`n") + "`n} }"
+            $gqlQuery = "{ repository(owner: `"$GHOrg`", name: `"$GHRepo`") {`n" + ($aliases -join "`n") + "`n} }"
             $gqlRaw = gh api graphql -f query="$gqlQuery" 2>$null
             $gqlResult = $null
             if ($gqlRaw) { $gqlResult = $gqlRaw | ConvertFrom-Json }
@@ -573,14 +573,36 @@ else {
         $totalClosed  | Out-File "$auditDir\gh-pr-closed.txt"     -Encoding utf8
         $latestHash   | Out-File "$auditDir\gh-latest-hash.txt"   -Encoding utf8
 
-        # ── Repo size from GitHub API ─────────────────────────────────────
+        # ── Repo size from GitHub API (with retry — GitHub may not have computed size yet) ──
         $actualSize = "N/A"
-        $rawSizeKB = $repoInfo.size
-        if ($rawSizeKB -and [long]$rawSizeKB -gt 0) {
-            $sizeKB = [long]$rawSizeKB
+        $sizeKB = 0
+        for ($ri = 1; $ri -le 5; $ri++) {
+            $rawSize = gh api "repos/$GHOrg/$GHRepo" --jq '.size' 2>$null
+            if ($rawSize -and $rawSize -match '^\d+$' -and [long]$rawSize -gt 0) {
+                $sizeKB = [long]$rawSize
+                break
+            }
+            Write-Host "    Attempt $ri/5 — Waiting for GitHub to calculate repo size..."
+            Start-Sleep -Seconds 20
+        }
+
+        if ($sizeKB -gt 0) {
             if     ($sizeKB -ge 1048576) { $actualSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
             elseif ($sizeKB -ge 1024)    { $actualSize = "{0:N2} MB" -f ($sizeKB / 1024) }
             else                         { $actualSize = "$sizeKB KB" }
+        }
+
+        # Fallback: size-pack from blobless clone metadata
+        if ($actualSize -eq "N/A") {
+            $repoSizeFile = "$auditDir\gh-repo-size.txt"
+            if (Test-Path $repoSizeFile) {
+                $sizePack = (Get-Content $repoSizeFile | Where-Object { $_ -match '^size-pack:' }) -replace 'size-pack:\s*',''
+                if ($sizePack) { $actualSize = $sizePack.Trim() }
+            }
+        }
+
+        if ($actualSize -eq "N/A") {
+            Write-Host "    All size methods returned 0" -ForegroundColor Yellow
         }
         $actualSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
 
