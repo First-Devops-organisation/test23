@@ -212,16 +212,34 @@ foreach ($entry in $repoList) {
     $ghBranchCount    = $ghBranches.Count
     $sourceBranchCount = $adoBranches.Count
     if ($sourceBranchCount -eq 0 -and $auditBranchCount) { $sourceBranchCount = [int]$auditBranchCount }
-    Add-Check "Branch Count" $sourceBranchCount $ghBranchCount ($sourceBranchCount -eq $ghBranchCount)
+    $branchDetail = ""
+    if ($adoBranches.Count -gt 0 -or $ghBranches.Count -gt 0) {
+        $branchDetail = "ADO: [$(($adoBranches | Sort-Object) -join ', ')] | GH: [$(($ghBranches | Sort-Object) -join ', ')]"
+    }
+    Add-Check "Branch Count" $sourceBranchCount $ghBranchCount ($sourceBranchCount -eq $ghBranchCount) $branchDetail
+
+    # ── List branch names ─────────────────────────────────────────────────
+    if ($adoBranches.Count -gt 0) {
+        $adoBranchList = ($adoBranches | Sort-Object) -join ', '
+        Write-Host "      ADO Branches : $adoBranchList" -ForegroundColor DarkGray
+    }
+    if ($ghBranches.Count -gt 0) {
+        $ghBranchList = ($ghBranches | Sort-Object) -join ', '
+        Write-Host "      GH  Branches : $ghBranchList" -ForegroundColor DarkGray
+    }
 
     # ── 5. Missing branches ──────────────────────────────────────────────────
     if ($adoBranches.Count -gt 0) {
-        $missing = $adoBranches | Where-Object { $_ -notin $ghBranches }
-        if ($missing) {
+        $missing = @($adoBranches | Where-Object { $_ -notin $ghBranches })
+        $extra   = @($ghBranches  | Where-Object { $_ -notin $adoBranches })
+        if ($missing.Count -gt 0) {
             Add-Check "No Missing Branches" $adoBranches.Count "missing: $($missing -join ', ')" $false "Branches in ADO not found in GitHub"
         }
         else {
             Add-Check "No Missing Branches" "all present" "all present" $true
+        }
+        if ($extra.Count -gt 0) {
+            Write-Host "      Extra in GH  : $($extra -join ', ')" -ForegroundColor DarkGray
         }
     }
 
@@ -239,14 +257,31 @@ foreach ($entry in $repoList) {
 
     # ── 7. Tag count ─────────────────────────────────────────────────────────
     $ghTags = @()
+    $ghTagNames  = @()
+    $adoTagNames = @()
     try {
-        $ghTags = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/tags?per_page=100" -Headers $ghHeaders
+        $ghTags = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName/tags?per_page=100" -Headers $ghHeaders)
+        $ghTagNames = @($ghTags | ForEach-Object { $_.name })
     }
     catch { }
-    $adoTagCount = $adoTags.Count
-    $ghTagCount  = $ghTags.Count
+    if ($adoTags.Count -gt 0) {
+        $adoTagNames = @($adoTags | ForEach-Object { $_.name -replace '^refs/tags/', '' })
+    }
+    $adoTagCount = $adoTagNames.Count
+    $ghTagCount  = $ghTagNames.Count
+
+    # List tag names
+    if ($adoTagNames.Count -gt 0) {
+        Write-Host "      ADO Tags     : $(($adoTagNames | Sort-Object) -join ', ')" -ForegroundColor DarkGray
+    }
+    if ($ghTagNames.Count -gt 0) {
+        Write-Host "      GH  Tags     : $(($ghTagNames | Sort-Object) -join ', ')" -ForegroundColor DarkGray
+    }
+
     if ($adoTagCount -gt 0) {
-        Add-Check "Tag Count" $adoTagCount $ghTagCount ($adoTagCount -eq $ghTagCount)
+        $missingTags = @($adoTagNames | Where-Object { $_ -notin $ghTagNames })
+        $tagDetail   = if ($missingTags.Count -gt 0) { "Missing: $($missingTags -join ', ')" } else { "" }
+        Add-Check "Tag Count" $adoTagCount $ghTagCount ($adoTagCount -eq $ghTagCount) $tagDetail
     }
     else {
         $auditTagCount = Get-AuditVal $auditDir "gh-tag-count.txt"
@@ -322,13 +357,15 @@ foreach ($entry in $repoList) {
     $passCount    = @($checks | Where-Object { $_.Status -eq "PASS" }).Count
     $failCount    = $failedChecks.Count
     $warnCount    = @($checks | Where-Object { $_.Status -eq "WARN" }).Count
+    $accuracy     = if (($passCount + $failCount) -gt 0) { [math]::Round(($passCount / ($passCount + $failCount)) * 100, 1) } else { 0 }
 
-    Write-Host "  ─── Result: $repoStatus ($passCount PASS / $failCount FAIL / $warnCount WARN) ───" -ForegroundColor $(if ($repoStatus -eq "PASS") {"Green"} else {"Red"})
+    Write-Host "  ─── Result: $repoStatus  Accuracy: $accuracy%  ($passCount PASS / $failCount FAIL / $warnCount WARN) ───" -ForegroundColor $(if ($repoStatus -eq "PASS") {"Green"} else {"Red"})
 
     $allResults += [PSCustomObject]@{
         ADORepo    = $adoRepoName
         GHRepo     = $ghRepoName
         Status     = $repoStatus
+        Accuracy   = $accuracy
         PassCount  = $passCount
         FailCount  = $failCount
         WarnCount  = $warnCount
@@ -360,6 +397,8 @@ $migDate    = Get-Date -Format 'dd MMM yyyy · HH:mm'
 $totalRepos = $allResults.Count
 $passRepos  = @($allResults | Where-Object { $_.Status -eq "PASS" }).Count
 $failRepos  = @($allResults | Where-Object { $_.Status -ne "PASS" }).Count
+$overallAccuracy = if (($totalPass + $totalFail) -gt 0) { [math]::Round(($totalPass / ($totalPass + $totalFail)) * 100, 1) } else { 0 }
+$accuracyColor   = if ($overallAccuracy -ge 90) { "#28a745" } elseif ($overallAccuracy -ge 70) { "#f0ad4e" } else { "#dc3545" }
 
 $tableRows = ""
 foreach ($r in $allResults) {
@@ -371,16 +410,18 @@ foreach ($r in $allResults) {
         $cColor  = switch ($c.Status) { "PASS" { "#28a745" } "FAIL" { "#dc3545" } default { "#f0ad4e" } }
         $details += "<tr style='font-size:13px;'><td style='padding:6px 12px;color:$cColor;'>$cIcon $($c.Check)</td><td style='padding:6px 12px;'>$($c.Source)</td><td style='padding:6px 12px;'>$($c.Target)</td><td style='padding:6px 12px;color:#666;font-size:12px;'>$($c.Detail)</td></tr>"
     }
+    $repoAccColor = if ($r.Accuracy -ge 90) { "#28a745" } elseif ($r.Accuracy -ge 70) { "#f0ad4e" } else { "#dc3545" }
     $tableRows += "
     <tr>
       <td><code>$($r.ADORepo)</code></td>
       <td><code>$($r.GHRepo)</code></td>
       <td>$badge</td>
+      <td style='text-align:center;font-weight:700;color:$repoAccColor;font-size:16px;'>$($r.Accuracy)%</td>
       <td style='text-align:center;font-weight:600;'>$($r.RepoSize)</td>
       <td style='text-align:center;color:#28a745;font-weight:600;'>$($r.PassCount)</td>
       <td style='text-align:center;color:#dc3545;font-weight:600;'>$($r.FailCount)</td>
     </tr>
-    <tr><td colspan='6' style='padding:0;'>
+    <tr><td colspan='7' style='padding:0;'>
       <details style='margin:0 8px 8px;'><summary style='cursor:pointer;font-size:13px;color:#0969da;padding:6px;'>View check details</summary>
         <table style='width:100%;font-size:13px;margin-top:4px;'>
           <thead><tr style='background:#f6f8fa;'><th style='padding:6px 12px;'>Check</th><th style='padding:6px 12px;'>Source</th><th style='padding:6px 12px;'>Target</th><th style='padding:6px 12px;'>Notes</th></tr></thead>
@@ -407,8 +448,9 @@ $html += "table{width:100%;border-collapse:collapse}th{background:#f6f8fa;paddin
 $html += "td{padding:10px 14px;border-bottom:1px solid #eaecef}tr:hover{background:#fafafa}"
 $html += "code{background:#eff1f3;padding:2px 7px;border-radius:4px;font-size:13px}"
 $html += ".footer{text-align:center;color:#999;font-size:13px;margin-top:24px;padding-top:14px;border-top:1px solid #e1e4e8}</style></head><body><div class='container'>" + $nl
-$html += "<div class='header'><h1>&#x1F50D; Migration Validation Report</h1><div class='status-banner'>$overallStatus</div></div>" + $nl
+$html += "<div class='header'><h1>&#x1F50D; Migration Validation Report</h1><div class='status-banner'>$overallStatus</div><div class='status-banner' style='margin-left:16px;background:#fff;color:$accuracyColor;border-color:$accuracyColor;font-size:20px;'>&#x1F3AF; $overallAccuracy% Accuracy</div></div>" + $nl
 $html += "<div class='card'><h2>&#x1F4CA; Summary</h2><div class='stat-grid'>"
+$html += "<div class='stat-box' style='border:2px solid $accuracyColor;'><div class='num' style='color:$accuracyColor;font-size:32px;'>$overallAccuracy%</div><div class='label'>&#x1F3AF; Migration Accuracy</div></div>"
 $html += "<div class='stat-box'><div class='num'>$totalRepos</div><div class='label'>Total Repos</div></div>"
 $html += "<div class='stat-box'><div class='num' style='color:#28a745;'>$passRepos</div><div class='label'>&#x2705; Passed</div></div>"
 $html += "<div class='stat-box'><div class='num' style='color:#dc3545;'>$failRepos</div><div class='label'>&#x274C; Failed</div></div>"
@@ -416,7 +458,7 @@ $html += "<div class='stat-box'><div class='num'>$totalPass</div><div class='lab
 $html += "<div class='stat-box'><div class='num' style='color:#dc3545;'>$totalFail</div><div class='label'>Total Checks Failed</div></div>"
 $html += "</div></div>" + $nl
 $html += "<div class='card'><h2>&#x1F4CB; Repo-by-Repo Results</h2><table>"
-$html += "<thead><tr><th>ADO Repo</th><th>GitHub Repo</th><th>Status</th><th style='text-align:center;'>Size</th><th style='text-align:center;'>Pass</th><th style='text-align:center;'>Fail</th></tr></thead>"
+$html += "<thead><tr><th>ADO Repo</th><th>GitHub Repo</th><th>Status</th><th style='text-align:center;'>Accuracy</th><th style='text-align:center;'>Size</th><th style='text-align:center;'>Pass</th><th style='text-align:center;'>Fail</th></tr></thead>"
 $html += "<tbody>$tableRows</tbody></table></div>" + $nl
 $html += "<div class='footer'>Generated $migDate &bull; ADO-to-GitHub Migration Validation</div></div></body></html>"
 
@@ -428,6 +470,7 @@ $md  = "# Migration Validation Report`n`n"
 $md += "> Generated: $migDate`n`n"
 $md += "| Metric | Value |`n|:---|---:|`n"
 $md += "| Total repos validated | $totalRepos |`n"
+$md += "| &#x1F3AF; Migration Accuracy | **$overallAccuracy%** |`n"
 $md += "| ✅ PASS | $passRepos |`n"
 $md += "| ❌ FAIL | $failRepos |`n`n"
 if ($failRepos -gt 0) {
@@ -448,6 +491,7 @@ Write-Host ""
 Write-Host "============================================" -ForegroundColor $(if ($failRepos -eq 0) {"Green"} else {"Red"})
 Write-Host "  VALIDATION SUMMARY"
 Write-Host "  Total repos : $totalRepos"
+Write-Host "  Accuracy    : $overallAccuracy%" -ForegroundColor $(if ($overallAccuracy -ge 90) {"Green"} elseif ($overallAccuracy -ge 70) {"Yellow"} else {"Red"})
 Write-Host "  PASS        : $passRepos" -ForegroundColor Green
 Write-Host "  FAIL        : $failRepos" -ForegroundColor $(if ($failRepos -gt 0) {"Red"} else {"Green"})
 Write-Host "============================================"
