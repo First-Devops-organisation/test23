@@ -86,9 +86,22 @@ Write-Host "============================================"
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 1] Authenticate GitHub CLI..." -ForegroundColor Cyan
 $env:GH_TOKEN = $ghPat
-$ghPat | gh auth login --with-token
-gh auth status
-gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+# When GH_TOKEN is set the CLI uses it directly — gh auth login is not needed
+# and conflicts with GH_TOKEN (returns exit code 1), so we skip it.
+Write-Host "  Authenticating via GH_TOKEN environment variable."
+$ErrorActionPreference = 'SilentlyContinue'
+gh auth status 2>&1 | ForEach-Object { Write-Host "  $_" }
+$ErrorActionPreference = 'Stop'
+# Install ado2gh extension only if not already present
+$installedExts = gh extension list 2>&1
+if ($installedExts -notmatch 'ado2gh') {
+    Write-Host "  Installing gh-ado2gh extension..."
+    $ErrorActionPreference = 'SilentlyContinue'
+    gh extension install github/gh-ado2gh 2>&1 | ForEach-Object { Write-Host "  $_" }
+    $ErrorActionPreference = 'Stop'
+} else {
+    Write-Host "  ado2gh extension already installed."
+}
 gh extension list
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -96,21 +109,16 @@ gh extension list
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 2] Pre-check repo existence in GitHub..." -ForegroundColor Cyan
 $repoStatus = "NOT_EXISTS"
-try {
-    $ErrorActionPreference = 'Stop'
-    $null = gh repo view "$GHOrg/$GHRepo" --json name 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  Repo already exists: $GHOrg/$GHRepo" -ForegroundColor Yellow
-        $repoStatus = "ALREADY_EXISTS"
-    } else {
-        throw "repo not found"
-    }
-}
-catch {
+$ErrorActionPreference = 'SilentlyContinue'
+[void](gh repo view "$GHOrg/$GHRepo" --json name 2>&1)
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  Repo already exists: $GHOrg/$GHRepo" -ForegroundColor Yellow
+    $repoStatus = "ALREADY_EXISTS"
+} else {
     Write-Host "  Repo does not exist yet (will be migrated): $GHRepo"
     $repoStatus = "NOT_EXISTS"
 }
-finally { $ErrorActionPreference = 'Stop' }
+$ErrorActionPreference = 'Stop'
 
 $repoStatus | Out-File $precheckFile -Encoding utf8
 Write-Host "  Status: $repoStatus"
@@ -137,14 +145,14 @@ else {
     Write-Host "  State: EXPORTING from ADO..."
     "EXPORTING" | Out-File $stateFile -Encoding utf8
 
+    # GEI reads ADO_PAT and GH_PAT from environment variables automatically.
+    # Passing PATs as CLI args causes quoting issues when PATs contain +, =, / chars.
     $migOutput = gh ado2gh migrate-repo `
         --ado-org          $ADOOrg `
         --ado-team-project $ADOProject `
         --ado-repo         $ADORepo `
         --github-org       $GHOrg `
-        --github-repo      $GHRepo `
-        --ado-pat          $adoPat `
-        --github-pat       $ghPat 2>&1
+        --github-repo      $GHRepo 2>&1
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
 
