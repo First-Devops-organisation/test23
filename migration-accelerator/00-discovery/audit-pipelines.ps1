@@ -24,7 +24,7 @@ param(
     [string]$AdoPat,
 
     [string]$GitHubPat,
-    
+
 
     [string]$OutputDir = "./output/pipeline-audit"
 )
@@ -74,9 +74,9 @@ $env:GH_TOKEN = $GitHubPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $AdoPat
 $env:ADO_PAT = $AdoPat
 
-# --- Configure ---
-Write-Host "Configuring actions-importer..." -ForegroundColor Yellow
-gh actions-importer configure --provider azure-devops 2>&1
+# --- Update actions-importer ---
+Write-Host "Updating actions-importer..." -ForegroundColor Yellow
+gh actions-importer update 2>&1
 
 # --- Run Audit ---
 $auditArgs = @(
