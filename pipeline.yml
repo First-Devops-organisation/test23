@@ -36,3 +36,17 @@ jobs:
       ADO_PAT: $(ADO_PAT)
       GH_PAT: $(GH_PAT)
       GH_TOKEN: $(GH_PAT)
+
+  - task: PowerShell@2
+    displayName: 'Generate HTML Dashboard'
+    inputs:
+      targetType: 'filePath'
+      filePath: 'migration-accelerator/00-discovery/generate-dashboard.ps1'
+      arguments: ''
+      pwsh: true
+
+  - task: PublishHTMLReport@1
+    displayName: 'Publish HTML Dashboard to Summary'
+    inputs:
+      htmlPath: 'migration-accelerator/output/dashboard'
+      htmlName: 'Pipeline Migration Dashboard'
