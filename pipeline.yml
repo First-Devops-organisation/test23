@@ -19,8 +19,11 @@ jobs:
     inputs:
       targetType: 'filePath'
       filePath: 'migration-accelerator/01-prep/install-tools.ps1'
-      arguments: ''
+      arguments: '-GitHubPat "$(GH_PAT)"'
       pwsh: true
+    env:
+      GH_PAT: $(GH_PAT)
+      GH_TOKEN: $(GH_PAT)
 
   - task: PowerShell@2
     displayName: 'Run audit-pipelines.ps1'
@@ -37,3 +40,4 @@ jobs:
     env:
       ADO_PAT: $(ADO_PAT)
       GH_PAT: $(GH_PAT)
+      GH_TOKEN: $(GH_PAT)
