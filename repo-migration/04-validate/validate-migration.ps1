@@ -110,11 +110,12 @@ function Get-AuditVal($auditDir, $file) {
     return $null
 }
 
-# Safe property accessor — avoids PropertyNotFoundStrict under Set-StrictMode
+# Safe property accessor — iterates properties to avoid PS 5.1 indexer bug
 function Get-JsonProp($obj, [string]$name, $default = $null) {
     if ($null -eq $obj) { return $default }
-    $member = $obj.PSObject.Properties[$name]
-    if ($null -ne $member) { return $member.Value }
+    foreach ($p in $obj.PSObject.Properties) {
+        if ($p.Name -eq $name) { return $p.Value }
+    }
     return $default
 }
 
@@ -170,8 +171,9 @@ foreach ($entry in $repoList) {
     Add-Check "Repo Exists on GitHub" "yes" "yes" $true
 
     # DEBUG — show what properties GitHub API returned
-    Write-Host "      [DEBUG] ghRepo type=$($ghRepo.GetType().FullName)  propCount=$(@($ghRepo.PSObject.Properties).Count)" -ForegroundColor DarkGray
-    Write-Host "      [DEBUG] has default_branch=$(($null -ne $ghRepo.PSObject.Properties['default_branch']))  has visibility=$(($null -ne $ghRepo.PSObject.Properties['visibility']))  has size=$(($null -ne $ghRepo.PSObject.Properties['size']))" -ForegroundColor DarkGray
+    $propNames = @($ghRepo.PSObject.Properties | Select-Object -First 10 | ForEach-Object { $_.Name })
+    Write-Host "      [DEBUG] ghRepo type=$($ghRepo.GetType().FullName)  props=[$($propNames -join ', ')]" -ForegroundColor DarkGray
+    Write-Host "      [DEBUG] default_branch=$(Get-JsonProp $ghRepo 'default_branch' '<missing>')  visibility=$(Get-JsonProp $ghRepo 'visibility' '<missing>')  size=$(Get-JsonProp $ghRepo 'size' '<missing>')  private=$(Get-JsonProp $ghRepo 'private' '<missing>')" -ForegroundColor DarkGray
 
     # ── 2. ADO source data ───────────────────────────────────────────────────
     $adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$adoRepoName"
@@ -323,7 +325,17 @@ foreach ($entry in $repoList) {
     }
 
     # ── 9. Repo visibility ───────────────────────────────────────────────────
-    $ghVisibility = Get-JsonProp $ghRepo 'visibility' 'unknown'
+    $ghVisibility = Get-JsonProp $ghRepo 'visibility' $null
+    if (-not $ghVisibility) {
+        # Fallback: infer from 'private' field (visibility may need admin scope on PAT)
+        $isPrivate = Get-JsonProp $ghRepo 'private' $null
+        if ($null -ne $isPrivate) {
+            $ghVisibility = if ($isPrivate -eq $true) { "private" } else { "internal" }
+            Write-Host "      Visibility (inferred from private=$isPrivate): $ghVisibility" -ForegroundColor DarkGray
+        } else {
+            $ghVisibility = "unknown"
+        }
+    }
     Write-Host "      Visibility   : $ghVisibility" -ForegroundColor DarkGray
     Add-Check "Visibility" $ExpectedVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
 
