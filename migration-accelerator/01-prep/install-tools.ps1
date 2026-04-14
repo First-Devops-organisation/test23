@@ -17,9 +17,12 @@ if (-not $AdoPat) { $AdoPat = $env:ADO_PAT }
 if (-not $GitHubPat) { $GitHubPat = $env:GH_PAT }
 
 # Set GH_TOKEN for GitHub CLI if GitHub PAT is available
-if ($GitHubPat) {
-    $env:GH_TOKEN = $GitHubPat
-    $env:GITHUB_TOKEN = $GitHubPat
+$githubToken = $GitHubPat
+if (-not $githubToken) { $githubToken = $env:GH_PAT }
+if (-not $githubToken) { $githubToken = $env:GITHUB_PAT }
+if ($githubToken) {
+    $env:GH_TOKEN = $githubToken
+    $env:GITHUB_TOKEN = $githubToken
 }
 
 Write-Host "=== Migration Tooling Installer ===" -ForegroundColor Cyan
