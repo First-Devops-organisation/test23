@@ -78,6 +78,7 @@ $env:GH_TOKEN = $ghPat
 
 # ── Script-level state tracking (avoids re-reading from disk) ─────────────────
 $migState = "UNKNOWN"
+$migLogUrl = $null   # captured from GEI output (Step 3) for direct download in Step 5
 
 # ── In-memory audit data (avoids re-reading .txt files in Step 6) ─────────────
 $auditData = @{
@@ -183,6 +184,13 @@ else {
         --github-repo      $GHRepo 2>&1
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
+
+    # Parse migration log URL from GEI output (line like "Migration log available at https://...")
+    $logLine = $migOutput | Where-Object { $_ -match 'Migration log available at (https://\S+)' } | Select-Object -First 1
+    if ($logLine -and $logLine -match 'Migration log available at (https://\S+)') {
+        $migLogUrl = $Matches[1]
+        Write-Host "  Log URL captured: $migLogUrl"
+    }
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  State: COMPLETE" -ForegroundColor Green
@@ -529,21 +537,38 @@ else {
     Write-Host "`n[Step 5] Downloading GEI migration log..." -ForegroundColor Cyan
     $migLogFile = "$logDir\migration-log-$GHRepo.log"
     $success = $false
-    $backoff = 30   # initial wait in seconds
-    for ($i = 1; $i -le 8; $i++) {
-        Write-Host "  Attempt $i/8 (waiting ${backoff}s)..."
-        Start-Sleep -Seconds $backoff
-        $ErrorActionPreference = 'SilentlyContinue'
-        $out = gh ado2gh download-logs --github-org $GHOrg --github-repo $GHRepo --migration-log-file $migLogFile --overwrite 2>&1
-        $ErrorActionPreference = 'Stop'
-        if ($LASTEXITCODE -eq 0) { $success = $true; break }
-        $backoff = [math]::Min($backoff * 2, 240)   # exponential backoff, max 4 min
+
+    # ── Fast path: direct download via URL captured from GEI output ────────
+    if ($migLogUrl) {
+        Write-Host "  Downloading directly from captured URL (no wait)..."
+        try {
+            Invoke-WebRequest -Uri $migLogUrl -OutFile $migLogFile -UseBasicParsing -ErrorAction Stop
+            $success = $true
+            Write-Host "  Log saved (direct download): $migLogFile" -ForegroundColor Green
+        } catch {
+            Write-Host "  Direct download failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
     }
+
+    # ── Fallback: gh ado2gh download-logs with short backoff ───────────────
     if (-not $success) {
-        "Log download failed after 8 retries" | Out-File $migLogFile -Encoding utf8
-        Write-Warning "  Logs unavailable after 8 retries (normal for large repos)."
+        $backoff = 10   # start at 10s (was 30s)
+        for ($i = 1; $i -le 4; $i++) {
+            Write-Host "  Attempt $i/4 (waiting ${backoff}s)..."
+            Start-Sleep -Seconds $backoff
+            $ErrorActionPreference = 'SilentlyContinue'
+            $out = gh ado2gh download-logs --github-org $GHOrg --github-repo $GHRepo --migration-log-file $migLogFile --overwrite 2>&1
+            $ErrorActionPreference = 'Stop'
+            if ($LASTEXITCODE -eq 0) { $success = $true; break }
+            $backoff = [math]::Min($backoff * 2, 60)   # max 60s between retries
+        }
     }
-    else {
+
+    if (-not $success) {
+        "Log download failed" | Out-File $migLogFile -Encoding utf8
+        Write-Warning "  Logs unavailable (non-critical — migration data is complete)."
+    }
+    elseif (-not $migLogUrl) {
         Write-Host "  Log saved: $migLogFile" -ForegroundColor Green
     }
 }
