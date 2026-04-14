@@ -87,6 +87,14 @@ jobs:
             Write-Host "This means the audit step did not produce output. Check the audit step logs above." -ForegroundColor Red
         }
 
+  - task: PublishPipelineArtifact@1
+    displayName: '📦 Download Audit Reports'
+    inputs:
+      targetPath: 'migration-accelerator/output/pipeline-audit'
+      artifact: 'pipeline-audit-reports'
+      publishLocation: 'pipeline'
+    condition: always()
+
   - task: PowerShell@2
     displayName: 'Generate HTML Dashboard'
     inputs:
