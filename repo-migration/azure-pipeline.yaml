@@ -279,10 +279,12 @@ stages:
 
                 # Authenticate gh CLI before installing extensions
                 $env:GH_TOKEN = "$(GH_PAT)"
-                "$(GH_PAT)" | gh auth login --with-token
+                echo $env:GH_TOKEN | gh auth login --with-token
+               
                 gh auth status
 
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+                gh extension upgrade ado2gh
                 gh extension list
               pwsh: true
             env:
