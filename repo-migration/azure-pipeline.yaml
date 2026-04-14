@@ -305,12 +305,15 @@ stages:
             inputs:
               targetType: inline
               script: |
+                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
+                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
                 $params = @{
                     ADOOrg     = '$(ADO_ORG)'.Trim()
                     ADOProject = '$(ADO_PROJECT)'.Trim()
-                    ADORepo    = '${{ parameters.ADORepo }}'.Trim()
+                    ADORepo    = $adoRepo
                     GHOrg      = '$(GH_ORG)'.Trim()
-                    GHRepo     = '${{ coalesce(parameters.GHRepo, parameters.ADORepo) }}'.Trim()
+                    GHRepo     = $ghRepo
                     OutputDir  = '$(Build.SourcesDirectory)\repo-migration\output'
                 }
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
