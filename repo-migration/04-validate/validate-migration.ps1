@@ -142,7 +142,7 @@ foreach ($entry in $repoList) {
 
     if (-not $ghRepo) {
         Add-Check "Repo Exists on GitHub" "expected" "NOT FOUND" $false
-        $allResults += [PSCustomObject]@{ ADORepo=$adoRepoName; GHRepo=$ghRepoName; Status="FAIL_NOT_FOUND"; RepoSize="N/A"; Checks=$checks }
+        $allResults += [PSCustomObject]@{ ADORepo=$adoRepoName; GHRepo=$ghRepoName; Status="FAIL_NOT_FOUND"; PassCount=0; FailCount=1; WarnCount=0; RepoSize="N/A"; Checks=$checks }
         continue
     }
     Add-Check "Repo Exists on GitHub" "yes" "yes" $true
