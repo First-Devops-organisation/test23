@@ -260,100 +260,176 @@ elseif ($migState -in @("FAILED", "DRY_RUN", "UNKNOWN")) {
     Write-Host "`n[Step 4] SKIPPED — migration state is '$migState', no repo to audit." -ForegroundColor Yellow
 }
 else {
-    Write-Host "`n[Step 4] Post-migration audit (branch-wise)..." -ForegroundColor Cyan
+    Write-Host "`n[Step 4] Post-migration audit (API-only, no clone)..." -ForegroundColor Cyan
 
     $ProgressPreference = 'SilentlyContinue'
 
-    $cloneDir = "$OutputDir\tmp\$GHRepo-mirror"
-    if (Test-Path $cloneDir) { Remove-Item $cloneDir -Recurse -Force }
+    # ── Helper: paginated GitHub REST API ──────────────────────────────────
+    function Get-GitHubPages([string]$endpoint) {
+        $all = @(); $page = 1
+        do {
+            $sep = if ($endpoint -match '\?') { '&' } else { '?' }
+            $batch = @(gh api "${endpoint}${sep}per_page=100&page=$page" 2>$null | ConvertFrom-Json)
+            if ($batch.Count -gt 0) { $all += $batch; $page++ } else { break }
+        } while ($batch.Count -eq 100)
+        return $all
+    }
 
-    Write-Host "  Cloning GitHub repo (blobless mirror)..."
-    $ErrorActionPreference = 'SilentlyContinue'
-    # URL-encode the PAT so special characters (+, =, /, etc.) don't break the URL
-    $encodedPat = [Uri]::EscapeDataString($ghPat)
-    git clone --filter=blob:none --mirror "https://x-access-token:${encodedPat}@github.com/$GHOrg/$GHRepo.git" $cloneDir 2>&1 | ForEach-Object { Write-Host "  $_" }
-    $ErrorActionPreference = 'Stop'
+    # ── 4a. Repo metadata (default branch + size) — single API call ────────
+    Write-Host "  Fetching repo metadata..."
+    $repoInfoRaw = gh api "repos/$GHOrg/$GHRepo" 2>$null
+    $repoInfo = $null
+    if ($repoInfoRaw) { $repoInfo = $repoInfoRaw | ConvertFrom-Json }
 
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $cloneDir)) {
-        Write-Warning "  Could not clone GitHub repo — skipping audit."
+    if (-not $repoInfo) {
+        Write-Warning "  Could not fetch repo info via API — skipping audit."
     }
     else {
-        Push-Location $cloneDir
-
-        # Branches
-        $branches     = @(git branch | ForEach-Object { $_.Trim().TrimStart("* ") } | Where-Object { $_ -ne "" })
-        $branchCount  = $branches.Count
-        $branches     | Out-File "$auditDir\gh-branches.txt" -Encoding utf8
-        Write-Host "  Branches: $branchCount"
-
-        # Default branch
-        $defaultRef   = git symbolic-ref HEAD 2>$null
-        $defaultBranch = if ($defaultRef) { $defaultRef.Trim() -replace '^refs/heads/','' }
-                         elseif ($branchCount -gt 0) { $branches[0].Trim() }
-                         else { "" }
+        $defaultBranch = $repoInfo.default_branch
         $defaultBranch | Out-File "$auditDir\gh-default-branch.txt" -Encoding utf8
         Write-Host "  Default branch: $defaultBranch"
 
-        # Tags
-        $tags      = git tag -l
-        $tagCount  = if ($tags) { ($tags | Measure-Object).Count } else { 0 }
-        if ($tags) { $tags | Out-File "$auditDir\gh-tags.txt" -Encoding utf8 }
-        else       { ""    | Out-File "$auditDir\gh-tags.txt" -Encoding utf8 }
+        # ── 4b. Branches via REST API (paginated) ─────────────────────────
+        Write-Host "  Fetching branches..."
+        $branchObjs  = Get-GitHubPages "repos/$GHOrg/$GHRepo/branches"
+        $branches    = @($branchObjs | ForEach-Object { $_.name })
+        $branchCount = $branches.Count
+        $branches    | Out-File "$auditDir\gh-branches.txt" -Encoding utf8
+        Write-Host "  Branches: $branchCount"
+
+        # ── 4c. Tags via REST API (paginated) ─────────────────────────────
+        Write-Host "  Fetching tags..."
+        $tagObjs  = Get-GitHubPages "repos/$GHOrg/$GHRepo/tags"
+        $tags     = @($tagObjs | ForEach-Object { $_.name })
+        $tagCount = $tags.Count
+        if ($tags.Count -gt 0) { $tags | Out-File "$auditDir\gh-tags.txt" -Encoding utf8 }
+        else                   { ""    | Out-File "$auditDir\gh-tags.txt" -Encoding utf8 }
         Write-Host "  Tags: $tagCount"
 
-        # Total commits
-        $totalCommits = (git rev-list --count --all).Trim()
-        $latestHash   = (git log -1 --format="%H").Trim()
-        Write-Host "  Total commits: $totalCommits"
+        # ── 4d. Latest commit hash (default branch) ───────────────────────
+        $defaultBranchObj = $branchObjs | Where-Object { $_.name -eq $defaultBranch } | Select-Object -First 1
+        $latestHash = if ($defaultBranchObj) { $defaultBranchObj.commit.sha } else { "N/A" }
+        Write-Host "  Latest hash: $latestHash"
 
-        # Repo size metadata
-        $repoSize = git count-objects -vH
-        $repoSize | Out-File "$auditDir\gh-repo-size.txt" -Encoding utf8
-
-        # Batch-fetch branch metadata via for-each-ref (1 call for all branches)
-        $refMeta  = @{}
-        $refLines = git for-each-ref --format='%(refname:short)|%(objectname:short=12)|%(authorname)|%(creatordate:short)|%(subject)' refs/heads/ 2>$null
-        if ($refLines) {
-            foreach ($line in $refLines) {
-                $p = $line -split '\|', 5
-                if ($p.Count -ge 5) { $refMeta[$p[0]] = @{ Hash=$p[1]; Author=$p[2]; Date=$p[3]; Msg=$p[4] } }
+        # ── 4e. Branch metadata via commit-detail API ─────────────────────
+        Write-Host "  Fetching per-branch commit metadata..."
+        $refMeta = @{}
+        foreach ($bObj in $branchObjs) {
+            $bName = $bObj.name
+            $bSha  = $bObj.commit.sha
+            $cRaw  = gh api "repos/$GHOrg/$GHRepo/commits/$bSha" 2>$null
+            $cDetail = $null
+            if ($cRaw) { $cDetail = $cRaw | ConvertFrom-Json }
+            if ($cDetail -and $cDetail.PSObject.Properties['commit']) {
+                $c = $cDetail.commit
+                $cAuthor = "N/A"; $cDate = "N/A"; $cMsg = "N/A"
+                if ($c.PSObject.Properties['author'] -and $c.author) {
+                    if ($c.author.PSObject.Properties['name'] -and $c.author.name) { $cAuthor = $c.author.name }
+                    if ($c.author.PSObject.Properties['date'] -and $c.author.date) { $cDate = ([datetime]$c.author.date).ToString("yyyy-MM-dd") }
+                }
+                if ($c.PSObject.Properties['message'] -and $c.message) { $cMsg = ($c.message -split "`n")[0] }
+                $refMeta[$bName] = @{
+                    Hash   = $bSha.Substring(0, [Math]::Min(12, $bSha.Length))
+                    Author = $cAuthor
+                    Date   = $cDate
+                    Msg    = $cMsg
+                }
             }
         }
 
-        $branchCsvRows    = @()
+        # ── 4f. Commit counts via GraphQL (batched, up to 50 branches per query) ──
+        Write-Host "  Fetching commit counts via GraphQL..."
+        $commitCounts = @{}
+        $batchSize = 50
+        for ($i = 0; $i -lt $branches.Count; $i += $batchSize) {
+            $slice = $branches[$i..[Math]::Min($i + $batchSize - 1, $branches.Count - 1)]
+            $aliases = @()
+            $idx = 0
+            foreach ($bn in $slice) {
+                $alias = "b$idx"
+                $qualName = "refs/heads/$bn"
+                $aliases += "  $alias`: ref(qualifiedName: \`"$qualName\`") { target { ... on Commit { history { totalCount } } } }"
+                $idx++
+            }
+            $gqlQuery = "{ repository(owner: \`"$GHOrg\`", name: \`"$GHRepo\`") {`n" + ($aliases -join "`n") + "`n} }"
+            $gqlRaw = gh api graphql -f query="$gqlQuery" 2>$null
+            $gqlResult = $null
+            if ($gqlRaw) { $gqlResult = $gqlRaw | ConvertFrom-Json }
+
+            if ($gqlResult -and $gqlResult.PSObject.Properties['data']) {
+                $gqlData = $gqlResult.data
+                if ($gqlData.PSObject.Properties['repository']) {
+                    $gqlRepo = $gqlData.repository
+                    $idx = 0
+                    foreach ($bn in $slice) {
+                        $alias = "b$idx"
+                        if ($gqlRepo.PSObject.Properties[$alias]) {
+                            $refData = $gqlRepo.$alias
+                            if ($refData -and $refData.PSObject.Properties['target']) {
+                                $tgt = $refData.target
+                                if ($tgt -and $tgt.PSObject.Properties['history']) {
+                                    $commitCounts[$bn] = $tgt.history.totalCount
+                                }
+                            }
+                        }
+                        $idx++
+                    }
+                }
+            }
+        }
+
+        # Total commits = default branch count (most meaningful; --all double-counts shared commits)
+        $totalCommits = if ($commitCounts.ContainsKey($defaultBranch)) { "$($commitCounts[$defaultBranch])" } else { "N/A" }
+        Write-Host "  Total commits (default branch): $totalCommits"
+
+        # ── 4g. Repo size from API ────────────────────────────────────────
+        $repoSizeInfo = "size: $($repoInfo.size) KB"
+        $repoSizeInfo | Out-File "$auditDir\gh-repo-size.txt" -Encoding utf8
+
+        # ── 4h. File listing via Trees API (default branch only) ──────────
+        Write-Host "  Fetching file tree for default branch..."
         $csvFolderFile    = "$auditDir\gh-folder-wise-files.csv"
         $csvFolderSummary = "$auditDir\gh-folder-summary.csv"
         $folderFileRows   = [System.Collections.Generic.List[PSCustomObject]]::new()
         $folderSummRows   = [System.Collections.Generic.List[PSCustomObject]]::new()
-        $bIdx = 0
 
-        foreach ($branch in $branches) {
-            $b = $branch.Trim(); if ($b -eq "") { continue }
-            $bIdx++
-            Write-Host "  [$bIdx/$branchCount] $b"
+        $defaultSha = if ($defaultBranchObj) { $defaultBranchObj.commit.sha } else { $null }
+        $bFileCount   = 0
+        $bFolderCount = 0
 
-            if ($b -eq $defaultBranch) {
-                $bFiles     = git ls-tree -r --name-only $b 2>$null
-                $bFileCount = if ($bFiles) { ($bFiles | Measure-Object).Count } else { 0 }
+        if ($defaultSha) {
+            $treeRaw = gh api "repos/$GHOrg/$GHRepo/git/trees/${defaultSha}?recursive=1" 2>$null
+            $treeData = $null
+            if ($treeRaw) { $treeData = $treeRaw | ConvertFrom-Json }
+            if ($treeData -and $treeData.PSObject.Properties['tree']) {
+                $blobEntries = @($treeData.tree | Where-Object { $_.type -eq "blob" })
+                $bFileCount  = $blobEntries.Count
 
-                if ($bFileCount -gt 50000) {
+                $isTruncated = $false
+                if ($treeData.PSObject.Properties['truncated']) { $isTruncated = $treeData.truncated }
+
+                if ($isTruncated) {
+                    Write-Host "    WARNING: Tree truncated (100K+ files) — skipping folder enumeration"
+                    $bFolderCount = "100K+ (API limit)"
+                }
+                elseif ($bFileCount -gt 50000) {
+                    Write-Host "    WARNING: $bFileCount files exceeds 50K cap — skipping folder enumeration"
                     $bFolderCount = "50K+ (skipped)"
                 }
                 else {
                     $filesByFolder = [ordered]@{}
-                    if ($bFiles) {
-                        foreach ($f in $bFiles) {
-                            $folder = (Split-Path $f -Parent) -replace '\\','/'
-                            if (-not $folder) { $folder = "(root)" }
-                            if (-not $filesByFolder.Contains($folder)) { $filesByFolder[$folder] = @() }
-                            $filesByFolder[$folder] += Split-Path $f -Leaf
-                        }
+                    foreach ($entry in $blobEntries) {
+                        $f = $entry.path
+                        $folder = (Split-Path $f -Parent) -replace '\\','/'
+                        if (-not $folder) { $folder = "(root)" }
+                        if (-not $filesByFolder.Contains($folder)) { $filesByFolder[$folder] = @() }
+                        $filesByFolder[$folder] += Split-Path $f -Leaf
                     }
                     $bFolderCount = $filesByFolder.Keys.Count
 
                     # Write per-branch Markdown file listing
-                    $safeBranch   = $b -replace '[/\\]','--'
-                    $branchFileMd = "# Files in branch: $b`n`n"
+                    $safeBranch   = $defaultBranch -replace '[/\\]','--'
+                    $branchFileMd = "# Files in branch: $defaultBranch`n`n"
                     foreach ($folder in ($filesByFolder.Keys | Sort-Object)) {
                         $branchFileMd += "## $folder/`n"
                         foreach ($file in ($filesByFolder[$folder] | Sort-Object)) { $branchFileMd += "- $file`n" }
@@ -372,39 +448,49 @@ else {
                     $folderSummaryMd += "| **Total** | **$folderTotal** |`n"
                     $folderSummaryMd | Out-File "$auditDir\gh-folder-summary-default.md" -Encoding utf8
 
-                    # Batch-collect folder CSV rows (single write at end — avoids N disk I/O ops)
+                    # Batch-collect folder CSV rows (single write at end)
                     foreach ($folder in $filesByFolder.Keys) {
-                        $folderSummRows.Add([PSCustomObject]@{ Branch=$b; Folder=$folder; FileCount=$filesByFolder[$folder].Count })
+                        $folderSummRows.Add([PSCustomObject]@{ Branch=$defaultBranch; Folder=$folder; FileCount=$filesByFolder[$folder].Count })
                         foreach ($file in $filesByFolder[$folder]) {
-                            $folderFileRows.Add([PSCustomObject]@{ Branch=$b; Folder=$folder; FileName=$file })
+                            $folderFileRows.Add([PSCustomObject]@{ Branch=$defaultBranch; Folder=$folder; FileName=$file })
                         }
                     }
-                    $bFiles = $null; $filesByFolder = $null
+                    $filesByFolder = $null
                 }
+                $blobEntries = $null
             }
-            else { $bFileCount = "-"; $bFolderCount = "-" }
+        }
+
+        # ── 4i. Build branch CSV rows ─────────────────────────────────────
+        $branchCsvRows = @()
+        $bIdx = 0
+        foreach ($b in $branches) {
+            $bIdx++
+            Write-Host "  [$bIdx/$branchCount] $b"
 
             $m = if ($refMeta.ContainsKey($b)) { $refMeta[$b] } else { @{ Hash="N/A"; Author="N/A"; Date="N/A"; Msg="N/A" } }
-            $branchCsvRows += [PSCustomObject]@{
-                Branch       = $b
-                Status       = "Migrated"
-                Files        = $bFileCount
-                Folders      = $bFolderCount
-                LatestHash   = $m.Hash
-                LatestAuthor = $m.Author
-                LatestDate   = $m.Date
-                LatestMsg    = $m.Msg
+
+            if ($b -eq $defaultBranch) {
+                $branchCsvRows += [PSCustomObject]@{
+                    Branch=$b; Status="Migrated"; Files=$bFileCount; Folders=$bFolderCount
+                    LatestHash=$m.Hash; LatestAuthor=$m.Author; LatestDate=$m.Date; LatestMsg=$m.Msg
+                }
+            } else {
+                $branchCsvRows += [PSCustomObject]@{
+                    Branch=$b; Status="Migrated"; Files="-"; Folders="-"
+                    LatestHash=$m.Hash; LatestAuthor=$m.Author; LatestDate=$m.Date; LatestMsg=$m.Msg
+                }
             }
         }
         $branchCsvRows | Export-Csv "$auditDir\gh-branch-wise-data.csv" -NoTypeInformation -Encoding utf8
 
-        # Write folder CSVs in one batch (instead of per-file appends)
+        # Write folder CSVs in one batch
         if ($folderSummRows.Count -gt 0) { $folderSummRows | Export-Csv -Path $csvFolderSummary -NoTypeInformation -Encoding utf8 -Force }
         if ($folderFileRows.Count -gt 0) { $folderFileRows | Export-Csv -Path $csvFolderFile    -NoTypeInformation -Encoding utf8 -Force }
         Write-Host "  Folder CSVs: $($folderFileRows.Count) file rows, $($folderSummRows.Count) folder rows"
         $folderFileRows = $null; $folderSummRows = $null
 
-        # Top 5 key branches with commit counts
+        # ── 4j. Top 5 key branches with commit counts (from GraphQL data) ─
         $topBranches = $branchCsvRows | Sort-Object {
             $bn = $_.Branch
             if     ($bn -eq $defaultBranch)          { 0 }
@@ -416,14 +502,11 @@ else {
 
         $topRows = @()
         foreach ($tb in $topBranches) {
-            $cnt   = (git rev-list --count $tb.Branch 2>$null); if ($cnt) { $cnt = $cnt.Trim() } else { $cnt = "0" }
+            $cnt   = if ($commitCounts.ContainsKey($tb.Branch)) { $commitCounts[$tb.Branch] } else { 0 }
             $isDef = if ($tb.Branch -eq $defaultBranch) { "Yes" } else { "No" }
             $topRows += [PSCustomObject]@{ Branch=$tb.Branch; Commits=("{0:N0}" -f [long]$cnt); IsDefault=$isDef }
         }
         $topRows | Export-Csv "$auditDir\gh-top-branches.csv" -NoTypeInformation -Encoding utf8
-
-        Pop-Location
-        Remove-Item $cloneDir -Recurse -Force -ErrorAction SilentlyContinue
 
         # PR audit via GitHub API
         $allPRs = @(); $page = 1
@@ -490,24 +573,14 @@ else {
         $totalClosed  | Out-File "$auditDir\gh-pr-closed.txt"     -Encoding utf8
         $latestHash   | Out-File "$auditDir\gh-latest-hash.txt"   -Encoding utf8
 
-        # ── Repo size from GitHub API (merged here to avoid separate Step 6) ──────
+        # ── Repo size from GitHub API ─────────────────────────────────────
         $actualSize = "N/A"
-        $ErrorActionPreference = 'SilentlyContinue'
-        $rawSize = gh api "repos/$GHOrg/$GHRepo" --jq '.size' 2>$null
-        $ErrorActionPreference = 'Stop'
-        if ($rawSize -and $rawSize -match '^\d+$' -and [long]$rawSize -gt 0) {
-            $sizeKB = [long]$rawSize
+        $rawSizeKB = $repoInfo.size
+        if ($rawSizeKB -and [long]$rawSizeKB -gt 0) {
+            $sizeKB = [long]$rawSizeKB
             if     ($sizeKB -ge 1048576) { $actualSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
             elseif ($sizeKB -ge 1024)    { $actualSize = "{0:N2} MB" -f ($sizeKB / 1024) }
             else                         { $actualSize = "$sizeKB KB" }
-        }
-        # Fallback: size-pack from blobless clone metadata
-        if ($actualSize -eq "N/A") {
-            $repoSizeFile = "$auditDir\gh-repo-size.txt"
-            if (Test-Path $repoSizeFile) {
-                $sizePack = (Get-Content $repoSizeFile | Where-Object { $_ -match '^size-pack:' }) -replace 'size-pack:\s*',''
-                if ($sizePack) { $actualSize = $sizePack.Trim() }
-            }
         }
         $actualSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
 
