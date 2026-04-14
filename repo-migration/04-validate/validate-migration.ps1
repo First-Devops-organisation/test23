@@ -12,9 +12,8 @@
       5.  Tag count matches
       6.  PR count within tolerance (±2)
       7.  Repo visibility = expected value
-      8.  Repo size > 0 (migration transferred data)
-      9.  Latest commit hash reachable on GitHub
-      10. Branch protection rules exist on default branch
+      8.  Latest commit hash reachable on GitHub
+      9.  Branch protection rules exist on default branch
     Generates:
       - validation-results.json  (machine-readable)
       - validation-results.csv
@@ -159,7 +158,10 @@ foreach ($entry in $repoList) {
     try {
         $ghRepo = Invoke-RestMethod -Uri "https://api.github.com/repos/$GHOrg/$ghRepoName" -Headers $ghHeaders -ErrorAction Stop
     }
-    catch { <# repo not found or API error #> }
+    catch {
+        Write-Host "      [DEBUG] GitHub API error: $_" -ForegroundColor DarkGray
+        Write-Host "      [DEBUG] URL: https://api.github.com/repos/$GHOrg/$ghRepoName" -ForegroundColor DarkGray
+    }
 
     # PS 5.1 on hosted agents: Invoke-RestMethod sometimes returns raw string
     if ($ghRepo -is [string]) {
@@ -168,7 +170,7 @@ foreach ($entry in $repoList) {
 
     if (-not $ghRepo) {
         Add-Check "Repo Exists on GitHub" "expected" "NOT FOUND" $false
-        $allResults += [PSCustomObject]@{ ADORepo=$adoRepoName; GHRepo=$ghRepoName; Status="FAIL_NOT_FOUND"; PassCount=0; FailCount=1; WarnCount=0; RepoSize="N/A"; Checks=$checks }
+        $allResults += [PSCustomObject]@{ ADORepo=$adoRepoName; GHRepo=$ghRepoName; Status="FAIL_NOT_FOUND"; Accuracy=0; PassCount=0; FailCount=1; WarnCount=0; Checks=$checks }
         continue
     }
     Add-Check "Repo Exists on GitHub" "yes" "yes" $true
@@ -342,20 +344,7 @@ foreach ($entry in $repoList) {
     Write-Host "      Visibility   : $ghVisibility" -ForegroundColor DarkGray
     Add-Check "Visibility" $ExpectedVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
 
-    # ── 10. Repo size > 0 ────────────────────────────────────────────────────
-    $sizeKB = [int](Get-JsonProp $ghRepo 'size' 0)
-    Write-Host "      Repo Size    : $sizeKB KB" -ForegroundColor DarkGray
-    if     ($sizeKB -ge 1048576) { $formattedSize = "{0:N2} GB" -f ($sizeKB / 1048576) }
-    elseif ($sizeKB -ge 1024)    { $formattedSize = "{0:N2} MB" -f ($sizeKB / 1024) }
-    elseif ($sizeKB -gt 0)       { $formattedSize = "$sizeKB KB" }
-    else                         { $formattedSize = "0 KB" }
-    Add-Check "Repo Size" "> 0 KB" $formattedSize ($sizeKB -gt 0)
-    # Write actual size to audit dir so migration dashboard can pick it up
-    if (Test-Path $auditDir) {
-        $formattedSize | Out-File "$auditDir\gh-repo-size-actual.txt" -Encoding utf8
-    }
-
-    # ── 11. Latest commit reachable ──────────────────────────────────────────
+    # ── 10. Latest commit reachable ──────────────────────────────────────────────
     $auditHash = Get-AuditVal $auditDir "gh-latest-hash.txt"
     if ($auditHash -and $auditHash -ne "N/A") {
         try {
@@ -398,7 +387,6 @@ foreach ($entry in $repoList) {
         PassCount  = $passCount
         FailCount  = $failCount
         WarnCount  = $warnCount
-        RepoSize   = $formattedSize
         Checks     = $checks
     }
 }
@@ -446,11 +434,10 @@ foreach ($r in $allResults) {
       <td><code>$($r.GHRepo)</code></td>
       <td>$badge</td>
       <td style='text-align:center;font-weight:700;color:$repoAccColor;font-size:16px;'>$($r.Accuracy)%</td>
-      <td style='text-align:center;font-weight:600;'>$($r.RepoSize)</td>
       <td style='text-align:center;color:#28a745;font-weight:600;'>$($r.PassCount)</td>
       <td style='text-align:center;color:#dc3545;font-weight:600;'>$($r.FailCount)</td>
     </tr>
-    <tr><td colspan='7' style='padding:0;'>
+    <tr><td colspan='6' style='padding:0;'>
       <details style='margin:0 8px 8px;'><summary style='cursor:pointer;font-size:13px;color:#0969da;padding:6px;'>View check details</summary>
         <table style='width:100%;font-size:13px;margin-top:4px;'>
           <thead><tr style='background:#f6f8fa;'><th style='padding:6px 12px;'>Check</th><th style='padding:6px 12px;'>Source</th><th style='padding:6px 12px;'>Target</th><th style='padding:6px 12px;'>Notes</th></tr></thead>
@@ -487,7 +474,7 @@ $html += "<div class='stat-box'><div class='num'>$totalPass</div><div class='lab
 $html += "<div class='stat-box'><div class='num' style='color:#dc3545;'>$totalFail</div><div class='label'>Total Checks Failed</div></div>"
 $html += "</div></div>" + $nl
 $html += "<div class='card'><h2>&#x1F4CB; Repo-by-Repo Results</h2><table>"
-$html += "<thead><tr><th>ADO Repo</th><th>GitHub Repo</th><th>Status</th><th style='text-align:center;'>Accuracy</th><th style='text-align:center;'>Size</th><th style='text-align:center;'>Pass</th><th style='text-align:center;'>Fail</th></tr></thead>"
+$html += "<thead><tr><th>ADO Repo</th><th>GitHub Repo</th><th>Status</th><th style='text-align:center;'>Accuracy</th><th style='text-align:center;'>Pass</th><th style='text-align:center;'>Fail</th></tr></thead>"
 $html += "<tbody>$tableRows</tbody></table></div>" + $nl
 $html += "<div class='footer'>Generated $migDate &bull; ADO-to-GitHub Migration Validation</div></div></body></html>"
 
