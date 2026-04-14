@@ -332,7 +332,7 @@ $flatRows | Export-Csv $csvPath -NoTypeInformation -Encoding utf8
 $migDate    = Get-Date -Format 'dd MMM yyyy · HH:mm'
 $totalRepos = $allResults.Count
 $passRepos  = @($allResults | Where-Object { $_.Status -eq "PASS" }).Count
-$failRepos  = @($allResults | Where-Object { $_.Status -eq "FAIL" }).Count
+$failRepos  = @($allResults | Where-Object { $_.Status -ne "PASS" }).Count
 
 $tableRows = ""
 foreach ($r in $allResults) {
@@ -405,7 +405,7 @@ $md += "| ✅ PASS | $passRepos |`n"
 $md += "| ❌ FAIL | $failRepos |`n`n"
 if ($failRepos -gt 0) {
     $md += "## Failed Repos`n`n"
-    $allResults | Where-Object { $_.Status -eq "FAIL" } | ForEach-Object {
+    $allResults | Where-Object { $_.Status -ne "PASS" } | ForEach-Object {
         $md += "### ``$($_.GHRepo)```n`n"
         $_.Checks | Where-Object { $_.Status -eq "FAIL" } | ForEach-Object {
             $md += "- ❌ **$($_.Check)** — Source: ``$($_.Source)`` Target: ``$($_.Target)`` $($_.Detail)`n"
@@ -432,7 +432,7 @@ Write-Host "  Summary : $mdPath"
 
 if ($failRepos -gt 0) {
     Write-Host "`nFailed repos:" -ForegroundColor Red
-    $allResults | Where-Object { $_.Status -eq "FAIL" } | ForEach-Object {
+    $allResults | Where-Object { $_.Status -ne "PASS" } | ForEach-Object {
         Write-Host "  - $($_.GHRepo)" -ForegroundColor Red
     }
     exit 1
