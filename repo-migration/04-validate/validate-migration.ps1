@@ -241,9 +241,13 @@ foreach ($entry in $repoList) {
     }
 
     try {
-        $prRaw      = Invoke-WebRequest -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=all&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
-        $prResp     = $prRaw.Content | ConvertFrom-Json
-        $adoPrCount = [int](Get-JsonProp $prResp 'count' 0)
+        # Count only completed + active PRs (GEI does not migrate abandoned PRs)
+        $adoPrCount = 0
+        foreach ($prStatus in @('completed','active')) {
+            $prRaw  = Invoke-WebRequest -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=$prStatus&`$top=1&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+            $prResp = $prRaw.Content | ConvertFrom-Json
+            $adoPrCount += [int](Get-JsonProp $prResp 'count' 0)
+        }
     }
     catch { Add-Warn "ADO PR API" "Cannot fetch ADO PR count: $_" }
 
