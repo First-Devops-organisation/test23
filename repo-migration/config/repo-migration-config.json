@@ -23,7 +23,7 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "NodeJS",
-         "gcc"
+         "sample_maven_app"
         
       ]
     }
