@@ -728,7 +728,7 @@ stages:
               tabName: "Validation Report"
 
           - task: PowerShell@2
-            displayName: "Flatten Migration Dashboards for HTML Tab"
+            displayName: "Prepare Migration Report for HTML Tab"
             condition: always()
             inputs:
               targetType: inline
@@ -736,19 +736,43 @@ stages:
                 $src = "$(Build.SourcesDirectory)\repo-migration\output\dashboard"
                 $dst = "$(Build.SourcesDirectory)\repo-migration\output\dashboard-flat"
                 New-Item -ItemType Directory -Path $dst -Force | Out-Null
+
                 Write-Host "Source directory: $src"
                 Write-Host "Source exists: $(Test-Path $src)"
+
+                $htmlFiles = @()
                 if (Test-Path $src) {
                     Write-Host "Source contents:"
                     Get-ChildItem -Path $src -Recurse | ForEach-Object { Write-Host "  $($_.FullName)" }
-                    Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue | ForEach-Object {
-                        Copy-Item $_.FullName -Destination $dst -Force
-                        Write-Host "  Copied: $($_.Name)"
-                    }
+                    $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
                 }
-                $count = (Get-ChildItem $dst -Filter "*.html" -ErrorAction SilentlyContinue).Count
-                Write-Host "Total HTML files copied: $count"
-                if ($count -eq 0) { Write-Warning "No migration HTML files found to display" }
+
+                Write-Host "HTML files found: $($htmlFiles.Count)"
+
+                if ($htmlFiles.Count -eq 1) {
+                    # Single file — copy as index.html
+                    Copy-Item $htmlFiles[0].FullName -Destination "$dst\index.html" -Force
+                    Write-Host "  Copied $($htmlFiles[0].Name) as index.html"
+                }
+                elseif ($htmlFiles.Count -gt 1) {
+                    # Multiple files — merge into single index.html
+                    $combined = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>"
+                    foreach ($f in $htmlFiles) {
+                        $content = Get-Content $f.FullName -Raw -Encoding utf8
+                        # Strip outer html/head/body tags to combine
+                        $content = $content -replace '<!DOCTYPE[^>]*>', '' -replace '</?html[^>]*>', '' -replace '<head>.*?</head>', '' -replace '</?body[^>]*>', ''
+                        $combined += "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>"
+                        Write-Host "  Merged: $($f.Name)"
+                    }
+                    $combined += "</body></html>"
+                    $combined | Out-File "$dst\index.html" -Encoding utf8
+                    Write-Host "  Created merged index.html"
+                }
+                else {
+                    Write-Warning "No migration HTML files found to display"
+                    # Create placeholder
+                    "<html><body><h2>No migration reports available</h2><p>Migration dashboard HTML was not generated or artifacts were not downloaded.</p></body></html>" | Out-File "$dst\index.html" -Encoding utf8
+                }
               pwsh: true
 
           - task: PublishHtmlReport@1
