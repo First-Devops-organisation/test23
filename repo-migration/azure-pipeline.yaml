@@ -356,7 +356,7 @@ stages:
             displayName: "Show HTML on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)\migration-report-$(RESOLVED_REPO).html'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)'
               tabName: "Migration Report"
 
   # ===========================================================================
@@ -559,10 +559,28 @@ stages:
               artifact: "BatchMigrationReports"
               path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
 
+          # Download migration dashboards for HTML tab
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Migration Dashboard (Single)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Single')
+            continueOnError: true
+            inputs:
+              artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Migration Dashboards (Batch)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationDashboards"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+
           # Single mode — validate one repo
           - task: PowerShell@2
             displayName: "4.1 Validate Single Repo"
             condition: eq('${{ parameters.MigrationMode }}', 'Single')
+            continueOnError: true
             inputs:
               targetType: inline
               script: |
@@ -587,6 +605,7 @@ stages:
           - task: PowerShell@2
             displayName: "4.1 Validate Batch Repos"
             condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1'
               arguments: >-
@@ -613,8 +632,32 @@ stages:
             displayName: "Show Validation Report on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\validation-report.html'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports'
               tabName: "Validation Report"
+
+          - task: PowerShell@2
+            displayName: "Flatten Migration Dashboards for HTML Tab"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                $src = "$(Build.SourcesDirectory)\repo-migration\output\dashboard"
+                $dst = "$(Build.SourcesDirectory)\repo-migration\output\dashboard-flat"
+                New-Item -ItemType Directory -Path $dst -Force | Out-Null
+                Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue | ForEach-Object {
+                    Copy-Item $_.FullName -Destination $dst -Force
+                    Write-Host "  Copied: $($_.Name)"
+                }
+                $count = (Get-ChildItem $dst -Filter "*.html" -ErrorAction SilentlyContinue).Count
+                Write-Host "Total HTML files: $count"
+              pwsh: true
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Migration Report on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard-flat'
+              tabName: "Migration Report"
 
           - task: PowerShell@2
             displayName: "Publish Validation Summary to ADO Tab"
