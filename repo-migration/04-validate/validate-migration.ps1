@@ -184,10 +184,9 @@ foreach ($entry in $repoList) {
     $adoDefault  = ""
 
     try {
-        $adoRepo = Invoke-RestMethod -Uri "${adoRepoUrl}?api-version=7.1" -Headers $adoHeaders
-        if ($adoRepo -is [string]) {
-            try { $adoRepo = $adoRepo | ConvertFrom-Json } catch { $adoRepo = $null }
-        }
+        $resp = Invoke-WebRequest -Uri "${adoRepoUrl}?api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+        Write-Host "      [DEBUG] ADO repo API status=$($resp.StatusCode) length=$($resp.Content.Length)" -ForegroundColor DarkGray
+        $adoRepo = $resp.Content | ConvertFrom-Json
         if ($adoRepo) {
             $rawDefault = Get-JsonProp $adoRepo 'defaultBranch' $null
             Write-Host "      [DEBUG] ADO defaultBranch raw=[$rawDefault]" -ForegroundColor DarkGray
@@ -197,6 +196,7 @@ foreach ($entry in $repoList) {
         }
     }
     catch {
+        Write-Host "      [DEBUG] ADO repo fetch error: $_" -ForegroundColor Red
         Add-Warn "ADO API Access" "Cannot fetch ADO repo metadata: $_"
     }
 
@@ -204,16 +204,26 @@ foreach ($entry in $repoList) {
         $adoBranches = @()
         $skip = 0
         do {
-            $brResp = Invoke-RestMethod -Uri "$adoRepoUrl/refs?filter=heads/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders
-            $batch  = @($brResp.value)
+            $brResp = Invoke-WebRequest -Uri "$adoRepoUrl/refs?filter=heads/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+            $brJson = $brResp.Content | ConvertFrom-Json
+            $batch  = @($brJson.value)
             $adoBranches += $batch | ForEach-Object { $_.name -replace '^refs/heads/', '' }
             $skip += $batch.Count
         } while ($batch.Count -eq 1000)
     }
     catch { Add-Warn "ADO Branch API" "Cannot fetch ADO branches: $_" }
 
+    # Fallback: if ADO default branch is empty, infer from branch list
+    if (-not $adoDefault -and $adoBranches.Count -gt 0) {
+        if ($adoBranches -contains 'main')   { $adoDefault = 'main' }
+        elseif ($adoBranches -contains 'master') { $adoDefault = 'master' }
+        else { $adoDefault = $adoBranches[0] }
+        Write-Host "      [DEBUG] ADO defaultBranch inferred from branches=[$adoDefault]" -ForegroundColor DarkGray
+    }
+
     try {
-        $prResp     = Invoke-RestMethod -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=all&api-version=7.1" -Headers $adoHeaders
+        $prRaw      = Invoke-WebRequest -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=all&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+        $prResp     = $prRaw.Content | ConvertFrom-Json
         $adoPrCount = [int](Get-JsonProp $prResp 'count' 0)
     }
     catch { Add-Warn "ADO PR API" "Cannot fetch ADO PR count: $_" }
@@ -222,7 +232,8 @@ foreach ($entry in $repoList) {
         $adoTags = @()
         $skip = 0
         do {
-            $tagResp = Invoke-RestMethod -Uri "$adoRepoUrl/refs?filter=tags/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders
+            $tagRaw  = Invoke-WebRequest -Uri "$adoRepoUrl/refs?filter=tags/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+            $tagResp = $tagRaw.Content | ConvertFrom-Json
             $batch   = @($tagResp.value)
             $adoTags += $batch
             $skip += $batch.Count
@@ -251,21 +262,26 @@ foreach ($entry in $repoList) {
     if ($sourceBranchCount -eq 0 -and $auditBranchCount) { $sourceBranchCount = [int]$auditBranchCount }
     $branchDetail = ""
     if ($adoBranches.Count -gt 0 -or $ghBranches.Count -gt 0) {
-        $branchDetail = "ADO: [$(($adoBranches | Sort-Object) -join ', ')] | GH: [$(($ghBranches | Sort-Object) -join ', ')]"
+        $branchDetail = "ADO=$($adoBranches.Count) GH=$($ghBranches.Count)"
     }
     # GEI may create a few extra branches from PR head refs — allow tolerance for large repos
     $branchTolerance = if ($sourceBranchCount -gt 100) { [math]::Ceiling($sourceBranchCount * 0.01) } else { 0 }
     $branchMatch = [math]::Abs($sourceBranchCount - $ghBranchCount) -le $branchTolerance
     Add-Check "Branch Count" $sourceBranchCount $ghBranchCount $branchMatch $branchDetail
 
-    # ── List branch names ─────────────────────────────────────────────────
+    # ── List branch names (truncate for large repos) ────────────────────────
+    $maxShow = 20
     if ($adoBranches.Count -gt 0) {
-        $adoBranchList = ($adoBranches | Sort-Object) -join ', '
-        Write-Host "      ADO Branches : $adoBranchList" -ForegroundColor DarkGray
+        $sorted = $adoBranches | Sort-Object
+        $shown  = ($sorted | Select-Object -First $maxShow) -join ', '
+        $more   = if ($adoBranches.Count -gt $maxShow) { " ... and $($adoBranches.Count - $maxShow) more" } else { "" }
+        Write-Host "      ADO Branches ($($adoBranches.Count)): $shown$more" -ForegroundColor DarkGray
     }
     if ($ghBranches.Count -gt 0) {
-        $ghBranchList = ($ghBranches | Sort-Object) -join ', '
-        Write-Host "      GH  Branches : $ghBranchList" -ForegroundColor DarkGray
+        $sorted = $ghBranches | Sort-Object
+        $shown  = ($sorted | Select-Object -First $maxShow) -join ', '
+        $more   = if ($ghBranches.Count -gt $maxShow) { " ... and $($ghBranches.Count - $maxShow) more" } else { "" }
+        Write-Host "      GH  Branches ($($ghBranches.Count)): $shown$more" -ForegroundColor DarkGray
     }
 
     # ── 5. Missing branches ──────────────────────────────────────────────────
@@ -273,13 +289,17 @@ foreach ($entry in $repoList) {
         $missing = @($adoBranches | Where-Object { $_ -notin $ghBranches })
         $extra   = @($ghBranches  | Where-Object { $_ -notin $adoBranches })
         if ($missing.Count -gt 0) {
-            Add-Check "No Missing Branches" $adoBranches.Count "missing: $($missing -join ', ')" $false "Branches in ADO not found in GitHub"
+            $missingShown = ($missing | Select-Object -First 10) -join ', '
+            $missingMore  = if ($missing.Count -gt 10) { " ... and $($missing.Count - 10) more" } else { "" }
+            Add-Check "No Missing Branches" $adoBranches.Count "$($missing.Count) missing" $false "$missingShown$missingMore"
         }
         else {
             Add-Check "No Missing Branches" "all present" "all present" $true
         }
         if ($extra.Count -gt 0) {
-            Write-Host "      Extra in GH  : $($extra -join ', ')" -ForegroundColor DarkGray
+            $extraShown = ($extra | Select-Object -First 10) -join ', '
+            $extraMore  = if ($extra.Count -gt 10) { " ... and $($extra.Count - 10) more" } else { "" }
+            Write-Host "      Extra in GH ($($extra.Count)): $extraShown$extraMore" -ForegroundColor DarkGray
         }
     }
 
@@ -317,17 +337,27 @@ foreach ($entry in $repoList) {
     $adoTagCount = $adoTagNames.Count
     $ghTagCount  = $ghTagNames.Count
 
-    # List tag names
+    # List tag names (truncate for large repos)
     if ($adoTagNames.Count -gt 0) {
-        Write-Host "      ADO Tags     : $(($adoTagNames | Sort-Object) -join ', ')" -ForegroundColor DarkGray
+        $sorted = $adoTagNames | Sort-Object
+        $shown  = ($sorted | Select-Object -First $maxShow) -join ', '
+        $more   = if ($adoTagNames.Count -gt $maxShow) { " ... and $($adoTagNames.Count - $maxShow) more" } else { "" }
+        Write-Host "      ADO Tags ($($adoTagNames.Count)): $shown$more" -ForegroundColor DarkGray
     }
     if ($ghTagNames.Count -gt 0) {
-        Write-Host "      GH  Tags     : $(($ghTagNames | Sort-Object) -join ', ')" -ForegroundColor DarkGray
+        $sorted = $ghTagNames | Sort-Object
+        $shown  = ($sorted | Select-Object -First $maxShow) -join ', '
+        $more   = if ($ghTagNames.Count -gt $maxShow) { " ... and $($ghTagNames.Count - $maxShow) more" } else { "" }
+        Write-Host "      GH  Tags ($($ghTagNames.Count)): $shown$more" -ForegroundColor DarkGray
     }
 
     if ($adoTagCount -gt 0) {
         $missingTags = @($adoTagNames | Where-Object { $_ -notin $ghTagNames })
-        $tagDetail   = if ($missingTags.Count -gt 0) { "Missing: $($missingTags -join ', ')" } else { "" }
+        if ($missingTags.Count -gt 0) {
+            $mShown = ($missingTags | Select-Object -First 10) -join ', '
+            $mMore  = if ($missingTags.Count -gt 10) { " ... and $($missingTags.Count - 10) more" } else { "" }
+            $tagDetail = "$($missingTags.Count) missing: $mShown$mMore"
+        } else { $tagDetail = "" }
         Add-Check "Tag Count" $adoTagCount $ghTagCount ($adoTagCount -eq $ghTagCount) $tagDetail
     }
     else {
