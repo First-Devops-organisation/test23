@@ -680,7 +680,7 @@ stages:
                 $adoRepo = '${{ parameters.ADORepo }}'.Trim()
                 $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
                 if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
-                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
+                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validation-batch.ps1' `
                     -ADOOrg     '$(ADO_ORG)' `
                     -ADOProject '$(ADO_PROJECT)' `
                     -GHOrg      '$(GH_ORG)' `
@@ -702,7 +702,7 @@ stages:
             inputs:
               targetType: inline
               script: |
-                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
+                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validation-batch.ps1' `
                     -ADOOrg     '$(ADO_ORG)' `
                     -ADOProject '$(ADO_PROJECT)' `
                     -GHOrg      '$(GH_ORG)' `
