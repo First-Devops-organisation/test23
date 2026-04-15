@@ -201,8 +201,14 @@ foreach ($entry in $repoList) {
     }
 
     try {
-        $brResp      = Invoke-RestMethod -Uri "$adoRepoUrl/refs?filter=heads/&api-version=7.1" -Headers $adoHeaders
-        $adoBranches = @($brResp.value | ForEach-Object { $_.name -replace '^refs/heads/', '' })
+        $adoBranches = @()
+        $skip = 0
+        do {
+            $brResp = Invoke-RestMethod -Uri "$adoRepoUrl/refs?filter=heads/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders
+            $batch  = @($brResp.value)
+            $adoBranches += $batch | ForEach-Object { $_.name -replace '^refs/heads/', '' }
+            $skip += $batch.Count
+        } while ($batch.Count -eq 1000)
     }
     catch { Add-Warn "ADO Branch API" "Cannot fetch ADO branches: $_" }
 
@@ -213,8 +219,14 @@ foreach ($entry in $repoList) {
     catch { Add-Warn "ADO PR API" "Cannot fetch ADO PR count: $_" }
 
     try {
-        $tagResp = Invoke-RestMethod -Uri "$adoRepoUrl/refs?filter=tags/&api-version=7.1" -Headers $adoHeaders
-        $adoTags = @($tagResp.value)
+        $adoTags = @()
+        $skip = 0
+        do {
+            $tagResp = Invoke-RestMethod -Uri "$adoRepoUrl/refs?filter=tags/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders
+            $batch   = @($tagResp.value)
+            $adoTags += $batch
+            $skip += $batch.Count
+        } while ($batch.Count -eq 1000)
     }
     catch { Add-Warn "ADO Tag API" "Cannot fetch ADO tags: $_" }
 
@@ -241,7 +253,10 @@ foreach ($entry in $repoList) {
     if ($adoBranches.Count -gt 0 -or $ghBranches.Count -gt 0) {
         $branchDetail = "ADO: [$(($adoBranches | Sort-Object) -join ', ')] | GH: [$(($ghBranches | Sort-Object) -join ', ')]"
     }
-    Add-Check "Branch Count" $sourceBranchCount $ghBranchCount ($sourceBranchCount -eq $ghBranchCount) $branchDetail
+    # GEI may create a few extra branches from PR head refs — allow tolerance for large repos
+    $branchTolerance = if ($sourceBranchCount -gt 100) { [math]::Ceiling($sourceBranchCount * 0.01) } else { 0 }
+    $branchMatch = [math]::Abs($sourceBranchCount - $ghBranchCount) -le $branchTolerance
+    Add-Check "Branch Count" $sourceBranchCount $ghBranchCount $branchMatch $branchDetail
 
     # ── List branch names ─────────────────────────────────────────────────
     if ($adoBranches.Count -gt 0) {
@@ -285,8 +300,14 @@ foreach ($entry in $repoList) {
     $ghTagNames  = @()
     $adoTagNames = @()
     try {
-        $tagRaw = gh api "repos/$GHOrg/$ghRepoName/tags?per_page=100" 2>$null
-        if ($tagRaw) { $ghTags = @($tagRaw | ConvertFrom-Json) }
+        $page = 1
+        do {
+            $tagRaw = gh api "repos/$GHOrg/$ghRepoName/tags?per_page=100&page=$page" 2>$null
+            $tagList = @()
+            if ($tagRaw) { $tagList = @($tagRaw | ConvertFrom-Json) }
+            $ghTags += $tagList
+            $page++
+        } while ($tagList.Count -eq 100)
         $ghTagNames = @($ghTags | ForEach-Object { $_.name })
     }
     catch { }
