@@ -1,13 +1,19 @@
 <#
 .SYNOPSIS
     Migrates MULTIPLE repos from ADO to GitHub in batch using GEI (gh ado2gh).
+    Supports multi-agent parallel execution via BatchIndex/BatchTotal (matrix strategy).
     Calls migrate-single.ps1 for each repo — same audit + dashboard per repo.
 .DESCRIPTION
     Reads batch repo list from:
       - config/repo-migration-config.json  (batches[].repos)  OR
       - a CSV file passed via –RepoListCsv  (columns: ADORepo, GHRepo)
-    Runs up to –MaxParallel migrations concurrently via PowerShell jobs.
-    After all jobs finish, writes a combined batch-summary report.
+    Splits repos across agents using round-robin (BatchIndex/BatchTotal).
+    After all repos on this agent finish, writes a per-agent batch-summary report.
+
+    Use with ADO matrix strategy:
+      ParallelAgents=1 → BatchTotal=1, all repos on one agent (same as migrate-batch.ps1)
+      ParallelAgents=2 → BatchTotal=2, repos split across 2 agents
+      ParallelAgents=3 → BatchTotal=3, repos split across 3 agents
 .PARAMETER ADOOrg
     Azure DevOps organisation name
 .PARAMETER ADOProject
@@ -23,7 +29,11 @@
 .PARAMETER OutputDir
     Directory for all reports/logs/dashboards (default: ./output)
 .PARAMETER MaxParallel
-    Max concurrent migrations (default: 3 — stay within GEI throttle)
+    Max concurrent migrations per agent (default: 3 — stay within GEI throttle)
+.PARAMETER BatchIndex
+    Which agent this is (0-based). Used with matrix strategy. Default: 0
+.PARAMETER BatchTotal
+    Total number of agents. Set to 1 to disable splitting. Default: 1
 .PARAMETER SkipAudit
     Passed to migrate-single.ps1 — skips branch-wise audit for all repos
 .PARAMETER DryRun
@@ -39,6 +49,8 @@ param(
     [Parameter(Mandatory = $false)] [string]$RepoListCsv,
     [Parameter(Mandatory = $false)] [string]$OutputDir    = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)] [int]   $MaxParallel  = 3,
+    [Parameter(Mandatory = $false)] [int]   $BatchIndex   = 0,
+    [Parameter(Mandatory = $false)] [int]   $BatchTotal   = 1,
     [switch]$SkipAudit,
     [switch]$DryRun
 )
@@ -92,21 +104,40 @@ else {
 
 if ($repoList.Count -eq 0) { Write-Error "No repos found to migrate." }
 
+# ── Agent-level batch splitting (round-robin for matrix strategy) ─────────────
+$totalRepoCount = $repoList.Count
+if ($BatchTotal -gt 1) {
+    $myRepos = [System.Collections.Generic.List[hashtable]]::new()
+    for ($i = 0; $i -lt $repoList.Count; $i++) {
+        if ($i % $BatchTotal -eq $BatchIndex) { $myRepos.Add($repoList[$i]) }
+    }
+    $repoList = $myRepos
+    Write-Host "Agent $($BatchIndex + 1) of ${BatchTotal}: migrating $($repoList.Count) of $totalRepoCount repos" -ForegroundColor Cyan
+}
+
+if ($repoList.Count -eq 0) {
+    Write-Host "No repos assigned to this agent (batch index $BatchIndex). Exiting." -ForegroundColor Yellow
+    exit 0
+}
+
+# ── Suffix for per-agent output files ─────────────────────────────────────────
+$batchSuffix = if ($BatchTotal -gt 1) { "-agent$BatchIndex" } else { "" }
+
 # ── Output folder ─────────────────────────────────────────────────────────────
 $reportDir = "$OutputDir\reports"
 New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "  BATCH MIGRATION"
+Write-Host "  BATCH MIGRATION (PARALLEL)"
 Write-Host "  ADO:         $ADOOrg / $ADOProject"
 Write-Host "  GitHub:      $GHOrg"
-Write-Host "  Repos:       $($repoList.Count)"
-Write-Host "  MaxParallel: $MaxParallel"
+Write-Host "  Total repos: $totalRepoCount"
+Write-Host "  This agent:  $($repoList.Count) repos (agent $($BatchIndex + 1)/$BatchTotal)"
 Write-Host "  DryRun:      $DryRun"
 Write-Host "======================================================" -ForegroundColor Cyan
 
-# ── Run migrations sequentially (in-process) ─────────────────────────────────
+# ── Run migrations sequentially (in-process per agent) ────────────────────────
 # NOTE: Start-Job / Receive-Job was removed because gh CLI writes informational
 #       messages to stderr (e.g. "GH_TOKEN environment variable is being used")
 #       which PowerShell strict mode treats as terminating errors, causing
@@ -144,7 +175,7 @@ foreach ($entry in $repoList) {
     }
 }
 
-Write-Host "`nAll $($repoList.Count) repo(s) processed." -ForegroundColor Cyan
+Write-Host "`nAgent $($BatchIndex + 1): All $($repoList.Count) repo(s) processed." -ForegroundColor Cyan
 
 # ── Collect per-repo results into a batch summary ─────────────────────────────
 Write-Host "`nGenerating batch summary report..." -ForegroundColor Cyan
@@ -165,26 +196,27 @@ foreach ($entry in $repoList) {
     }
 
     $batchResults += [PSCustomObject]@{
-        ADORepo      = $adoRepo
-        GHRepo       = $ghRepo
-        State        = $state
-        Branches     = Get-Val2 $auditDir "gh-branch-count.txt"
-        Tags         = Get-Val2 $auditDir "gh-tag-count.txt"
-        Commits      = Get-Val2 $auditDir "gh-commit-count.txt"
-        PRs          = Get-Val2 $auditDir "gh-pr-count.txt"
+        ADORepo       = $adoRepo
+        GHRepo        = $ghRepo
+        State         = $state
+        Branches      = Get-Val2 $auditDir "gh-branch-count.txt"
+        Tags          = Get-Val2 $auditDir "gh-tag-count.txt"
+        Commits       = Get-Val2 $auditDir "gh-commit-count.txt"
+        PRs           = Get-Val2 $auditDir "gh-pr-count.txt"
         DashboardPath = "$OutputDir\dashboard\$ghRepo\migration-report-$ghRepo.html"
     }
 }
 
-$summaryJson = "$reportDir\batch-migration-summary.json"
-$summaryCsv  = "$reportDir\batch-migration-summary.csv"
+# Per-agent summary files (suffixed when multi-agent)
+$summaryJson = "$reportDir\batch-migration-summary${batchSuffix}.json"
+$summaryCsv  = "$reportDir\batch-migration-summary${batchSuffix}.csv"
 $batchResults | ConvertTo-Json -Depth 3 | Out-File $summaryJson -Encoding utf8
 $batchResults | Export-Csv $summaryCsv -NoTypeInformation -Encoding utf8
 
 # ── Print final summary table ─────────────────────────────────────────────────
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Green
-Write-Host "  BATCH MIGRATION SUMMARY"
+Write-Host "  BATCH MIGRATION SUMMARY (Agent $($BatchIndex + 1)/$BatchTotal)"
 Write-Host "======================================================"
 $batchResults | Format-Table ADORepo, GHRepo, State, Branches, Tags, Commits, PRs -AutoSize
 
@@ -202,5 +234,3 @@ Write-Host "  Summary CSV : $summaryCsv"
 # gh CLI / GEI may leave non-zero $LASTEXITCODE from stderr messages;
 # PS7 propagates that to the ADO pipeline agent causing a false failure.
 exit 0
-Write-Host ""
-Write-Host "Next step: Run validate-migration.ps1 to verify migrated repos." -ForegroundColor Cyan
