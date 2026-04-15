@@ -356,8 +356,22 @@ stages:
             displayName: "Show HTML on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)\migration-report-$(RESOLVED_REPO).html'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)'
               tabName: "Migration Report"
+
+          - task: PowerShell@2
+            displayName: "Publish Migration Summary to ADO Tab"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                $summaryFile = "$(Build.SourcesDirectory)\repo-migration\output\reports\migration-summary-$(RESOLVED_REPO).md"
+                if (Test-Path $summaryFile) {
+                    Write-Host "##vso[task.uploadsummary]$summaryFile"
+                } else {
+                    Write-Warning "Migration summary not found: $summaryFile"
+                }
+              pwsh: true
 
   # ===========================================================================
   # STAGE 3B – BATCH REPO MIGRATION
