@@ -356,22 +356,8 @@ stages:
             displayName: "Show HTML on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)\migration-report-$(RESOLVED_REPO).html'
               tabName: "Migration Report"
-
-          - task: PowerShell@2
-            displayName: "Publish Migration Summary to ADO Tab"
-            condition: always()
-            inputs:
-              targetType: inline
-              script: |
-                $summaryFile = "$(Build.SourcesDirectory)\repo-migration\output\reports\migration-summary-$(RESOLVED_REPO).md"
-                if (Test-Path $summaryFile) {
-                    Write-Host "##vso[task.uploadsummary]$summaryFile"
-                } else {
-                    Write-Warning "Migration summary not found: $summaryFile"
-                }
-              pwsh: true
 
   # ===========================================================================
   # STAGE 3B – BATCH REPO MIGRATION
@@ -573,23 +559,6 @@ stages:
               artifact: "BatchMigrationReports"
               path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
 
-          # Download migration dashboards for HTML tab
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Migration Dashboard (Single)"
-            condition: eq('${{ parameters.MigrationMode }}', 'Single')
-            continueOnError: true
-            inputs:
-              artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Migration Dashboards (Batch)"
-            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
-            continueOnError: true
-            inputs:
-              artifact: "BatchMigrationDashboards"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-
           # Single mode — validate one repo
           - task: PowerShell@2
             displayName: "4.1 Validate Single Repo"
@@ -619,20 +588,18 @@ stages:
             displayName: "4.1 Validate Batch Repos"
             condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             inputs:
-              targetType: inline
-              script: |
-                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
-                    -ADOOrg     '$(ADO_ORG)' `
-                    -ADOProject '$(ADO_PROJECT)' `
-                    -GHOrg      '$(GH_ORG)' `
-                    -OutputDir  '$(Build.SourcesDirectory)\repo-migration\output' `
-                    -ExpectedVisibility 'private'
+              filePath: '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1'
+              arguments: >-
+                -ADOOrg     "$(ADO_ORG)"
+                -ADOProject "$(ADO_PROJECT)"
+                -GHOrg      "$(GH_ORG)"
+                -OutputDir  "$(Build.SourcesDirectory)\repo-migration\output"
+                -ExpectedVisibility "internal"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
-              ADO_PAT:  $(ADO_PAT)
-              GH_PAT:   $(GH_PAT)
-              GH_TOKEN: $(GH_PAT)
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT:  $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Validation Reports"
@@ -646,15 +613,8 @@ stages:
             displayName: "Show Validation Report on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\validation-report.html'
               tabName: "Validation Report"
-
-          - task: PublishHtmlReport@1
-            displayName: "Show Migration Report on Pipeline Tab"
-            condition: always()
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-              tabName: "Migration Report"
 
           - task: PowerShell@2
             displayName: "Publish Validation Summary to ADO Tab"
