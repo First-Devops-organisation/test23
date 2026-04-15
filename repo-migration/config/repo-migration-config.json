@@ -23,9 +23,7 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "NodeJS",
-        "pulldependency",
-        "tensorflow2gb",
-        "gcc"
+         "gcc"
         
       ]
     }
