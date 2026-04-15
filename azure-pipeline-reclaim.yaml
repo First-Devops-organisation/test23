@@ -55,6 +55,7 @@ stages:
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
+              GH_PAT:  $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Ensure output directories"
@@ -175,6 +176,7 @@ stages:
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
+              GH_PAT:  $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Mannequin Reports"
@@ -246,6 +248,7 @@ stages:
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
+              GH_PAT:  $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Ensure output directories"
@@ -333,6 +336,7 @@ stages:
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
+              GH_PAT:  $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Reclaim Results"
