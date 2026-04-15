@@ -559,6 +559,23 @@ stages:
               artifact: "BatchMigrationReports"
               path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
 
+          # Download migration dashboards for HTML tab
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Migration Dashboard (Single)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Single')
+            continueOnError: true
+            inputs:
+              artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Migration Dashboards (Batch)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationDashboards"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+
           # Single mode — validate one repo
           - task: PowerShell@2
             displayName: "4.1 Validate Single Repo"
@@ -617,6 +634,13 @@ stages:
             inputs:
               reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\validation-report.html'
               tabName: "Validation Report"
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Migration Report on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+              tabName: "Migration Report"
 
           - task: PowerShell@2
             displayName: "Publish Validation Summary to ADO Tab"
