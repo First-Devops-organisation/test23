@@ -76,6 +76,11 @@ if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environmen
 # ── Set GH_TOKEN once for all gh CLI calls ────────────────────────────────────
 $env:GH_TOKEN = $ghPat
 
+# ── ADO auth header for REST API calls ────────────────────────────────────────
+$adoBase64   = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
+$adoHeaders  = @{ Authorization = "Basic $adoBase64" }
+$adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$ADORepo"
+
 # ── Script-level state tracking (avoids re-reading from disk) ─────────────────
 $migState = "UNKNOWN"
 $migLogUrl = $null   # captured from GEI output (Step 3) for direct download in Step 5
@@ -170,18 +175,24 @@ else {
     $migState = "PENDING"
     $migState | Out-File $stateFile -Encoding utf8
 
-    Write-Host "  State: EXPORTING from ADO..."
-    $migState = "EXPORTING"
+    # ── 3a. Queue the migration (returns immediately) ─────────────────────────
+    # --queue-only returns a migration ID instead of blocking until complete.
+    # This is GEI's recommended approach for large repos (>1 GB) because it
+    # avoids client-side timeout issues entirely.
+    Write-Host "  Queuing migration (--queue-only)..."
+    $migState = "QUEUED"
     $migState | Out-File $stateFile -Encoding utf8
 
-    # GEI reads ADO_PAT and GH_PAT from environment variables automatically.
-    # Passing PATs as CLI args causes quoting issues when PATs contain +, =, / chars.
+    $ErrorActionPreference = 'SilentlyContinue'
     $migOutput = gh ado2gh migrate-repo `
         --ado-org          $ADOOrg `
         --ado-team-project $ADOProject `
         --ado-repo         $ADORepo `
         --github-org       $GHOrg `
-        --github-repo      $GHRepo 2>&1
+        --github-repo      $GHRepo `
+        --queue-only 2>&1
+    $queueExitCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
 
@@ -192,36 +203,18 @@ else {
         Write-Host "  Log URL captured: $migLogUrl"
     }
 
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  State: COMPLETE" -ForegroundColor Green
-        $migState = "COMPLETE"
-        $migState | Out-File $stateFile -Encoding utf8
+    # Parse migration ID from output (line like "Migration ... queued. ID: <guid>")
+    $migId = $null
+    $idLine = $migOutput | Where-Object { $_ -match '(ID|id)[:\s]+([0-9a-fA-F-]{36})' } | Select-Object -First 1
+    if ($idLine -and $idLine -match '([0-9a-fA-F-]{36})') {
+        $migId = $Matches[1]
+        Write-Host "  Migration ID: $migId" -ForegroundColor Cyan
     }
-    elseif (($migOutput -join "") -match "already been queued") {
-        Write-Host "  Migration already queued — polling until repo appears..." -ForegroundColor Yellow
-        $migState = "WAITING"
-        $migState | Out-File $stateFile -Encoding utf8
-        $found = $false
-        for ($w = 1; $w -le 30; $w++) {
-            Start-Sleep -Seconds 60
-            Write-Host "  Poll $w/30..."
-            $ErrorActionPreference = 'SilentlyContinue'
-            $check = gh repo view "$GHOrg/$GHRepo" --json name 2>&1
-            $ErrorActionPreference = 'Stop'
-            if ($LASTEXITCODE -eq 0) { $found = $true; break }
-        }
-        if ($found) {
-            $migState = "COMPLETE"
-            $migState | Out-File $stateFile -Encoding utf8
-            Write-Host "  State: COMPLETE (queued migration finished)" -ForegroundColor Green
-        }
-        else {
-            $migState = "FAILED"
-            $migState | Out-File $stateFile -Encoding utf8
-            Write-Warning "Migration did not complete within 30 minutes. Check GEI logs."
-        }
+
+    if ($queueExitCode -ne 0 -and (($migOutput -join "") -match "already been queued")) {
+        Write-Host "  Migration already queued — will poll for repo to appear..." -ForegroundColor Yellow
     }
-    else {
+    elseif ($queueExitCode -ne 0) {
         $migState = "FAILED"
         $migState | Out-File $stateFile -Encoding utf8
         $outputStr = $migOutput -join "`n"
@@ -295,7 +288,42 @@ else {
         $branches    = @($branchObjs | ForEach-Object { $_.name })
         $branchCount = $branches.Count
         $branches    | Out-File "$auditDir\gh-branches.txt" -Encoding utf8
-        Write-Host "  Branches: $branchCount"
+        Write-Host "  Branches (GitHub): $branchCount"
+
+        # ── 4b-ii. Fetch ADO branches for comparison ─────────────────────
+        Write-Host "  Fetching ADO branches..."
+        $adoBranches = @()
+        try {
+            $skip = 0
+            do {
+                $brResp = Invoke-WebRequest -Uri "$adoRepoUrl/refs?filter=heads/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+                $brJson = $brResp.Content | ConvertFrom-Json
+                $batch  = @($brJson.value)
+                $adoBranches += $batch | ForEach-Object { $_.name -replace '^refs/heads/', '' }
+                $skip += $batch.Count
+            } while ($batch.Count -eq 1000)
+            Write-Host "  Branches (ADO): $($adoBranches.Count)"
+        }
+        catch {
+            Write-Warning "  Could not fetch ADO branches: $_ — comparison will be skipped."
+        }
+
+        # ── 4b-iii. Compare ADO vs GitHub branches ───────────────────────
+        $missingInGH = @()
+        $extraInGH   = @()
+        if ($adoBranches.Count -gt 0) {
+            $missingInGH = @($adoBranches | Where-Object { $_ -notin $branches })
+            $extraInGH   = @($branches    | Where-Object { $_ -notin $adoBranches })
+            if ($missingInGH.Count -gt 0) {
+                Write-Warning "  $($missingInGH.Count) ADO branch(es) missing in GitHub: $($missingInGH -join ', ')"
+                $missingInGH | Out-File "$auditDir\gh-missing-branches.txt" -Encoding utf8
+            } else {
+                Write-Host "  All ADO branches present in GitHub." -ForegroundColor Green
+            }
+            if ($extraInGH.Count -gt 0) {
+                Write-Host "  $($extraInGH.Count) extra branch(es) in GitHub (not in ADO): $($extraInGH -join ', ')" -ForegroundColor DarkGray
+            }
+        }
 
         # ── 4c. Tags via REST API (paginated) ─────────────────────────────
         Write-Host "  Fetching tags..."
@@ -478,6 +506,15 @@ else {
                 }
             }
         }
+
+        # ── 4i-ii. Append missing ADO branches (not found in GitHub) ──────
+        foreach ($mb in $missingInGH) {
+            $branchCsvRows += [PSCustomObject]@{
+                Branch=$mb; Status="Missing"; Files="-"; Folders="-"
+                LatestHash="-"; LatestAuthor="-"; LatestDate="-"; LatestMsg="Not migrated from ADO"
+            }
+        }
+
         $branchCsvRows | Export-Csv "$auditDir\gh-branch-wise-data.csv" -NoTypeInformation -Encoding utf8
 
         # Write folder CSVs in one batch
@@ -711,7 +748,14 @@ $branchCsvFile = "$auditDir\gh-branch-wise-data.csv"
 if (Test-Path $branchCsvFile) {
     $allRows = Import-Csv $branchCsvFile | Sort-Object Branch; $idx = 1
     foreach ($r in $allRows) {
-        $allBranchHtml += "<tr><td style='text-align:center;'>$idx</td><td><code>$($r.Branch)</code></td><td style='text-align:center;'><span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x2705; Migrated</span></td></tr>`n"
+        if ($r.Status -eq "Missing") {
+            $badge = "<span style='background:#fdecea;color:#cf222e;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x274C; Missing (not in GitHub)</span>"
+        } elseif ($migState -eq "SKIPPED") {
+            $badge = "<span style='background:#fff8e1;color:#9a6700;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x26A0;&#xFE0F; Already Existed</span>"
+        } else {
+            $badge = "<span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x2705; Migrated</span>"
+        }
+        $allBranchHtml += "<tr><td style='text-align:center;'>$idx</td><td><code>$($r.Branch)</code></td><td style='text-align:center;'>$badge</td></tr>`n"
         $idx++
     }
 }
