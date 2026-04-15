@@ -282,8 +282,6 @@ stages:
                 gh --version
 
                 $env:GH_TOKEN = "$(GH_PAT)"
-                echo $env:GH_TOKEN | gh auth login --with-token
-
                 gh auth status
 
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
@@ -400,7 +398,6 @@ stages:
                 gh --version
 
                 $env:GH_TOKEN = "$(GH_PAT)"
-                "$(GH_PAT)" | gh auth login --with-token
                 gh auth status
 
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
@@ -532,7 +529,6 @@ stages:
                     $env:PATH = "$ghBin;$env:PATH"
                 }
                 $env:GH_TOKEN = "$(GH_PAT)"
-                "$(GH_PAT)" | gh auth login --with-token
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
