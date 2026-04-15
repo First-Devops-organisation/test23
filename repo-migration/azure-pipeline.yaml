@@ -646,7 +646,7 @@ stages:
             displayName: "Show Validation Report on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\validation-report.html'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports'
               tabName: "Validation Report"
 
           - task: PublishHtmlReport@1
