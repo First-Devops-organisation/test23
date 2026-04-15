@@ -720,11 +720,11 @@ stages:
               publishLocation: pipeline
 
           - task: PublishHtmlReport@1
-            displayName: "Show Validation Report"
+            displayName: "Show Validation Report on Pipeline Tab"
             condition: always()
             continueOnError: true
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\validation-report.html'
               tabName: "Validation Report"
 
           - task: PowerShell@2
@@ -734,57 +734,55 @@ stages:
               targetType: inline
               script: |
                 $src = "$(Build.SourcesDirectory)\repo-migration\output\dashboard"
-                $dst = "$(Build.SourcesDirectory)\repo-migration\output\dashboard-flat"
-                New-Item -ItemType Directory -Path $dst -Force | Out-Null
 
-                Write-Host "Source directory: $src"
-                Write-Host "Source exists: $(Test-Path $src)"
+                # For Single mode: use pipeline parameters
+                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
+                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+                $singleFile = "$src\$ghRepo\migration-report-$ghRepo.html"
 
-                $htmlFiles = @()
-                if (Test-Path $src) {
-                    Write-Host "Source contents:"
-                    Get-ChildItem -Path $src -Recurse | ForEach-Object { Write-Host "  $($_.FullName)" }
-                    $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
-                }
-
-                Write-Host "HTML files found: $($htmlFiles.Count)"
-
-                if ($htmlFiles.Count -eq 1) {
-                    # Single file — copy as index.html
-                    Copy-Item $htmlFiles[0].FullName -Destination "$dst\index.html" -Force
-                    Write-Host "  Copied $($htmlFiles[0].Name) as index.html"
-                }
-                elseif ($htmlFiles.Count -gt 1) {
-                    # Multiple files — merge into single index.html
-                    $combined = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>"
-                    foreach ($f in $htmlFiles) {
-                        $content = Get-Content $f.FullName -Raw -Encoding utf8
-                        # Strip outer html/head/body tags to combine
-                        $content = $content -replace '<!DOCTYPE[^>]*>', '' -replace '</?html[^>]*>', '' -replace '<head>.*?</head>', '' -replace '</?body[^>]*>', ''
-                        $combined += "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>"
-                        Write-Host "  Merged: $($f.Name)"
-                    }
-                    $combined += "</body></html>"
-                    $combined | Out-File "$dst\index.html" -Encoding utf8
-                    Write-Host "  Created merged index.html"
+                if (Test-Path $singleFile) {
+                    Write-Host "Single mode — using: $singleFile"
+                    Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
                 }
                 else {
-                    Write-Warning "No migration HTML files found to display"
-                    # Create placeholder
-                    "<html><body><h2>No migration reports available</h2><p>Migration dashboard HTML was not generated or artifacts were not downloaded.</p></body></html>" | Out-File "$dst\index.html" -Encoding utf8
+                    # Batch mode or Single file not found — find all HTML files
+                    $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
+                    Write-Host "Found $($htmlFiles.Count) HTML file(s) in dashboard"
+                    if ($htmlFiles.Count -eq 1) {
+                        Write-Host "Using: $($htmlFiles[0].FullName)"
+                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$($htmlFiles[0].FullName)"
+                    }
+                    elseif ($htmlFiles.Count -gt 1) {
+                        $dst = "$src\combined-migration-report.html"
+                        $combined = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>"
+                        foreach ($f in $htmlFiles) {
+                            $content = Get-Content $f.FullName -Raw -Encoding utf8
+                            $content = $content -replace '<!DOCTYPE[^>]*>', '' -replace '</?html[^>]*>', '' -replace '<head>.*?</head>', '' -replace '</?body[^>]*>', ''
+                            $combined += "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>"
+                            Write-Host "  Merged: $($f.Name)"
+                        }
+                        $combined += "</body></html>"
+                        $combined | Out-File $dst -Encoding utf8
+                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$dst"
+                    }
+                    else {
+                        Write-Warning "No migration HTML files found"
+                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]"
+                    }
                 }
               pwsh: true
 
           - task: PublishHtmlReport@1
-            displayName: "Show Migration Report"
+            displayName: "Show Migration Report on Pipeline Tab"
             condition: always()
             continueOnError: true
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard-flat'
+              reportDir: '$(MIGRATION_REPORT_PATH)'
               tabName: "Migration Report"
 
           - task: PowerShell@2
-            displayName: "Publish Summaries to ADO Tab"
+            displayName: "Publish Validation Summary to ADO Tab"
             condition: always()
             inputs:
               targetType: inline
@@ -793,11 +791,4 @@ stages:
                 if (Test-Path $valSummary) {
                     Write-Host "##vso[task.uploadsummary]$valSummary"
                 } else { Write-Warning "Validation summary not found: $valSummary" }
-
-                $migSummaries = Get-ChildItem "$(Build.SourcesDirectory)\repo-migration\output\reports\migration-summary-*.md" -ErrorAction SilentlyContinue
-                foreach ($f in $migSummaries) {
-                    Write-Host "##vso[task.uploadsummary]$($f.FullName)"
-                    Write-Host "  Published: $($f.Name)"
-                }
-                if (-not $migSummaries) { Write-Warning "No migration summary files found" }
               pwsh: true
