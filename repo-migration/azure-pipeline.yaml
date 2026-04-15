@@ -594,7 +594,7 @@ stages:
                 -ADOProject "$(ADO_PROJECT)"
                 -GHOrg      "$(GH_ORG)"
                 -OutputDir  "$(Build.SourcesDirectory)\repo-migration\output"
-                -ExpectedVisibility "internal"
+                -ExpectedVisibility "private"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
