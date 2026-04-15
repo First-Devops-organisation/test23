@@ -244,9 +244,14 @@ foreach ($entry in $repoList) {
         # Count only completed + active PRs (GEI does not migrate abandoned PRs)
         $adoPrCount = 0
         foreach ($prStatus in @('completed','active')) {
-            $prRaw  = Invoke-WebRequest -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=$prStatus&`$top=1&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
-            $prResp = $prRaw.Content | ConvertFrom-Json
-            $adoPrCount += [int](Get-JsonProp $prResp 'count' 0)
+            $skip = 0
+            do {
+                $prRaw  = Invoke-WebRequest -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=$prStatus&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+                $prResp = $prRaw.Content | ConvertFrom-Json
+                $batch  = [int](Get-JsonProp $prResp 'count' 0)
+                $adoPrCount += $batch
+                $skip += $batch
+            } while ($batch -eq 1000)
         }
     }
     catch { Add-Warn "ADO PR API" "Cannot fetch ADO PR count: $_" }
@@ -605,7 +610,6 @@ if ($failRepos -gt 0) {
     $allResults | Where-Object { $_.Status -notin @("PASS","SKIPPED") } | ForEach-Object {
         Write-Host "  - $($_.GHRepo)" -ForegroundColor Red
     }
-    # exit 1
 }
 
 exit 0
