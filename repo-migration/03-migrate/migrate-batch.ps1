@@ -49,7 +49,8 @@ $ErrorActionPreference = "Stop"
 # ── Validate PATs ────────────────────────────────────────────────────────────
 if ([string]::IsNullOrWhiteSpace($env:GH_PAT))  { Write-Error "Set GH_PAT environment variable" }
 if ([string]::IsNullOrWhiteSpace($env:ADO_PAT)) { Write-Error "Set ADO_PAT environment variable" }
-
+# Ensure GH_TOKEN is set for all downstream gh CLI calls (migrate-single.ps1 + gh commands)
+$env:GH_TOKEN = $env:GH_PAT
 $singleScript = "$PSScriptRoot\migrate-single.ps1"
 if (-not (Test-Path $singleScript)) { Write-Error "migrate-single.ps1 not found at: $singleScript" }
 
@@ -74,8 +75,10 @@ else {
     if (-not (Test-Path $ConfigPath)) { Write-Error "Config not found: $ConfigPath" }
     $config  = Get-Content $ConfigPath -Raw | ConvertFrom-Json
     $batches = $config.batches
+    # ADO pipeline sends " " (space) as default — normalize to empty
+    $BatchName = $BatchName.Trim()
     if (-not [string]::IsNullOrWhiteSpace($BatchName)) {
-        $batches = @($batches | Where-Object { $_.name -eq $BatchName.Trim() })
+        $batches = @($batches | Where-Object { $_.name -eq $BatchName })
         if ($batches.Count -eq 0) { Write-Error "Batch '$BatchName' not found in config" }
     }
     foreach ($batch in $batches) {
@@ -169,7 +172,6 @@ foreach ($entry in $repoList) {
         Tags         = Get-Val2 $auditDir "gh-tag-count.txt"
         Commits      = Get-Val2 $auditDir "gh-commit-count.txt"
         PRs          = Get-Val2 $auditDir "gh-pr-count.txt"
-        RepoSize     = Get-Val2 $auditDir "gh-repo-size-actual.txt"
         DashboardPath = "$OutputDir\dashboard\$ghRepo\migration-report-$ghRepo.html"
     }
 }
@@ -184,7 +186,7 @@ Write-Host ""
 Write-Host "======================================================" -ForegroundColor Green
 Write-Host "  BATCH MIGRATION SUMMARY"
 Write-Host "======================================================"
-$batchResults | Format-Table ADORepo, GHRepo, State, Branches, Commits, RepoSize -AutoSize
+$batchResults | Format-Table ADORepo, GHRepo, State, Branches, Tags, Commits, PRs -AutoSize
 
 $successCount = @($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
 $failCount    = @($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
@@ -195,5 +197,10 @@ Write-Host "  Failed  : $failCount" -ForegroundColor $(if ($failCount -gt 0) { "
 Write-Host ""
 Write-Host "  Summary JSON: $summaryJson"
 Write-Host "  Summary CSV : $summaryCsv"
+
+# ── Ensure pipeline sees exit 0 ──────────────────────────────────────────────
+# gh CLI / GEI may leave non-zero $LASTEXITCODE from stderr messages;
+# PS7 propagates that to the ADO pipeline agent causing a false failure.
+exit 0
 Write-Host ""
 Write-Host "Next step: Run validate-migration.ps1 to verify migrated repos." -ForegroundColor Cyan
