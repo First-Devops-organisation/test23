@@ -86,7 +86,7 @@ if ([string]::IsNullOrWhiteSpace($GHRepo) -and -not [string]::IsNullOrWhiteSpace
 
 if (-not [string]::IsNullOrWhiteSpace($GHRepo)) {
     $adoName = if ($ADORepo) { $ADORepo } else { $GHRepo }
-    $repoList += @{ ADORepo = $adoName; GHRepo = $GHRepo }
+    $repoList += @{ ADORepo = $adoName; GHRepo = $GHRepo; State = $null }
 }
 else {
     # Load from batch summary
@@ -94,7 +94,9 @@ else {
     if (-not (Test-Path $summaryPath)) { Write-Error "Batch summary not found: $summaryPath. Specify –GHRepo for single-repo validation." }
     $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
     foreach ($entry in $summary) {
-        $repoList += @{ ADORepo = $entry.ADORepo; GHRepo = $entry.GHRepo }
+        $entryState = $null
+        foreach ($p in $entry.PSObject.Properties) { if ($p.Name -eq 'State') { $entryState = $p.Value } }
+        $repoList += @{ ADORepo = $entry.ADORepo; GHRepo = $entry.GHRepo; State = $entryState }
     }
 }
 
@@ -129,7 +131,24 @@ $totalWarn   = 0
 foreach ($entry in $repoList) {
     $adoRepoName = $entry['ADORepo']
     $ghRepoName  = $entry['GHRepo']
+    $migState    = $entry['State']
     $auditDir    = "$OutputDir\audit\$ghRepoName"
+
+    # ── Skip validation for repos whose migration was skipped (already existed) ──
+    if ($migState -eq 'SKIPPED') {
+        Write-Host "`n── Skipping: $adoRepoName → $ghRepoName ──  (migration was SKIPPED — repo already existed)" -ForegroundColor DarkGray
+        $allResults += [PSCustomObject]@{
+            ADORepo   = $adoRepoName
+            GHRepo    = $ghRepoName
+            Status    = "SKIPPED"
+            Accuracy  = "N/A"
+            PassCount = 0
+            FailCount = 0
+            WarnCount = 0
+            Checks    = @()
+        }
+        continue
+    }
 
     Write-Host "`n── Validating: $adoRepoName → $ghRepoName ──" -ForegroundColor Yellow
 
@@ -463,16 +482,21 @@ $flatRows | Export-Csv $csvPath -NoTypeInformation -Encoding utf8
 
 # ── HTML report ───────────────────────────────────────────────────────────────
 $migDate    = Get-Date -Format 'dd MMM yyyy · HH:mm'
-$totalRepos = $allResults.Count
-$passRepos  = @($allResults | Where-Object { $_.Status -eq "PASS" }).Count
-$failRepos  = @($allResults | Where-Object { $_.Status -ne "PASS" }).Count
+$totalRepos   = $allResults.Count
+$passRepos    = @($allResults | Where-Object { $_.Status -eq "PASS" }).Count
+$skippedRepos = @($allResults | Where-Object { $_.Status -eq "SKIPPED" }).Count
+$failRepos    = @($allResults | Where-Object { $_.Status -notin @("PASS","SKIPPED") }).Count
 $overallAccuracy = if (($totalPass + $totalFail) -gt 0) { [math]::Round(($totalPass / ($totalPass + $totalFail)) * 100, 1) } else { 0 }
 $accuracyColor   = if ($overallAccuracy -ge 90) { "#28a745" } elseif ($overallAccuracy -ge 70) { "#f0ad4e" } else { "#dc3545" }
 
 $tableRows = ""
 foreach ($r in $allResults) {
-    $color  = if ($r.Status -eq "PASS") { "#28a745" } else { "#dc3545" }
-    $badge  = if ($r.Status -eq "PASS") { "<span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;'>&#x2705; PASS</span>" } else { "<span style='background:#fdecea;color:#cf222e;padding:4px 12px;border-radius:12px;font-weight:600;'>&#x274C; FAIL</span>" }
+    $color  = switch ($r.Status) { "PASS" { "#28a745" } "SKIPPED" { "#6a737d" } default { "#dc3545" } }
+    $badge  = switch ($r.Status) {
+        "PASS"    { "<span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;'>&#x2705; PASS</span>" }
+        "SKIPPED" { "<span style='background:#e8eaed;color:#586069;padding:4px 12px;border-radius:12px;font-weight:600;'>&#x23ED; SKIPPED</span>" }
+        default   { "<span style='background:#fdecea;color:#cf222e;padding:4px 12px;border-radius:12px;font-weight:600;'>&#x274C; FAIL</span>" }
+    }
     $details = ""
     foreach ($c in $r.Checks) {
         $cIcon   = switch ($c.Status) { "PASS" { "&#x2705;" } "FAIL" { "&#x274C;" } default { "&#x26A0;" } }
@@ -521,6 +545,7 @@ $html += "<div class='card'><h2>&#x1F4CA; Summary</h2><div class='stat-grid'>"
 $html += "<div class='stat-box' style='border:2px solid $accuracyColor;'><div class='num' style='color:$accuracyColor;font-size:32px;'>$overallAccuracy%</div><div class='label'>&#x1F3AF; Migration Accuracy</div></div>"
 $html += "<div class='stat-box'><div class='num'>$totalRepos</div><div class='label'>Total Repos</div></div>"
 $html += "<div class='stat-box'><div class='num' style='color:#28a745;'>$passRepos</div><div class='label'>&#x2705; Passed</div></div>"
+$html += "<div class='stat-box'><div class='num' style='color:#6a737d;'>$skippedRepos</div><div class='label'>&#x23ED; Skipped</div></div>"
 $html += "<div class='stat-box'><div class='num' style='color:#dc3545;'>$failRepos</div><div class='label'>&#x274C; Failed</div></div>"
 $html += "<div class='stat-box'><div class='num'>$totalPass</div><div class='label'>Total Checks Passed</div></div>"
 $html += "<div class='stat-box'><div class='num' style='color:#dc3545;'>$totalFail</div><div class='label'>Total Checks Failed</div></div>"
@@ -540,10 +565,11 @@ $md += "| Metric | Value |`n|:---|---:|`n"
 $md += "| Total repos validated | $totalRepos |`n"
 $md += "| &#x1F3AF; Migration Accuracy | **$overallAccuracy%** |`n"
 $md += "| ✅ PASS | $passRepos |`n"
+$md += "| ⏭️ SKIPPED | $skippedRepos |`n"
 $md += "| ❌ FAIL | $failRepos |`n`n"
 if ($failRepos -gt 0) {
     $md += "## Failed Repos`n`n"
-    $allResults | Where-Object { $_.Status -ne "PASS" } | ForEach-Object {
+    $allResults | Where-Object { $_.Status -notin @("PASS","SKIPPED") } | ForEach-Object {
         $md += "### ``$($_.GHRepo)```n`n"
         $_.Checks | Where-Object { $_.Status -eq "FAIL" } | ForEach-Object {
             $md += "- ❌ **$($_.Check)** — Source: ``$($_.Source)`` Target: ``$($_.Target)`` $($_.Detail)`n"
@@ -561,6 +587,7 @@ Write-Host "  VALIDATION SUMMARY"
 Write-Host "  Total repos : $totalRepos"
 Write-Host "  Accuracy    : $overallAccuracy%" -ForegroundColor $(if ($overallAccuracy -ge 90) {"Green"} elseif ($overallAccuracy -ge 70) {"Yellow"} else {"Red"})
 Write-Host "  PASS        : $passRepos" -ForegroundColor Green
+Write-Host "  SKIPPED     : $skippedRepos" -ForegroundColor DarkGray
 Write-Host "  FAIL        : $failRepos" -ForegroundColor $(if ($failRepos -gt 0) {"Red"} else {"Green"})
 Write-Host "============================================"
 Write-Host ""
@@ -571,7 +598,7 @@ Write-Host "  Summary : $mdPath"
 
 if ($failRepos -gt 0) {
     Write-Host "`nFailed repos:" -ForegroundColor Red
-    $allResults | Where-Object { $_.Status -ne "PASS" } | ForEach-Object {
+    $allResults | Where-Object { $_.Status -notin @("PASS","SKIPPED") } | ForEach-Object {
         Write-Host "  - $($_.GHRepo)" -ForegroundColor Red
     }
     exit 1
