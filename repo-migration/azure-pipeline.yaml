@@ -642,16 +642,19 @@ stages:
               targetType: inline
               script: |
                 $src = "$(Build.SourcesDirectory)\repo-migration\output\dashboard"
-                # For Single mode: resolve the repo name variable
-                $resolvedRepo = "$(RESOLVED_REPO)"
-                $singleFile = "$src\$resolvedRepo\migration-report-$resolvedRepo.html"
+
+                # For Single mode: use pipeline parameters
+                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
+                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+                $singleFile = "$src\$ghRepo\migration-report-$ghRepo.html"
 
                 if (Test-Path $singleFile) {
                     Write-Host "Single mode — using: $singleFile"
                     Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
                 }
                 else {
-                    # Batch mode — find all HTML files and pick the first (or merge)
+                    # Batch mode or Single file not found — find all HTML files
                     $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
                     Write-Host "Found $($htmlFiles.Count) HTML file(s) in dashboard"
                     if ($htmlFiles.Count -eq 1) {
@@ -659,7 +662,6 @@ stages:
                         Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$($htmlFiles[0].FullName)"
                     }
                     elseif ($htmlFiles.Count -gt 1) {
-                        # Merge into single file for batch display
                         $dst = "$src\combined-migration-report.html"
                         $combined = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>"
                         foreach ($f in $htmlFiles) {
