@@ -73,6 +73,11 @@ $adoPat = $env:ADO_PAT
 if ([string]::IsNullOrWhiteSpace($ghPat))  { Write-Error "Set GH_PAT environment variable" }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
+# ── ADO REST API auth header (for branch comparison in Step 4) ────────────────
+$adoBase64   = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
+$adoHeaders  = @{ Authorization = "Basic $adoBase64" }
+$adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$ADORepo"
+
 # ── Set GH_TOKEN once for all gh CLI calls ────────────────────────────────────
 $env:GH_TOKEN = $ghPat
 
@@ -295,7 +300,37 @@ else {
         $branches    = @($branchObjs | ForEach-Object { $_.name })
         $branchCount = $branches.Count
         $branches    | Out-File "$auditDir\gh-branches.txt" -Encoding utf8
-        Write-Host "  Branches: $branchCount"
+        Write-Host "  Branches (GitHub): $branchCount"
+
+        # ── 4b-2. ADO branches via REST API (for comparison) ────────────
+        Write-Host "  Fetching ADO branches for comparison..."
+        $adoBranches = @()
+        try {
+            $skip = 0
+            do {
+                $brResp = Invoke-WebRequest -Uri "$adoRepoUrl/refs?filter=heads/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+                $brJson = $brResp.Content | ConvertFrom-Json
+                $batch  = @($brJson.value)
+                $adoBranches += $batch | ForEach-Object { $_.name -replace '^refs/heads/', '' }
+                $skip += $batch.Count
+            } while ($batch.Count -eq 1000)
+            Write-Host "  Branches (ADO): $($adoBranches.Count)"
+        }
+        catch {
+            Write-Warning "  Could not fetch ADO branches: $_ — comparison will be skipped."
+            $adoBranches = @()
+        }
+
+        # ── 4b-3. Compare ADO vs GitHub branches ──────────────────────────
+        $missingInGH = @()
+        if ($adoBranches.Count -gt 0) {
+            $missingInGH = @($adoBranches | Where-Object { $_ -notin $branches })
+            $extraInGH   = @($branches | Where-Object { $_ -notin $adoBranches })
+            Write-Host "  Missing in GitHub: $($missingInGH.Count)  |  Extra in GitHub: $($extraInGH.Count)"
+            if ($missingInGH.Count -gt 0) {
+                $missingInGH | Out-File "$auditDir\gh-missing-branches.txt" -Encoding utf8
+            }
+        }
 
         # ── 4c. Tags via REST API (paginated) ─────────────────────────────
         Write-Host "  Fetching tags..."
@@ -460,6 +495,7 @@ else {
         # ── 4i. Build branch CSV rows ─────────────────────────────────────
         $branchCsvRows = @()
         $bIdx = 0
+        $branchStatus = if ($migState -eq 'SKIPPED') { 'Already Existed' } else { 'Migrated' }
         foreach ($b in $branches) {
             $bIdx++
             Write-Host "  [$bIdx/$branchCount] $b"
@@ -468,14 +504,21 @@ else {
 
             if ($b -eq $defaultBranch) {
                 $branchCsvRows += [PSCustomObject]@{
-                    Branch=$b; Status="Migrated"; Files=$bFileCount; Folders=$bFolderCount
+                    Branch=$b; Status=$branchStatus; Files=$bFileCount; Folders=$bFolderCount
                     LatestHash=$m.Hash; LatestAuthor=$m.Author; LatestDate=$m.Date; LatestMsg=$m.Msg
                 }
             } else {
                 $branchCsvRows += [PSCustomObject]@{
-                    Branch=$b; Status="Migrated"; Files="-"; Folders="-"
+                    Branch=$b; Status=$branchStatus; Files="-"; Folders="-"
                     LatestHash=$m.Hash; LatestAuthor=$m.Author; LatestDate=$m.Date; LatestMsg=$m.Msg
                 }
+            }
+        }
+        # Append ADO branches missing in GitHub
+        foreach ($mb in $missingInGH) {
+            $branchCsvRows += [PSCustomObject]@{
+                Branch=$mb; Status="Missing"; Files="-"; Folders="-"
+                LatestHash="-"; LatestAuthor="-"; LatestDate="-"; LatestMsg="Not found in GitHub"
             }
         }
         $branchCsvRows | Export-Csv "$auditDir\gh-branch-wise-data.csv" -NoTypeInformation -Encoding utf8
@@ -709,9 +752,14 @@ if ($topBranchHtml -eq "") { $topBranchHtml = "<tr><td colspan='3' style='color:
 $allBranchHtml = ""
 $branchCsvFile = "$auditDir\gh-branch-wise-data.csv"
 if (Test-Path $branchCsvFile) {
-    $allRows = Import-Csv $branchCsvFile | Sort-Object Branch; $idx = 1
+    $allRows = Import-Csv $branchCsvFile | Sort-Object @{Expression={if ($_.Status -eq 'Missing') {1} else {0}}}, Branch; $idx = 1
     foreach ($r in $allRows) {
-        $allBranchHtml += "<tr><td style='text-align:center;'>$idx</td><td><code>$($r.Branch)</code></td><td style='text-align:center;'><span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x2705; Migrated</span></td></tr>`n"
+        switch ($r.Status) {
+            'Missing'         { $badge = "<span style='background:#ffebe9;color:#cf222e;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x274C; Missing</span>" }
+            'Already Existed'  { $badge = "<span style='background:#fff8c5;color:#9a6700;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x26A0;&#xFE0F; Already Existed</span>" }
+            default           { $badge = "<span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x2705; Migrated</span>" }
+        }
+        $allBranchHtml += "<tr><td style='text-align:center;'>$idx</td><td><code>$($r.Branch)</code></td><td style='text-align:center;'>$badge</td></tr>`n"
         $idx++
     }
 }
@@ -759,7 +807,9 @@ $html += "</div><div class='pr-pills' style='margin-top:14px;'><span class='pr-p
 # Key branches
 $html += "<div class='card'><h2>&#x1F511; Key Branches</h2><table><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:right;'>Commits</th></tr></thead><tbody>$topBranchHtml</tbody></table></div>" + $nl
 # All branches
-$html += "<div class='card'><h2>&#x1F33F; All Branches ($branchCount)</h2><details><summary>Click to expand all branches</summary><table style='margin-top:10px;'><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:center;'>Status</th></tr></thead><tbody>$allBranchHtml</tbody></table></details></div>" + $nl
+$totalBranchCount = $branchCount + $missingInGH.Count
+$branchSummary = if ($missingInGH.Count -gt 0) { "$totalBranchCount — $branchCount in GitHub, $($missingInGH.Count) missing from ADO" } else { "$branchCount" }
+$html += "<div class='card'><h2>&#x1F33F; All Branches ($branchSummary)</h2><details><summary>Click to expand all branches</summary><table style='margin-top:10px;'><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:center;'>Status</th></tr></thead><tbody>$allBranchHtml</tbody></table></details></div>" + $nl
 # Audit & Artifacts
 $html += "<div class='card'><h2>&#x1F4E6; Audit &amp; Artifacts</h2>" + $nl
 $html += "<p style='font-size:16px;margin-bottom:10px;'>&#x1F4E5; <strong>MigrationAudit</strong> artifact includes:</p>" + $nl
