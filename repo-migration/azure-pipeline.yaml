@@ -352,12 +352,12 @@ stages:
               artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
               publishLocation: pipeline
 
-          - task: PublishHtmlReport@1
-            displayName: "Show HTML on Pipeline Tab"
-            condition: always()
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)\migration-report-$(RESOLVED_REPO).html'
-              tabName: "Migration Report"
+          # - task: PublishHtmlReport@1
+          #   displayName: "Show HTML on Pipeline Tab"
+          #   condition: always()
+          #   inputs:
+          #     reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\$(RESOLVED_REPO)\migration-report-$(RESOLVED_REPO).html'
+          #     tabName: "Migration Report"
 
   # ===========================================================================
   # STAGE 3B – BATCH REPO MIGRATION (MATRIX — PARALLEL AGENTS)
