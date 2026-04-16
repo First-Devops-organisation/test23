@@ -398,7 +398,7 @@ stages:
       inputs:
         targetType: inline
         script: |
-          $dir = "$(Build.SourcesDirectory)\repo-migration\output\reports"
+          $dir = "$(Build.SourcesDirectory)/repo-migration/output/reports"
           New-Item -ItemType Directory -Force -Path $dir
 
     - task: PowerShell@2
@@ -407,16 +407,16 @@ stages:
         targetType: inline
         script: |
 
-          $reportDir = "$(Build.SourcesDirectory)\repo-migration\output\reports"
+          $reportDir = "$(Build.SourcesDirectory)/repo-migration/output/reports"
           $ghOrg = "$(GH_ORG)"
 
           # Load mannequins
-          gh ado2gh generate-mannequin-csv --github-org $ghOrg --output "$reportDir\mannequins.csv"
+          gh ado2gh generate-mannequin-csv --github-org $ghOrg --output "$reportDir/mannequins.csv"
 
-          $mannequins = Import-Csv "$reportDir\mannequins.csv"
+          $mannequins = Import-Csv "$reportDir/mannequins.csv"
 
           # Load mapping file
-          $mapFile = "$(Build.SourcesDirectory)\repo-migration\config\user-mappings.csv"
+          $mapFile = "$(Build.SourcesDirectory)/repo-migration/config/user-mappings.csv"
           $mappings = if (Test-Path $mapFile) { Import-Csv $mapFile } else { @() }
 
           $reclaim = @()
@@ -452,13 +452,13 @@ stages:
               throw "No valid mappings found. Fix user-mappings.csv"
           }
 
-          $reclaim | Export-Csv "$reportDir\reclaim-input.csv" -NoTypeInformation
+          $reclaim | Export-Csv "$reportDir/reclaim-input.csv" -NoTypeInformation
 
           Write-Host "Reclaim file created with $($reclaim.Count) records"
 
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath: "$(Build.SourcesDirectory)\repo-migration\output\reports"
+        targetPath: "$(Build.SourcesDirectory)/repo-migration/output/reports"
         artifact: "MannequinReports"
 
 # =============================================================================
@@ -491,7 +491,7 @@ stages:
     - task: DownloadPipelineArtifact@2
       inputs:
         artifact: "MannequinReports"
-        path: "$(Build.SourcesDirectory)\repo-migration\output\reports"
+        path: "$(Build.SourcesDirectory)/repo-migration/output/reports"
 
     - task: PowerShell@2
       displayName: "Execute Reclaim"
@@ -499,7 +499,7 @@ stages:
         targetType: inline
         script: |
 
-          $file = "$(Build.SourcesDirectory)\repo-migration\output\reports\reclaim-input.csv"
+          $file = "$(Build.SourcesDirectory)/repo-migration/output/reports/reclaim-input.csv"
           $ghOrg = "$(GH_ORG)"
 
           $rows = Import-Csv $file
@@ -532,4 +532,4 @@ stages:
     - task: PublishPipelineArtifact@1
       inputs:
         artifact: "ReclaimResults"
-        targetPath: "$(Build.SourcesDirectory)\repo-migration\output\reports"
+        targetPath: "$(Build.SourcesDirectory)/repo-migration/output/reports"
