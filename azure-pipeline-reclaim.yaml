@@ -189,8 +189,8 @@ stages:
   # ===========================================================================
   # STAGE 2 – REVIEW GATE
   # ===========================================================================
-  # - stage: ReviewGate
-  #   displayName: "2. Review Mappings"
+  - stage: ReviewGate
+    displayName: "2. Review Mappings"
   #   dependsOn: ListMannequins
   #   condition: and(succeeded(), eq('${{ parameters.ReclaimMode }}', 'Execute'))
   #   jobs:
