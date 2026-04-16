@@ -32,40 +32,40 @@ stages:
         timeoutInMinutes: 30
         steps:
 
-  #         - task: PowerShell@2
-  #           displayName: "Install GitHub CLI + GEI extension"
-  #           inputs:
-  #             targetType: inline
-  #             script: |
-  #               $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
-  #               if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-  #                   Write-Host "Installing GitHub CLI..."
-  #                   Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
-  #                   Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
-  #                   $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
-  #                   Write-Host "##vso[task.prependpath]$ghBin"
-  #                   $env:PATH = "$ghBin;$env:PATH"
-  #               }
-          #       gh --version
-          #       $env:GH_TOKEN = "$(GH_PAT)"
-          #       gh auth status
+          - task: PowerShell@2
+            displayName: "Install GitHub CLI + GEI extension"
+            inputs:
+              targetType: inline
+              script: |
+                $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
+                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+                    Write-Host "Installing GitHub CLI..."
+                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
+                    Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
+                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
+                    Write-Host "##vso[task.prependpath]$ghBin"
+                    $env:PATH = "$ghBin;$env:PATH"
+                }
+                gh --version
+                $env:GH_TOKEN = "$(GH_PAT)"
+                gh auth status
 
-          #       gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
-          #       gh extension list
-          #     pwsh: true
-          #   env:
-          #     GH_TOKEN: $(GH_PAT)
-          #     GH_PAT:  $(GH_PAT)
+                gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+                gh extension list
+              pwsh: true
+            env:
+              GH_TOKEN: $(GH_PAT)
+              GH_PAT:  $(GH_PAT)
 
-          # - task: PowerShell@2
-          #   displayName: "Ensure output directories"
-          #   inputs:
-          #     targetType: inline
-          #     script: |
-          #       "reports" | ForEach-Object {
-          #           New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\$_" -Force | Out-Null
-          #       }
-          #     pwsh: true
+          - task: PowerShell@2
+            displayName: "Ensure output directories"
+            inputs:
+              targetType: inline
+              script: |
+                "reports" | ForEach-Object {
+                    New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\$_" -Force | Out-Null
+                }
+              pwsh: true
 
           # - task: PowerShell@2
           #   displayName: "List Mannequins & Preview Mappings"
