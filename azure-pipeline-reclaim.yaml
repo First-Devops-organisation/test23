@@ -82,7 +82,7 @@ stages:
 
           #       if (-not (Test-Path $mannequinCsv)) {
           #           Write-Warning "No mannequin CSV generated — org may have no mannequins."
-          #           "login,id,target_user" | Out-File $mannequinCsv -Encoding utf8
+          #           "login,id,target-user" | Out-File $mannequinCsv -Encoding utf8
           #       }
 
           #       $mannequins = @(Import-Csv $mannequinCsv)
@@ -153,7 +153,7 @@ stages:
           #               $reclaimRows += [PSCustomObject]@{
           #                   mannequin_user = $p.Mannequin
           #                   mannequin_id   = $p.MannequinId
-          #                   target_user    = $p.MappedTo
+          #                   target-user    = $p.MappedTo
           #               }
           #           }
           #       }
@@ -247,8 +247,8 @@ stages:
                         if ($match.GitHubUsername) {
                             $mappedTo = $match.GitHubUsername
                         }
-                        elseif ($match.target_user) {
-                            $mappedTo = $match.target_user
+                        elseif ($match.target-user) {
+                            $mappedTo = $match.target-user
                         }
                     }
 
@@ -300,7 +300,7 @@ stages:
                         $reclaimRows += [PSCustomObject]@{
                             mannequin_user = $p.Mannequin
                             mannequin_id   = $p.MannequinId
-                            target_user    = $p.MappedTo
+                            target-user    = $p.MappedTo
                         }
                     }
                 }
@@ -424,26 +424,26 @@ stages:
 
                 $results = @()
                 foreach ($e in $entries) {
-                    Write-Host "  $($e.mannequin_user) → $($e.target_user)" -ForegroundColor Yellow
+                    Write-Host "  $($e.mannequin_user) → $($e.target-user)" -ForegroundColor Yellow
                     try {
                         $output = gh ado2gh reclaim-mannequin `
                             --github-org $ghOrg `
                             --mannequin-user $e.mannequin_user `
-                            --target-user $e.target_user `
+                            --target-user $e.target-user `
                             --force 2>&1
                         $output | ForEach-Object { Write-Host "    $_" }
 
                         if ($LASTEXITCODE -eq 0) {
                             Write-Host "    ✅ Reclaim sent" -ForegroundColor Green
-                            $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target_user; Status="SENT" }
+                            $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target-user; Status="SENT" }
                         } else {
                             Write-Warning "    Reclaim returned exit code $LASTEXITCODE"
-                            $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target_user; Status="FAILED" }
+                            $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target-user; Status="FAILED" }
                         }
                     }
                     catch {
                         Write-Warning "    Error: $_"
-                        $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target_user; Status="ERROR" }
+                        $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target-user; Status="ERROR" }
                     }
                 }
 
