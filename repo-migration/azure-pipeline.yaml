@@ -563,6 +563,7 @@ stages:
           # ── Batch mode artifact downloads (from all agents) ──
           - task: DownloadPipelineArtifact@2
             displayName: "Download Audit (Agent 0)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchAudit-0"
@@ -570,6 +571,7 @@ stages:
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Audit (Agent 1)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchAudit-1"
@@ -577,6 +579,7 @@ stages:
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Audit (Agent 2)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchAudit-2"
@@ -584,6 +587,7 @@ stages:
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Reports (Agent 0)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchReports-0"
@@ -591,6 +595,7 @@ stages:
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Reports (Agent 1)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchReports-1"
@@ -598,6 +603,7 @@ stages:
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Reports (Agent 2)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchReports-2"
@@ -605,6 +611,7 @@ stages:
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Dashboards (Agent 0)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchDashboards-0"
@@ -612,6 +619,7 @@ stages:
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Dashboards (Agent 1)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchDashboards-1"
@@ -619,6 +627,7 @@ stages:
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Dashboards (Agent 2)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
               artifact: "BatchDashboards-2"
