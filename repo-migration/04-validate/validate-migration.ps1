@@ -195,7 +195,8 @@ foreach ($entry in $repoList) {
     Write-Host "      [DEBUG] default_branch=$ghDefault  visibility=$ghVisibility" -ForegroundColor DarkGray
 
     # ── 2. ADO source data ───────────────────────────────────────────────────
-    $adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$adoRepoName"
+    $adoRepoEncoded = [Uri]::EscapeDataString($adoRepoName)
+    $adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$adoRepoEncoded"
     $adoRepo     = $null
     $adoBranches = @()
     $adoPrCount  = 0
@@ -207,7 +208,14 @@ foreach ($entry in $repoList) {
         Write-Host "      [DEBUG] ADO repo API status=$($resp.StatusCode) length=$($resp.Content.Length)" -ForegroundColor DarkGray
         $adoRepo = $resp.Content | ConvertFrom-Json
         if ($adoRepo) {
-            $rawDefault = Get-JsonProp $adoRepo 'defaultBranch' $null
+            # Try direct property access first, then Get-JsonProp as fallback
+            $rawDefault = $null
+            if ($adoRepo.PSObject.Properties['defaultBranch']) {
+                $rawDefault = $adoRepo.defaultBranch
+            }
+            if (-not $rawDefault) {
+                $rawDefault = Get-JsonProp $adoRepo 'defaultBranch' $null
+            }
             Write-Host "      [DEBUG] ADO defaultBranch raw=[$rawDefault]" -ForegroundColor DarkGray
             if ($rawDefault) {
                 $adoDefault = $rawDefault -replace '^refs/heads/', ''
@@ -216,7 +224,18 @@ foreach ($entry in $repoList) {
     }
     catch {
         Write-Host "      [DEBUG] ADO repo fetch error: $_" -ForegroundColor Red
-        Add-Warn "ADO API Access" "Cannot fetch ADO repo metadata: $_"
+        # Retry with Invoke-RestMethod (simpler JSON handling)
+        try {
+            Write-Host "      [DEBUG] Retrying ADO repo API with Invoke-RestMethod..." -ForegroundColor DarkGray
+            $adoRepo = Invoke-RestMethod -Uri "${adoRepoUrl}?api-version=7.1" -Headers $adoHeaders
+            if ($adoRepo -and $adoRepo.defaultBranch) {
+                $adoDefault = $adoRepo.defaultBranch -replace '^refs/heads/', ''
+                Write-Host "      [DEBUG] ADO defaultBranch (retry)=[$adoDefault]" -ForegroundColor DarkGray
+            }
+        }
+        catch {
+            Add-Warn "ADO API Access" "Cannot fetch ADO repo metadata: $_"
+        }
     }
 
     try {
@@ -232,12 +251,9 @@ foreach ($entry in $repoList) {
     }
     catch { Add-Warn "ADO Branch API" "Cannot fetch ADO branches: $_" }
 
-    # Fallback: if ADO default branch is empty, infer from branch list
+    # Fallback: if ADO default branch is still empty, warn — do NOT guess
     if (-not $adoDefault -and $adoBranches.Count -gt 0) {
-        if ($adoBranches -contains 'main')   { $adoDefault = 'main' }
-        elseif ($adoBranches -contains 'master') { $adoDefault = 'master' }
-        else { $adoDefault = $adoBranches[0] }
-        Write-Host "      [DEBUG] ADO defaultBranch inferred from branches=[$adoDefault]" -ForegroundColor DarkGray
+        Write-Host "      [WARN] ADO API did not return defaultBranch — cannot determine ADO default" -ForegroundColor Yellow
     }
 
     try {
