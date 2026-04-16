@@ -191,11 +191,11 @@ stages:
   # ===========================================================================
   - stage: ReviewGate
     displayName: "2. Review Mappings"
-  #   dependsOn: ListMannequins
-  #   condition: and(succeeded(), eq('${{ parameters.ReclaimMode }}', 'Execute'))
-  #   jobs:
-  #     - job: ReviewMappings
-  #       displayName: "Gate: Review Mannequin Mappings"
+    dependsOn: ListMannequins
+    condition: and(succeeded(), eq('${{ parameters.ReclaimMode }}', 'Execute'))
+    jobs:
+      - job: ReviewMappings
+        displayName: "Gate: Review Mannequin Mappings"
   #       pool: server
   #       timeoutInMinutes: 4320
   #       steps:
