@@ -231,12 +231,16 @@ stages:
                         continue
                     }
 
-                    $match = $mappings | Where-Object {
-                        $_.ADOEmail       -eq $login -or
-                        $_.ADOUsername    -eq $login -or
-                        $_.ADODisplayName -eq $login -or
-                        $_.ADOLogin       -eq $login
-                    } | Select-Object -First 1
+                  
+                        $loginNorm = "$login".Trim().ToLower()
+
+                        $match = $mappings | Where-Object {
+                            ("$($_.ADOEmail)".Trim().ToLower()       -eq $loginNorm) -or
+                            ("$($_.ADOUsername)".Trim().ToLower()    -eq $loginNorm) -or
+                            ("$($_.ADODisplayName)".Trim().ToLower() -eq $loginNorm) -or
+                            ("$($_.ADOLogin)".Trim().ToLower()       -eq $loginNorm)
+                        } | Select-Object -First 1
+
 
                     $mappedTo = $null
                     if ($match) {
