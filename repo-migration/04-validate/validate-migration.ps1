@@ -428,7 +428,9 @@ foreach ($entry in $repoList) {
         $commitRaw = gh api "repos/$GHOrg/$ghRepoName/git/commits/$auditHash" 2>$null
         $ErrorActionPreference = 'Stop'
         if ($LASTEXITCODE -eq 0 -and $commitRaw) {
-            Add-Check "Latest Commit Reachable" $auditHash.Substring(0,12) "found" $true
+            $commitObj = $commitRaw | ConvertFrom-Json
+            $ghCommitSha = if ($commitObj -and $commitObj.sha) { $commitObj.sha.Substring(0,12) } else { $auditHash.Substring(0,12) }
+            Add-Check "Latest Commit Reachable" $auditHash.Substring(0,12) $ghCommitSha $true
         }
         else {
             Add-Check "Latest Commit Reachable" $auditHash.Substring(0,12) "not found" $false "Commit SHA from audit not found in GitHub"
