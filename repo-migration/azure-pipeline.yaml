@@ -310,7 +310,6 @@ stages:
                 $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
                 if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
 
-
                 # Read target visibility from config
                 $cfgPath = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
                 $visibility = 'private'
@@ -600,7 +599,7 @@ stages:
                 $adoRepo = '${{ parameters.ADORepo }}'.Trim()
                 $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
                 if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
-               
+
                 # Read target visibility from config
                 $cfgPath = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
                 $visibility = 'private'
@@ -610,6 +609,7 @@ stages:
                         $visibility = $cfg.migration.targetRepoVisibility
                     }
                 }
+
                 & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
                     -ADOOrg     '$(ADO_ORG)' `
                     -ADOProject '$(ADO_PROJECT)' `
@@ -617,7 +617,6 @@ stages:
                     -GHRepo     $ghRepo `
                     -ADORepo    $adoRepo `
                     -OutputDir  '$(Build.SourcesDirectory)\repo-migration\output' `
-                    # -ExpectedVisibility 'private'
                     -ExpectedVisibility $visibility
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
@@ -631,13 +630,24 @@ stages:
             condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
-              filePath: '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1'
-              arguments: >-
-                -ADOOrg     "$(ADO_ORG)"
-                -ADOProject "$(ADO_PROJECT)"
-                -GHOrg      "$(GH_ORG)"
-                -OutputDir  "$(Build.SourcesDirectory)\repo-migration\output"
-                -ExpectedVisibility "private"
+              targetType: inline
+              script: |
+                # Read target visibility from config
+                $cfgPath = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
+                $visibility = 'private'
+                if (Test-Path $cfgPath) {
+                    $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+                    if ($cfg.migration.targetRepoVisibility) {
+                        $visibility = $cfg.migration.targetRepoVisibility
+                    }
+                }
+
+                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
+                    -ADOOrg     '$(ADO_ORG)' `
+                    -ADOProject '$(ADO_PROJECT)' `
+                    -GHOrg      '$(GH_ORG)' `
+                    -OutputDir  '$(Build.SourcesDirectory)\repo-migration\output' `
+                    -ExpectedVisibility $visibility
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
