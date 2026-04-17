@@ -51,9 +51,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Read visibility from config if not explicitly passed ─────────────────────
+# ── Read visibility from config (config takes precedence) ────────────────────
 $configPath = "$PSScriptRoot\..\config\repo-migration-config.json"
-if ($ExpectedVisibility -eq 'internal' -and (Test-Path $configPath)) {
+if (Test-Path $configPath) {
     $configData = Get-Content $configPath -Raw | ConvertFrom-Json
     if ($configData.migration.targetRepoVisibility) {
         $ExpectedVisibility = $configData.migration.targetRepoVisibility
