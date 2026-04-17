@@ -3,48 +3,6 @@ trigger: none
 pool:
   vmImage: windows-latest
 
-# =============================================================================
-# PARAMETERS — choose at queue time
-# =============================================================================
-# parameters:
-
-#   - name: MigrationMode
-#     displayName: "Migration Mode"
-#     type: string
-#     default: Single
-#     values:
-#       - Single
-#       - Batch
-
-#   - name: ADORepo
-#     displayName: "ADO Repo name (Single mode only)"
-#     type: string
-#     default: " "
-
-#   - name: GHRepo
-#     displayName: "GitHub Repo name (Single mode only, defaults to ADORepo)"
-#     type: string
-#     default: " "
-
-#   - name: BatchName
-#     displayName: "Batch name from config (Batch mode — leave blank for all)"
-#     type: string
-#     default: " "
-
-#   - name: SkipAudit
-#     displayName: "Skip branch-wise audit (faster, no file inventory)"
-#     type: boolean
-#     default: false
-
-#   - name: DryRun
-#     displayName: "Dry Run (print GEI commands, do not execute)"
-#     type: boolean
-#     default: false
-
-#   - name: RunValidation
-#     displayName: "Run validation after migration"
-#     type: boolean
-#     default: true
 
 variables:
   - group: pipeline-migration # ADO_ORG, ADO_PROJECT, ADO_PAT
@@ -63,33 +21,43 @@ stages:
         steps:
           - checkout: self
             fetchDepth: 0
-
           - task: PowerShell@2
-            displayName: "Install GitHub CLI + actions-importer"
+            displayName: 'Install required tooling'
             inputs:
-              targetType: inline
-              script: |
-                $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
-                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-                    Write-Host "Installing GitHub CLI (portable zip)..."
-                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
-                    Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
-                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
-                    Write-Host "##vso[task.prependpath]$ghBin"
-                    $env:PATH = "$ghBin;$env:PATH"
-                }
-                gh --version
-
-                $env:GH_TOKEN = "$(GH_PAT)"
-                echo $env:GH_TOKEN | gh auth login --with-token
-                gh auth status
-
-                # Install actions-importer extension
-                gh extension install github/gh-actions-importer 2>&1 | Where-Object { $_ -notmatch 'already installed' }
-                gh extension list
+              targetType: 'filePath'
+              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              arguments: '-GitHubPat "$(GH_PAT)"'
               pwsh: true
             env:
+              GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
+
+          # - task: PowerShell@2
+          #   displayName: "Install GitHub CLI + actions-importer"
+          #   inputs:
+          #     targetType: inline
+          #     script: |
+          #       $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
+          #       if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+          #           Write-Host "Installing GitHub CLI (portable zip)..."
+          #           Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
+          #           Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
+          #           $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
+          #           Write-Host "##vso[task.prependpath]$ghBin"
+          #           $env:PATH = "$ghBin;$env:PATH"
+          #       }
+          #       gh --version
+
+          #       $env:GH_TOKEN = "$(GH_PAT)"
+          #       echo $env:GH_TOKEN | gh auth login --with-token
+          #       gh auth status
+
+          #       # Install actions-importer extension
+          #       gh extension install github/gh-actions-importer 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+          #       gh extension list
+          #     pwsh: true
+          #   env:
+          #     GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Ensure output directories"
