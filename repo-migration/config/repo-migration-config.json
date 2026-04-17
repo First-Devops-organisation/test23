@@ -12,7 +12,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "targetRepoVisibility": "private",
+    "targetRepoVisibility": "public",
     "lockSourceRepo": false,
     "retryCount": 3,
     "retryDelaySeconds": 30
@@ -22,8 +22,8 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
-        "NodeJS",
-         "sample_maven_app"
+        "SSPM",
+         "Advanced-Security"
         
       ]
     }
