@@ -12,7 +12,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "targetRepoVisibility": "internal",
+    "targetRepoVisibility": "public",
     "lockSourceRepo": false,
     "retryCount": 3,
     "retryDelaySeconds": 30
@@ -22,9 +22,9 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
-        "gcc",
-        "linux4gb",
-        "runtime2gb"
+        "Advanced-Security",
+        "APIOPS-poc",
+        "APIOPS"       
         
       ]
     }
