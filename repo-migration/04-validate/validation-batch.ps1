@@ -39,6 +39,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# ── Read visibility from config (config takes precedence) ────────────────────
+$configPath = "$PSScriptRoot\..\config\repo-migration-config.json"
+if (Test-Path $configPath) {
+    $configData = Get-Content $configPath -Raw | ConvertFrom-Json
+    if ($configData.migration.targetRepoVisibility) {
+        $ExpectedVisibility = $configData.migration.targetRepoVisibility
+    }
+}
+Write-Host "  Expected visibility: $ExpectedVisibility"
+
 $reportDir      = "$OutputDir\reports"
 $validateScript = "$PSScriptRoot\validate-migration.ps1"
 
