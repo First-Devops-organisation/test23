@@ -309,6 +309,18 @@ stages:
                 $adoRepo = '${{ parameters.ADORepo }}'.Trim()
                 $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
                 if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+
+
+                # Read target visibility from config
+                $cfgPath = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
+                $visibility = 'private'
+                if (Test-Path $cfgPath) {
+                    $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+                    if ($cfg.migration.targetRepoVisibility) {
+                        $visibility = $cfg.migration.targetRepoVisibility
+                    }
+                }
+
                 $params = @{
                     ADOOrg     = '$(ADO_ORG)'.Trim()
                     ADOProject = '$(ADO_PROJECT)'.Trim()
@@ -316,6 +328,7 @@ stages:
                     GHOrg      = '$(GH_ORG)'.Trim()
                     GHRepo     = $ghRepo
                     OutputDir  = '$(Build.SourcesDirectory)\repo-migration\output'
+                    TargetRepoVisibility = $visibility
                 }
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
                 if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
@@ -587,6 +600,16 @@ stages:
                 $adoRepo = '${{ parameters.ADORepo }}'.Trim()
                 $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
                 if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+               
+                # Read target visibility from config
+                $cfgPath = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
+                $visibility = 'private'
+                if (Test-Path $cfgPath) {
+                    $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+                    if ($cfg.migration.targetRepoVisibility) {
+                        $visibility = $cfg.migration.targetRepoVisibility
+                    }
+                }
                 & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
                     -ADOOrg     '$(ADO_ORG)' `
                     -ADOProject '$(ADO_PROJECT)' `
@@ -594,7 +617,8 @@ stages:
                     -GHRepo     $ghRepo `
                     -ADORepo    $adoRepo `
                     -OutputDir  '$(Build.SourcesDirectory)\repo-migration\output' `
-                    -ExpectedVisibility 'private'
+                    # -ExpectedVisibility 'private'
+                    -ExpectedVisibility $visibility
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
