@@ -112,6 +112,18 @@ if ($gh) {
             }
         }
     }
+
+    # --- Pull latest actions-importer Docker image ---
+    if ($installedExts -match "gh-actions-importer") {
+        Write-Host "`nPulling latest actions-importer image..." -ForegroundColor Yellow
+        gh actions-importer update 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] actions-importer image updated" -ForegroundColor Green
+        }
+        else {
+            Write-Host "[WARN] Failed to update actions-importer image. Ensure Docker is running." -ForegroundColor Red
+        }
+    }
 }
 else {
     Write-Host "[SKIP] Cannot check GH extensions — GitHub CLI not installed" -ForegroundColor Yellow
