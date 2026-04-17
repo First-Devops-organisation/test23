@@ -25,7 +25,7 @@ param(
 
     [int]$PipelineId,
 
-    [ValidateSet("dry-run", "migrate", "audit")]
+    [ValidateSet("list", "dry-run", "migrate", "audit")]
     [string]$Mode = "dry-run",
 
     [string]$CustomTransformersDir,
@@ -49,6 +49,25 @@ $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "Project: $AdoProject" -ForegroundColor Gray
+
+# --- List mode: show all pipeline IDs and exit ---
+if ($Mode -eq "list") {
+    Write-Host "`nFetching pipelines from ADO..." -ForegroundColor Yellow
+    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
+    $adoHeaders = @{ Authorization = "Basic $base64Auth" }
+    $pipelinesUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
+    $allPipelines = (Invoke-RestMethod -Uri $pipelinesUrl -Headers $adoHeaders).value
+
+    Write-Host "`n=== Available Pipelines ($($allPipelines.Count) found) ===" -ForegroundColor Cyan
+    Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f "ID", "Name", "Type", "Path") -ForegroundColor White
+    Write-Host ("-" * 90)
+    foreach ($p in $allPipelines | Sort-Object id) {
+        $pType = if ($p.process.yamlFilename) { "YAML" } else { "Classic" }
+        Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f $p.id, $p.name, $pType, $p.path)
+    }
+    Write-Host "`nUsage: migrate-pipelines.ps1 -PipelineId <ID> -Mode dry-run" -ForegroundColor Green
+    return
+}
 
 if ($Mode -eq "audit") {
     Write-Host "`nRunning audit..." -ForegroundColor Yellow
