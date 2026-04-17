@@ -65,7 +65,4 @@ stages:
               reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
               tabName: "Pipeline Audit Dashboard"
 
-          - script: |
-              echo "##vso[task.uploadsummary]$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/pipeline-audit-summary.md"
-            displayName: "Attach Audit Summary to Build"
-            condition: always()
+    
