@@ -55,9 +55,9 @@ Write-Host "=== Pipeline Audit: $AdoOrg ===" -ForegroundColor Cyan
 $env:GITHUB_ACCESS_TOKEN = $GitHubPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $AdoPat
 
-# --- Configure ---
-Write-Host "Configuring actions-importer..." -ForegroundColor Yellow
-gh actions-importer configure --provider azure_devops 2>&1
+# --- Ensure latest image is available ---
+Write-Host "Updating actions-importer image..." -ForegroundColor Yellow
+gh actions-importer update 2>&1
 
 # --- Run Audit ---
 $auditArgs = @(
