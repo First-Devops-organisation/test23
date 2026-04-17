@@ -1,245 +1,167 @@
 <#
 .SYNOPSIS
-    Migrates MULTIPLE repos from ADO to GitHub in batch using GEI (gh ado2gh).
-    Supports multi-agent parallel execution via BatchIndex/BatchTotal (matrix strategy).
-    Calls migrate-single.ps1 for each repo — same audit + dashboard per repo.
+    Batch validation wrapper — merges multi-agent summaries, skips SKIPPED repos,
+    and calls validate-migration.ps1 for actual validation.
 .DESCRIPTION
-    Reads batch repo list from:
-      - config/repo-migration-config.json  (batches[].repos)  OR
-      - a CSV file passed via –RepoListCsv  (columns: ADORepo, GHRepo)
-    Splits repos across agents using round-robin (BatchIndex/BatchTotal).
-    After all repos on this agent finish, writes a per-agent batch-summary report.
+    Designed for use with azure-pipeline-batch.yaml (matrix strategy).
+    Steps:
+      1. Merges batch-migration-summary-agent*.json into a single summary
+      2. Reads migration state per repo — skips repos with State = SKIPPED
+      3. Writes a filtered summary (non-skipped repos only)
+      4. Calls validate-migration.ps1 with the filtered summary
+      5. Prints a combined summary (skipped + validated)
 
-    Use with ADO matrix strategy:
-      ParallelAgents=1 → BatchTotal=1, all repos on one agent (same as migrate-batch.ps1)
-      ParallelAgents=2 → BatchTotal=2, repos split across 2 agents
-      ParallelAgents=3 → BatchTotal=3, repos split across 3 agents
+    Can also be called standalone outside of a pipeline.
 .PARAMETER ADOOrg
     Azure DevOps organisation name
 .PARAMETER ADOProject
     Azure DevOps project name
 .PARAMETER GHOrg
     Target GitHub organisation name
-.PARAMETER ConfigPath
-    Path to repo-migration-config.json (used when no –RepoListCsv)
-.PARAMETER BatchName
-    Specific batch name from config to run (default: all batches)
-.PARAMETER RepoListCsv
-    Optional CSV with columns ADORepo,GHRepo — overrides config batches
 .PARAMETER OutputDir
-    Directory for all reports/logs/dashboards (default: ./output)
-.PARAMETER MaxParallel
-    Max concurrent migrations per agent (default: 3 — stay within GEI throttle)
-.PARAMETER BatchIndex
-    Which agent this is (0-based). Used with matrix strategy. Default: 0
-.PARAMETER BatchTotal
-    Total number of agents. Set to 1 to disable splitting. Default: 1
-.PARAMETER SkipAudit
-    Passed to migrate-single.ps1 — skips branch-wise audit for all repos
-.PARAMETER DryRun
-    Passed to migrate-single.ps1 — prints GEI commands without running them
+    Directory containing audit data and where reports are saved (default: ./output)
+.PARAMETER ExpectedVisibility
+    Expected GitHub repo visibility: internal | private | public  (default: private)
+.PARAMETER BatchSummaryJson
+    Explicit path to a pre-merged batch-migration-summary.json.
+    If omitted, the script auto-merges agent-suffixed files from OutputDir/reports.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]  [string]$ADOOrg,
     [Parameter(Mandatory = $true)]  [string]$ADOProject,
     [Parameter(Mandatory = $true)]  [string]$GHOrg,
-    [Parameter(Mandatory = $false)] [string]$ConfigPath   = "$PSScriptRoot\..\config\repo-migration-config.json",
-    [Parameter(Mandatory = $false)] [string]$BatchName,
-    [Parameter(Mandatory = $false)] [string]$RepoListCsv,
-    [Parameter(Mandatory = $false)] [string]$OutputDir    = "$PSScriptRoot\..\output",
-    [Parameter(Mandatory = $false)] [int]   $MaxParallel  = 3,
-    [Parameter(Mandatory = $false)] [int]   $BatchIndex   = 0,
-    [Parameter(Mandatory = $false)] [int]   $BatchTotal   = 1,
-    [switch]$SkipAudit,
-    [switch]$DryRun
+    [Parameter(Mandatory = $false)] [string]$OutputDir          = "$PSScriptRoot\..\output",
+    [Parameter(Mandatory = $false)] [string]$ExpectedVisibility = "private",
+    [Parameter(Mandatory = $false)] [string]$BatchSummaryJson
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Validate PATs ────────────────────────────────────────────────────────────
-if ([string]::IsNullOrWhiteSpace($env:GH_PAT))  { Write-Error "Set GH_PAT environment variable" }
-if ([string]::IsNullOrWhiteSpace($env:ADO_PAT)) { Write-Error "Set ADO_PAT environment variable" }
-# Ensure GH_TOKEN is set for all downstream gh CLI calls (migrate-single.ps1 + gh commands)
-$env:GH_TOKEN = $env:GH_PAT
-$singleScript = "$PSScriptRoot\migrate-single.ps1"
-if (-not (Test-Path $singleScript)) { Write-Error "migrate-single.ps1 not found at: $singleScript" }
+$reportDir      = "$OutputDir\reports"
+$validateScript = "$PSScriptRoot\validate-migration.ps1"
 
-# ── Build repo list ──────────────────────────────────────────────────────────
-# Use List[hashtable] + Add() — avoids pipeline PSObject wrapping that breaks ['key'] access
-$repoList = [System.Collections.Generic.List[hashtable]]::new()
-$seen     = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+if (-not (Test-Path $validateScript)) { Write-Error "validate-migration.ps1 not found at: $validateScript" }
+New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 
-if ($RepoListCsv) {
-    # ── From CSV ──
-    if (-not (Test-Path $RepoListCsv)) { Write-Error "CSV not found: $RepoListCsv" }
-    $csv = Import-Csv $RepoListCsv
-    foreach ($row in $csv) {
-        $ado = $row.ADORepo.Trim()
-        $gh  = if ($row.GHRepo) { $row.GHRepo.Trim() } else { $ado }
-        if ($seen.Add($ado)) { $repoList.Add(@{ ADORepo = $ado; GHRepo = $gh }) }
-    }
-    Write-Host "Loaded $($repoList.Count) repos from CSV: $RepoListCsv"
+# ── 1. Merge multi-agent summaries ───────────────────────────────────────────
+Write-Host ""
+Write-Host "======================================================" -ForegroundColor Cyan
+Write-Host "  BATCH VALIDATION"
+Write-Host "  ADO:    $ADOOrg / $ADOProject"
+Write-Host "  GitHub: $GHOrg"
+Write-Host "======================================================" -ForegroundColor Cyan
+
+$merged = @()
+
+if ($BatchSummaryJson) {
+    # Caller supplied a specific file
+    if (-not (Test-Path $BatchSummaryJson)) { Write-Error "Batch summary not found: $BatchSummaryJson" }
+    Write-Host "`n[Step 1] Using supplied summary: $BatchSummaryJson" -ForegroundColor Cyan
+    $data = Get-Content $BatchSummaryJson -Raw | ConvertFrom-Json
+    if ($data -is [array]) { $merged = $data } else { $merged = @($data) }
 }
 else {
-    # ── From config JSON ──
-    if (-not (Test-Path $ConfigPath)) { Write-Error "Config not found: $ConfigPath" }
-    $config  = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-    $batches = $config.batches
-    # ADO pipeline sends " " (space) as default — normalize to empty
-    $BatchName = $BatchName.Trim()
-    if (-not [string]::IsNullOrWhiteSpace($BatchName)) {
-        $batches = @($batches | Where-Object { $_.name -eq $BatchName })
-        if ($batches.Count -eq 0) { Write-Error "Batch '$BatchName' not found in config" }
-    }
-    foreach ($batch in $batches) {
-        foreach ($repo in $batch.repos) {
-            $name = $repo.ToString().Trim()
-            if ($seen.Add($name)) { $repoList.Add(@{ ADORepo = $name; GHRepo = $name }) }
+    Write-Host "`n[Step 1] Merging agent summaries..." -ForegroundColor Cyan
+
+    # Collect from agent-suffixed files (multi-agent mode)
+    $agentFiles = Get-ChildItem "$reportDir\batch-migration-summary-agent*.json" -ErrorAction SilentlyContinue
+    if ($agentFiles) {
+        foreach ($f in $agentFiles) {
+            Write-Host "  Merging: $($f.Name)"
+            $data = Get-Content $f.FullName -Raw | ConvertFrom-Json
+            if ($data -is [array]) { $merged += $data } else { $merged += @($data) }
         }
     }
-    Write-Host "Loaded $($repoList.Count) repos from config batch(es)"
-}
 
-if ($repoList.Count -eq 0) { Write-Error "No repos found to migrate." }
-
-# ── Read target repo visibility from config ───────────────────────────────────────────
-$targetVisibility = 'private'
-$visConfig = if (Test-Path $ConfigPath) { Get-Content $ConfigPath -Raw | ConvertFrom-Json } else { $null }
-if ($visConfig -and $visConfig.migration -and $visConfig.migration.targetRepoVisibility) {
-    $targetVisibility = $visConfig.migration.targetRepoVisibility
-}
-Write-Host "  Repo visibility: $targetVisibility"
-
-# ── Agent-level batch splitting (round-robin for matrix strategy) ─────────────
-$totalRepoCount = $repoList.Count
-if ($BatchTotal -gt 1) {
-    $myRepos = [System.Collections.Generic.List[hashtable]]::new()
-    for ($i = 0; $i -lt $repoList.Count; $i++) {
-        if ($i % $BatchTotal -eq $BatchIndex) { $myRepos.Add($repoList[$i]) }
+    # Fallback: single-agent mode (no suffix)
+    if ($merged.Count -eq 0) {
+        $singleFile = "$reportDir\batch-migration-summary.json"
+        if (Test-Path $singleFile) {
+            Write-Host "  Using single-agent summary: batch-migration-summary.json"
+            $data = Get-Content $singleFile -Raw | ConvertFrom-Json
+            if ($data -is [array]) { $merged = $data } else { $merged = @($data) }
+        }
     }
-    $repoList = $myRepos
-    Write-Host "Agent $($BatchIndex + 1) of ${BatchTotal}: migrating $($repoList.Count) of $totalRepoCount repos" -ForegroundColor Cyan
+
+    if ($merged.Count -eq 0) { Write-Error "No batch summaries found in $reportDir" }
+    Write-Host "  Total repos found: $($merged.Count)"
 }
 
-if ($repoList.Count -eq 0) {
-    Write-Host "No repos assigned to this agent (batch index $BatchIndex). Exiting." -ForegroundColor Yellow
+# ── 2. Separate SKIPPED vs to-validate ────────────────────────────────────────
+Write-Host "`n[Step 2] Checking migration states..." -ForegroundColor Cyan
+
+$toValidate  = @()
+$skippedList = @()
+
+foreach ($entry in $merged) {
+    $state = $null
+    foreach ($p in $entry.PSObject.Properties) { if ($p.Name -eq 'State') { $state = $p.Value } }
+
+    if ($state -eq 'SKIPPED') {
+        $skippedList += $entry
+        Write-Host "  SKIP  : $($entry.ADORepo) → $($entry.GHRepo)  (migration was SKIPPED — repo already existed)" -ForegroundColor DarkGray
+    }
+    else {
+        $toValidate += $entry
+        Write-Host "  VALIDATE: $($entry.ADORepo) → $($entry.GHRepo)  (State=$state)" -ForegroundColor White
+    }
+}
+
+Write-Host ""
+Write-Host "  To validate : $($toValidate.Count)" -ForegroundColor Green
+Write-Host "  Skipped     : $($skippedList.Count)" -ForegroundColor DarkGray
+
+# ── 3. Write filtered summary and merged summary ─────────────────────────────
+# Write full merged summary (so validate-migration.ps1 has all entries — it handles SKIPPED internally)
+$mergedPath = "$reportDir\batch-migration-summary.json"
+$merged | ConvertTo-Json -Depth 3 | Out-File $mergedPath -Encoding utf8 -Force
+Write-Host "`n[Step 3] Wrote merged summary: $mergedPath ($($merged.Count) repos)"
+
+if ($toValidate.Count -eq 0) {
+    Write-Host ""
+    Write-Host "======================================================" -ForegroundColor DarkGray
+    Write-Host "  ALL REPOS SKIPPED — nothing to validate"
+    Write-Host "  Skipped: $($skippedList.Count)"
+    Write-Host "======================================================"
+
+    # Still generate empty validation reports so pipeline artifacts don't fail
+    @() | ConvertTo-Json -Depth 5 | Out-File "$reportDir\validation-results.json" -Encoding utf8
+    "# Migration Validation Report`n`n> All repos were skipped (already existed). Nothing to validate." | Out-File "$reportDir\validation-summary.md" -Encoding utf8
     exit 0
 }
 
-# ── Suffix for per-agent output files ─────────────────────────────────────────
-$batchSuffix = if ($BatchTotal -gt 1) { "-agent$BatchIndex" } else { "" }
+# ── 4. Call validate-migration.ps1 with the merged summary ────────────────────
+Write-Host "`n[Step 4] Running validation on $($toValidate.Count) repo(s)..." -ForegroundColor Cyan
+Write-Host "         ($($skippedList.Count) repo(s) will be skipped by validate-migration.ps1)" -ForegroundColor DarkGray
+Write-Host ""
 
-# ── Output folder ─────────────────────────────────────────────────────────────
-$reportDir = "$OutputDir\reports"
-New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+& $validateScript `
+    -ADOOrg             $ADOOrg `
+    -ADOProject         $ADOProject `
+    -GHOrg              $GHOrg `
+    -OutputDir          $OutputDir `
+    -ExpectedVisibility $ExpectedVisibility `
+    -BatchSummaryJson   $mergedPath
 
+$validationExitCode = $LASTEXITCODE
+
+# ── 5. Print combined summary ─────────────────────────────────────────────────
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "  BATCH MIGRATION (PARALLEL)"
-Write-Host "  ADO:         $ADOOrg / $ADOProject"
-Write-Host "  GitHub:      $GHOrg"
-Write-Host "  Total repos: $totalRepoCount"
-Write-Host "  This agent:  $($repoList.Count) repos (agent $($BatchIndex + 1)/$BatchTotal)"
-Write-Host "  DryRun:      $DryRun"
-Write-Host "======================================================" -ForegroundColor Cyan
-
-# ── Run migrations sequentially (in-process per agent) ────────────────────────
-# NOTE: Start-Job / Receive-Job was removed because gh CLI writes informational
-#       messages to stderr (e.g. "GH_TOKEN environment variable is being used")
-#       which PowerShell strict mode treats as terminating errors, causing
-#       pipeline exit code 1 even on successful migrations.
-$successRepos = @()
-$failedRepos  = @()
-$repoIndex    = 0
-
-foreach ($entry in $repoList) {
-    $repoIndex++
-    $adoRepo = $entry.ADORepo
-    $ghRepo  = $entry.GHRepo
-
-    Write-Host "`n[$repoIndex/$($repoList.Count)] Migrating: $adoRepo → $ghRepo" -ForegroundColor Yellow
-
-    $migParams = @{
-        ADOOrg     = $ADOOrg
-        ADOProject = $ADOProject
-        ADORepo    = $adoRepo
-        GHOrg      = $GHOrg
-        GHRepo     = $ghRepo
-        OutputDir  = $OutputDir
-        TargetRepoVisibility = $targetVisibility
-    }
-    if ($SkipAudit) { $migParams['SkipAudit'] = $true }
-    if ($DryRun)    { $migParams['DryRun']    = $true }
-
-    try {
-        & $singleScript @migParams
-        Write-Host "  [$adoRepo] Completed successfully." -ForegroundColor Green
-        $successRepos += $adoRepo
-    }
-    catch {
-        Write-Host "  [$adoRepo] FAILED: $($_.Exception.Message)" -ForegroundColor Red
-        $failedRepos += $adoRepo
-    }
-}
-
-Write-Host "`nAgent $($BatchIndex + 1): All $($repoList.Count) repo(s) processed." -ForegroundColor Cyan
-
-# ── Collect per-repo results into a batch summary ─────────────────────────────
-Write-Host "`nGenerating batch summary report..." -ForegroundColor Cyan
-
-$batchResults = @()
-foreach ($entry in $repoList) {
-    $ghRepo    = $entry['GHRepo']
-    $adoRepo   = $entry['ADORepo']
-    $stateFile = "$OutputDir\logs\migration-state-$ghRepo.txt"
-    $auditDir  = "$OutputDir\audit\$ghRepo"
-
-    $state = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { "UNKNOWN" }
-
-    function Get-Val2($dir, $file) {
-        $p = "$dir\$file"
-        if (Test-Path $p) { return (Get-Content $p -Raw).Trim() }
-        return "N/A"
-    }
-
-    $batchResults += [PSCustomObject]@{
-        ADORepo       = $adoRepo
-        GHRepo        = $ghRepo
-        State         = $state
-        Branches      = Get-Val2 $auditDir "gh-branch-count.txt"
-        Tags          = Get-Val2 $auditDir "gh-tag-count.txt"
-        Commits       = Get-Val2 $auditDir "gh-commit-count.txt"
-        PRs           = Get-Val2 $auditDir "gh-pr-count.txt"
-        DashboardPath = "$OutputDir\dashboard\$ghRepo\migration-report-$ghRepo.html"
-    }
-}
-
-# Per-agent summary files (suffixed when multi-agent)
-$summaryJson = "$reportDir\batch-migration-summary${batchSuffix}.json"
-$summaryCsv  = "$reportDir\batch-migration-summary${batchSuffix}.csv"
-$batchResults | ConvertTo-Json -Depth 3 | Out-File $summaryJson -Encoding utf8
-$batchResults | Export-Csv $summaryCsv -NoTypeInformation -Encoding utf8
-
-# ── Print final summary table ─────────────────────────────────────────────────
-Write-Host ""
-Write-Host "======================================================" -ForegroundColor Green
-Write-Host "  BATCH MIGRATION SUMMARY (Agent $($BatchIndex + 1)/$BatchTotal)"
+Write-Host "  BATCH VALIDATION COMPLETE"
+Write-Host "  Total repos in batch : $($merged.Count)"
+Write-Host "  Skipped (not migrated): $($skippedList.Count)" -ForegroundColor DarkGray
+Write-Host "  Validated             : $($toValidate.Count)" -ForegroundColor Green
 Write-Host "======================================================"
-$batchResults | Format-Table ADORepo, GHRepo, State, Branches, Tags, Commits, PRs -AutoSize
 
-$successCount = @($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
-$failCount    = @($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
+if ($skippedList.Count -gt 0) {
+    Write-Host "`n  Skipped repos:" -ForegroundColor DarkGray
+    foreach ($s in $skippedList) {
+        Write-Host "    - $($s.ADORepo)" -ForegroundColor DarkGray
+    }
+}
 
-Write-Host "  Total   : $($batchResults.Count)"
-Write-Host "  Success : $successCount" -ForegroundColor Green
-Write-Host "  Failed  : $failCount" -ForegroundColor $(if ($failCount -gt 0) { "Red" } else { "Green" })
-Write-Host ""
-Write-Host "  Summary JSON: $summaryJson"
-Write-Host "  Summary CSV : $summaryCsv"
-
-# ── Ensure pipeline sees exit 0 ──────────────────────────────────────────────
-# gh CLI / GEI may leave non-zero $LASTEXITCODE from stderr messages;
-# PS7 propagates that to the ADO pipeline agent causing a false failure.
-exit 0
+# Propagate exit code from validate-migration.ps1
+exit $validationExitCode
