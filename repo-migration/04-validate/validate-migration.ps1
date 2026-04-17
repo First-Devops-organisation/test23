@@ -444,8 +444,20 @@ foreach ($entry in $repoList) {
 
     # ── 9. Repo visibility ───────────────────────────────────────────────────
     if ([string]::IsNullOrWhiteSpace($ghVisibility)) { $ghVisibility = "unknown" }
-    Write-Host "      Visibility   : $ghVisibility" -ForegroundColor DarkGray
-    Add-Check "Visibility" $ExpectedVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
+
+    # Get ADO project visibility (ADO repos inherit visibility from their project)
+    $adoVisibility = "unknown"
+    try {
+        $projResp = Invoke-WebRequest -Uri "https://dev.azure.com/$ADOOrg/_apis/projects/${ADOProject}?api-version=7.1" -Headers $adoHeaders -UseBasicParsing
+        $projData = $projResp.Content | ConvertFrom-Json
+        if ($projData.visibility) { $adoVisibility = $projData.visibility.ToLower() }
+    }
+    catch {
+        Write-Host "      [DEBUG] Could not fetch ADO project visibility: $_" -ForegroundColor DarkGray
+    }
+
+    Write-Host "      Visibility   : ADO=$adoVisibility → GitHub=$ghVisibility (expected=$ExpectedVisibility)" -ForegroundColor DarkGray
+    Add-Check "Visibility" $adoVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
 
     # ── 10. Latest commit reachable ──────────────────────────────────────────────
     $auditHash = Get-AuditVal $auditDir "gh-latest-hash.txt"
