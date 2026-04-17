@@ -12,7 +12,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "targetRepoVisibility": "Public",
+    "targetRepoVisibility": "public",
     "lockSourceRepo": false,
     "retryCount": 3,
     "retryDelaySeconds": 30
