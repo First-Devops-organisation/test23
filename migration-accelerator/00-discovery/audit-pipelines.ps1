@@ -202,35 +202,71 @@ $pctSuccess     = [math]::Round(([int]$auditMetrics.Successful   / $total) * 100
 $pctPartial     = [math]::Round(([int]$auditMetrics.Partial      / $total) * 100)
 $pctUnsupported = [math]::Round(([int]$auditMetrics.Unsupported  / $total) * 100)
 $pctFailed      = [math]::Round(([int]$auditMetrics.Failed       / $total) * 100)
-
-$lblSuccess     = if ($pctSuccess -ge 8)     { "${pctSuccess}%" }     else { "" }
-$lblPartial     = if ($pctPartial -ge 8)     { "${pctPartial}%" }     else { "" }
-$lblUnsupported = if ($pctUnsupported -ge 8) { "${pctUnsupported}%" } else { "" }
-$lblFailed      = if ($pctFailed -ge 8)      { "${pctFailed}%" }      else { "" }
+$pctReady       = $pctSuccess + $pctPartial
 
 $encOrg  = [System.Web.HttpUtility]::HtmlEncode($AdoOrg)
 $encProj = [System.Web.HttpUtility]::HtmlEncode($projLabel)
 
-# Dynamic sections
+# Donut chart SVG conic-gradient segments (CSS-based)
+$donutSeg1 = $pctSuccess
+$donutSeg2 = $donutSeg1 + $pctPartial
+$donutSeg3 = $donutSeg2 + $pctUnsupported
+
+# Converted pipelines table rows
 $convertedSection = if ($pipelineRows) {
     @"
-  <table id="pipelineTable">
-    <thead><tr><th>Directory</th><th>Pipeline</th><th>Size</th><th>Status</th></tr></thead>
-    <tbody>
+      <table>
+        <thead><tr><th>Directory</th><th>Pipeline</th><th>Size</th><th>Status</th></tr></thead>
+        <tbody>
 $pipelineRows
-    </tbody>
-  </table>
+        </tbody>
+      </table>
 "@
-} else { "  <p class='muted'>No converted YAML files found in audit output.</p>" }
+} else { "      <p class='empty-state'><span class='empty-icon'>&#128194;</span>No converted YAML files found in audit output.</p>" }
 
-$manualSection = if ($manualHtml) {
-    "  <div class='pre-block'>$manualHtml</div>"
-} else { "  <p class='muted'>No manual tasks file found.</p>" }
+# Manual tasks — parse markdown into HTML checklist
+$manualSection = ""
+if (Test-Path $manualTasksFile) {
+    $mtLines = Get-Content $manualTasksFile
+    foreach ($line in $mtLines) {
+        if ($line -match "^#+\s+(.+)") {
+            $manualSection += "<h4>$($matches[1])</h4>`n"
+        } elseif ($line -match "^- \[ \]\s+(.+)") {
+            $escaped = [System.Web.HttpUtility]::HtmlEncode($matches[1])
+            $manualSection += "<label class='checklist-item'><input type='checkbox'/><span>$escaped</span></label>`n"
+        } elseif ($line -match "^- (.+)") {
+            $escaped = [System.Web.HttpUtility]::HtmlEncode($matches[1])
+            $manualSection += "<div class='task-note'>&#8226; $escaped</div>`n"
+        }
+    }
+}
+if (-not $manualSection) { $manualSection = "<p class='empty-state'><span class='empty-icon'>&#9989;</span>No manual tasks file found.</p>" }
 
+# Raw summary
 $rawSection = if (Test-Path $auditSummaryFile) {
-    $escaped = [System.Web.HttpUtility]::HtmlEncode((Get-Content $auditSummaryFile -Raw)) -replace "`n","<br/>"
-    "  <div class='pre-block'>$escaped</div>"
-} else { "  <p class='muted'>audit_summary.md not available.</p>" }
+    $escaped = [System.Web.HttpUtility]::HtmlEncode((Get-Content $auditSummaryFile -Raw))
+    "<pre class='raw-block'>$escaped</pre>"
+} else { "<p class='empty-state'>audit_summary.md not available.</p>" }
+
+# Build the pipeline detail rows for the breakdown table
+$breakdownRows = @"
+        <tr><td><span class='dot' style='background:#10b981'></span> Fully Convertible</td>
+            <td class='num'>$($auditMetrics.Successful)</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctSuccess}%;background:#10b981'></div></div></td>
+            <td class='num'>${pctSuccess}%</td></tr>
+        <tr><td><span class='dot' style='background:#f59e0b'></span> Partially Convertible</td>
+            <td class='num'>$($auditMetrics.Partial)</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctPartial}%;background:#f59e0b'></div></div></td>
+            <td class='num'>${pctPartial}%</td></tr>
+        <tr><td><span class='dot' style='background:#ef4444'></span> Unsupported</td>
+            <td class='num'>$($auditMetrics.Unsupported)</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctUnsupported}%;background:#ef4444'></div></div></td>
+            <td class='num'>${pctUnsupported}%</td></tr>
+        <tr><td><span class='dot' style='background:#6b7280'></span> Failed</td>
+            <td class='num'>$($auditMetrics.Failed)</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctFailed}%;background:#6b7280'></div></div></td>
+            <td class='num'>${pctFailed}%</td></tr>
+"@
 
 $htmlContent = @"
 <!DOCTYPE html>
@@ -238,91 +274,230 @@ $htmlContent = @"
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pipeline Audit Report - $encOrg</title>
+<title>Pipeline Audit Report &mdash; $encOrg</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5; color: #24292f; padding: 20px; }
-  .container { max-width: 1400px; margin: 0 auto; }
-  h1 { font-size: 1.8rem; margin-bottom: 5px; color: #0078d4; }
-  h2 { font-size: 1.3rem; margin: 30px 0 12px; color: #24292f; border-bottom: 2px solid #e1e4e8; padding-bottom: 6px; }
-  .subtitle { color: #586069; margin-bottom: 20px; font-size: 0.9rem; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 25px; }
-  .card { background: #fff; border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); text-align: center; }
-  .card .value { font-size: 2rem; font-weight: 700; color: #0078d4; }
-  .card .label { font-size: 0.85rem; color: #586069; margin-top: 4px; }
-  .card.green .value { color: #1a7f37; }
-  .card.yellow .value { color: #d29922; }
-  .card.red .value { color: #cf222e; }
-  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.12); margin-bottom: 20px; }
-  th { background: #0078d4; color: #fff; padding: 12px 10px; text-align: left; font-size: 0.85rem; position: sticky; top: 0; }
-  td { padding: 10px; border-bottom: 1px solid #e1e4e8; font-size: 0.85rem; }
-  tr:hover { background: #f6f8fa; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .center { text-align: center; }
-  .bar-chart { display: flex; height: 32px; border-radius: 6px; overflow: hidden; margin: 12px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
-  .bar-chart .seg { display: flex; align-items: center; justify-content: center; font-size: .75rem; font-weight: 600; color: #fff; min-width: 2px; }
-  .seg-success { background: #1a7f37; }
-  .seg-partial { background: #d29922; }
-  .seg-unsupported { background: #cf222e; }
-  .seg-failed { background: #6e7681; }
-  .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; font-size: .85rem; }
-  .legend-item { display: flex; align-items: center; gap: 6px; }
-  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
-  .pre-block { background: #fff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 16px; font-family: 'Cascadia Code', Consolas, monospace; font-size: .85rem; white-space: pre-wrap; overflow-x: auto; max-height: 400px; overflow-y: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
-  .muted { color: #586069; }
-  section { margin-bottom: 20px; }
-  .footer { margin-top: 30px; color: #586069; font-size: 0.8rem; text-align: center; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  :root {
+    --green: #10b981; --yellow: #f59e0b; --red: #ef4444; --gray: #6b7280;
+    --bg: #0f172a; --surface: #1e293b; --surface2: #334155;
+    --text: #f1f5f9; --text2: #94a3b8; --accent: #38bdf8; --accent2: #818cf8;
+    --border: rgba(148,163,184,.15); --radius: 16px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+  /* --- Header banner --- */
+  .header { background: linear-gradient(135deg, #0ea5e9 0%, #8b5cf6 50%, #ec4899 100%);
+    padding: 40px 48px 32px; position: relative; overflow: hidden; }
+  .header::before { content:''; position:absolute; top:-50%; right:-20%; width:600px; height:600px;
+    background: radial-gradient(circle, rgba(255,255,255,.08) 0%, transparent 70%); }
+  .header::after { content:''; position:absolute; bottom:-40%; left:-10%; width:500px; height:500px;
+    background: radial-gradient(circle, rgba(255,255,255,.05) 0%, transparent 70%); }
+  .header h1 { font-size:2.2rem; font-weight:800; letter-spacing:-.02em; position:relative; z-index:1; }
+  .header h1 .icon { font-size:1.6rem; margin-right:10px; }
+  .header .meta { margin-top:8px; font-size:.9rem; opacity:.85; position:relative; z-index:1; }
+  .header .meta span { margin-right:24px; }
+  .header .badge { display:inline-block; background:rgba(255,255,255,.2); backdrop-filter:blur(8px);
+    padding:4px 14px; border-radius:20px; font-size:.8rem; font-weight:600; margin-top:12px; position:relative; z-index:1; }
+
+  .container { max-width:1440px; margin:0 auto; padding: 0 32px 40px; }
+
+  /* --- KPI Cards --- */
+  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:16px; margin: -40px 0 32px; position:relative; z-index:2; }
+  .kpi { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px 20px;
+    text-align:center; transition: transform .2s, box-shadow .2s; }
+  .kpi:hover { transform:translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+  .kpi .kpi-icon { font-size:1.6rem; margin-bottom:8px; }
+  .kpi .kpi-val { font-size:2.4rem; font-weight:800; font-variant-numeric:tabular-nums; }
+  .kpi .kpi-label { font-size:.78rem; color:var(--text2); margin-top:4px; text-transform:uppercase; letter-spacing:.06em; }
+  .kpi.total .kpi-val { color:var(--accent); }
+  .kpi.success .kpi-val { color:var(--green); }
+  .kpi.partial .kpi-val { color:var(--yellow); }
+  .kpi.unsupported .kpi-val { color:var(--red); }
+  .kpi.failed .kpi-val { color:var(--gray); }
+
+  /* --- Sections --- */
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:28px; margin-bottom:20px; }
+  .panel h2 { font-size:1.15rem; font-weight:700; margin-bottom:20px; display:flex; align-items:center; gap:10px; }
+  .panel h2 .sec-icon { font-size:1.2rem; }
+
+  /* --- Donut + Breakdown side-by-side --- */
+  .chart-grid { display:grid; grid-template-columns: 280px 1fr; gap:32px; align-items:center; }
+  @media (max-width:768px) { .chart-grid { grid-template-columns:1fr; } }
+  .donut-wrap { position:relative; width:220px; height:220px; margin:0 auto; }
+  .donut { width:220px; height:220px; border-radius:50%;
+    background: conic-gradient(
+      var(--green) 0% ${donutSeg1}%,
+      var(--yellow) ${donutSeg1}% ${donutSeg2}%,
+      var(--red) ${donutSeg2}% ${donutSeg3}%,
+      var(--gray) ${donutSeg3}% 100%
+    );
+    -webkit-mask: radial-gradient(circle, transparent 60%, black 61%);
+            mask: radial-gradient(circle, transparent 60%, black 61%);
+  }
+  .donut-center { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; }
+  .donut-center .big { font-size:2.6rem; font-weight:800; color:var(--accent); }
+  .donut-center .sub { font-size:.8rem; color:var(--text2); }
+
+  /* Breakdown table */
+  .breakdown { width:100%; border-collapse:collapse; }
+  .breakdown td { padding:12px 10px; border-bottom:1px solid var(--border); font-size:.9rem; }
+  .breakdown tr:last-child td { border-bottom:none; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+  .mini-bar { width:100%; height:8px; background:var(--surface2); border-radius:4px; overflow:hidden; }
+  .mini-fill { height:100%; border-radius:4px; transition: width .8s ease; }
+
+  /* --- Stacked bar --- */
+  .stacked-bar { display:flex; height:14px; border-radius:7px; overflow:hidden; margin-top:16px; }
+  .stacked-bar .seg { transition: width .8s ease; }
+
+  /* --- Table --- */
+  table:not(.breakdown) { width:100%; border-collapse:collapse; }
+  table:not(.breakdown) th { background: linear-gradient(135deg,#0ea5e9,#8b5cf6); color:#fff;
+    padding:14px 12px; text-align:left; font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; font-weight:600; }
+  table:not(.breakdown) td { padding:12px; border-bottom:1px solid var(--border); font-size:.85rem; }
+  table:not(.breakdown) tr:hover { background:rgba(56,189,248,.06); }
+  .center { text-align:center; }
+  .badge-ok { background:rgba(16,185,129,.15); color:var(--green); padding:3px 12px; border-radius:12px; font-size:.78rem; font-weight:600; }
+
+  /* --- Checklist --- */
+  .checklist-item { display:flex; align-items:flex-start; gap:10px; padding:8px 0; font-size:.88rem; cursor:pointer; }
+  .checklist-item input[type=checkbox] { accent-color:var(--accent); margin-top:3px; width:16px; height:16px; }
+  .checklist-item span { flex:1; }
+  h4 { color:var(--accent); font-size:.95rem; margin:18px 0 6px; font-weight:600; }
+  h4:first-child { margin-top:0; }
+  .task-note { padding:4px 0 4px 26px; font-size:.85rem; color:var(--text2); }
+
+  /* --- Raw block --- */
+  .raw-block { background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:20px;
+    font-family:'Cascadia Code','Fira Code',Consolas,monospace; font-size:.82rem; color:var(--text2);
+    white-space:pre-wrap; max-height:400px; overflow-y:auto; line-height:1.6; }
+
+  /* Collapsible */
+  details { margin-bottom:4px; }
+  details summary { cursor:pointer; font-weight:600; font-size:.95rem; padding:8px 0; color:var(--text);
+    list-style:none; display:flex; align-items:center; gap:8px; }
+  details summary::before { content:'&#9654;'; font-size:.7rem; transition:transform .2s; display:inline-block; }
+  details[open] summary::before { transform:rotate(90deg); }
+  details > div { padding: 8px 0 0 20px; }
+
+  .empty-state { text-align:center; padding:32px; color:var(--text2); }
+  .empty-icon { font-size:2rem; display:block; margin-bottom:8px; }
+
+  .footer { text-align:center; color:var(--text2); font-size:.78rem; margin-top:32px; padding:20px;
+    border-top:1px solid var(--border); }
+  .footer a { color:var(--accent); text-decoration:none; }
+
+  /* Animate on load */
+  @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  .kpi, .panel { animation: fadeUp .5s ease both; }
+  .kpi:nth-child(2) { animation-delay:.05s; }
+  .kpi:nth-child(3) { animation-delay:.1s; }
+  .kpi:nth-child(4) { animation-delay:.15s; }
+  .kpi:nth-child(5) { animation-delay:.2s; }
+  .panel:nth-of-type(1) { animation-delay:.25s; }
+  .panel:nth-of-type(2) { animation-delay:.3s; }
+  .panel:nth-of-type(3) { animation-delay:.35s; }
+  .panel:nth-of-type(4) { animation-delay:.4s; }
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>&#128269; ADO Pipeline Audit Report</h1>
-  <p class="subtitle">Organization: <strong>$encOrg</strong> | Project: <strong>$encProj</strong> | Scanned: $scanDate</p>
 
-  <section id="summary">
-  <h2>Conversion Summary</h2>
-  <div class="cards">
-    <div class="card"><div class="value">$($auditMetrics.Total)</div><div class="label">Total Pipelines</div></div>
-    <div class="card green"><div class="value">$($auditMetrics.Successful)</div><div class="label">Fully Convertible</div></div>
-    <div class="card yellow"><div class="value">$($auditMetrics.Partial)</div><div class="label">Partially Convertible</div></div>
-    <div class="card red"><div class="value">$($auditMetrics.Unsupported)</div><div class="label">Unsupported</div></div>
-    <div class="card red"><div class="value">$($auditMetrics.Failed)</div><div class="label">Failed</div></div>
+<!-- ===== HEADER ===== -->
+<div class="header">
+  <h1><span class="icon">&#9889;</span>ADO Pipeline Audit Report</h1>
+  <div class="meta">
+    <span>&#127970; <strong>$encOrg</strong></span>
+    <span>&#128193; <strong>$encProj</strong></span>
+    <span>&#128197; $scanDate</span>
   </div>
-  </section>
-
-  <section id="chart">
-  <h2>Readiness Breakdown</h2>
-  <div class="bar-chart">
-    <div class="seg seg-success" style="width:${pctSuccess}%">$lblSuccess</div>
-    <div class="seg seg-partial" style="width:${pctPartial}%">$lblPartial</div>
-    <div class="seg seg-unsupported" style="width:${pctUnsupported}%">$lblUnsupported</div>
-    <div class="seg seg-failed" style="width:${pctFailed}%">$lblFailed</div>
-  </div>
-  <div class="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:#1a7f37"></div>Fully Convertible ($pctSuccess%)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div>Partially Convertible ($pctPartial%)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#cf222e"></div>Unsupported ($pctUnsupported%)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#6e7681"></div>Failed ($pctFailed%)</div>
-  </div>
-  </section>
-
-  <section id="converted">
-  <h2>Converted Pipeline Files</h2>
-$convertedSection
-  </section>
-
-  <section id="manual">
-  <h2>Manual Tasks Required Post-Migration</h2>
-$manualSection
-  </section>
-
-  <section id="raw">
-  <h2>Raw Audit Summary</h2>
-$rawSection
-  </section>
-
-  <p class="footer">Generated by ADO-to-GitHub Migration Accelerator &mdash; Pipeline Audit | $scanDate</p>
+  <div class="badge">&#128640; Migration Readiness: ${pctReady}% Convertible</div>
 </div>
+
+<div class="container">
+
+  <!-- ===== KPI CARDS ===== -->
+  <div class="kpi-row">
+    <div class="kpi total">
+      <div class="kpi-icon">&#128202;</div>
+      <div class="kpi-val">$($auditMetrics.Total)</div>
+      <div class="kpi-label">Total Pipelines</div>
+    </div>
+    <div class="kpi success">
+      <div class="kpi-icon">&#9989;</div>
+      <div class="kpi-val">$($auditMetrics.Successful)</div>
+      <div class="kpi-label">Fully Convertible</div>
+    </div>
+    <div class="kpi partial">
+      <div class="kpi-icon">&#9888;&#65039;</div>
+      <div class="kpi-val">$($auditMetrics.Partial)</div>
+      <div class="kpi-label">Partially Convertible</div>
+    </div>
+    <div class="kpi unsupported">
+      <div class="kpi-icon">&#10060;</div>
+      <div class="kpi-val">$($auditMetrics.Unsupported)</div>
+      <div class="kpi-label">Unsupported</div>
+    </div>
+    <div class="kpi failed">
+      <div class="kpi-icon">&#128683;</div>
+      <div class="kpi-val">$($auditMetrics.Failed)</div>
+      <div class="kpi-label">Failed</div>
+    </div>
+  </div>
+
+  <!-- ===== READINESS CHART ===== -->
+  <div class="panel">
+    <h2><span class="sec-icon">&#127760;</span>Readiness Breakdown</h2>
+    <div class="chart-grid">
+      <div class="donut-wrap">
+        <div class="donut"></div>
+        <div class="donut-center">
+          <div class="big">${pctReady}%</div>
+          <div class="sub">Ready</div>
+        </div>
+      </div>
+      <div>
+        <table class="breakdown">
+$breakdownRows
+        </table>
+        <div class="stacked-bar">
+          <div class="seg" style="width:${pctSuccess}%;background:var(--green)"></div>
+          <div class="seg" style="width:${pctPartial}%;background:var(--yellow)"></div>
+          <div class="seg" style="width:${pctUnsupported}%;background:var(--red)"></div>
+          <div class="seg" style="width:${pctFailed}%;background:var(--gray)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONVERTED PIPELINES ===== -->
+  <div class="panel">
+    <h2><span class="sec-icon">&#128196;</span>Converted Pipeline Files</h2>
+$convertedSection
+  </div>
+
+  <!-- ===== MANUAL TASKS ===== -->
+  <div class="panel">
+    <h2><span class="sec-icon">&#9997;&#65039;</span>Manual Tasks Required Post-Migration</h2>
+    $manualSection
+  </div>
+
+  <!-- ===== RAW AUDIT ===== -->
+  <div class="panel">
+    <h2><span class="sec-icon">&#128220;</span>Raw Audit Summary</h2>
+    <details>
+      <summary>View full audit_summary.md output</summary>
+      <div>$rawSection</div>
+    </details>
+  </div>
+
+  <div class="footer">
+    Generated by <strong>ADO-to-GitHub Migration Accelerator</strong> &mdash; Pipeline Audit Module &bull; $scanDate
+  </div>
+</div>
+
 </body>
 </html>
 "@
