@@ -502,11 +502,39 @@ $convertedSection
 </html>
 "@
 
-$htmlOut = Join-Path $dashboardDir "pipeline-audit-report.html"
+$htmlOut = Join-Path $dashboardDir "index.html"
 $htmlContent | Out-File -FilePath $htmlOut -Encoding utf8
+
+# --- Build Summary Markdown (shows on pipeline Extensions tab) ---
+$summaryMd = @"
+## Pipeline Audit Results
+
+| Metric | Count | % |
+|--------|------:|---:|
+| **Total Pipelines** | **$($auditMetrics.Total)** | 100% |
+| Fully Convertible | $($auditMetrics.Successful) | ${pctSuccess}% |
+| Partially Convertible | $($auditMetrics.Partial) | ${pctPartial}% |
+| Unsupported | $($auditMetrics.Unsupported) | ${pctUnsupported}% |
+| Failed | $($auditMetrics.Failed) | ${pctFailed}% |
+
+**Migration Readiness: ${pctReady}% convertible**
+
+---
+*Organization:* ``$AdoOrg`` | *Project:* ``$projLabel`` | *Scanned:* $scanDate
+"@
+$summaryMdPath = Join-Path $OutputDir "pipeline-audit-summary.md"
+$summaryMd | Out-File -FilePath $summaryMdPath -Encoding utf8
+
+# --- Upload Build Summary to ADO pipeline summary tab ---
+if ($env:BUILD_SOURCESDIRECTORY) {
+    # Running inside ADO pipeline
+    Write-Host "##vso[task.uploadsummary]$summaryMdPath"
+    Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Pipeline Audit Results;]$summaryMdPath"
+}
 
 Write-Host "`nReports saved:" -ForegroundColor Cyan
 Write-Host "  Audit output : $OutputDir"
 Write-Host "  Manual tasks : $manualTasksFile"
 Write-Host "  HTML report  : $htmlOut"
+Write-Host "  Build summary: $summaryMdPath"
 Write-Host "`nPipeline audit complete." -ForegroundColor Cyan
