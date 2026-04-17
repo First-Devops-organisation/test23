@@ -51,6 +51,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# ── Read visibility from config if not explicitly passed ─────────────────────
+$configPath = "$PSScriptRoot\..\config\repo-migration-config.json"
+if ($ExpectedVisibility -eq 'internal' -and (Test-Path $configPath)) {
+    $configData = Get-Content $configPath -Raw | ConvertFrom-Json
+    if ($configData.migration.targetRepoVisibility) {
+        $ExpectedVisibility = $configData.migration.targetRepoVisibility
+    }
+}
+Write-Host "  Expected visibility: $ExpectedVisibility"
+
 # ── Normalize ADOOrg — strip full URL if passed as https://dev.azure.com/<org> ──
 if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
     Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
