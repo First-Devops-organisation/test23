@@ -92,6 +92,14 @@ else {
 
 if ($repoList.Count -eq 0) { Write-Error "No repos found to migrate." }
 
+# ── Read target repo visibility from config ───────────────────────────────────────────
+$targetVisibility = 'private'
+$visConfig = if (Test-Path $ConfigPath) { Get-Content $ConfigPath -Raw | ConvertFrom-Json } else { $null }
+if ($visConfig -and $visConfig.migration -and $visConfig.migration.targetRepoVisibility) {
+    $targetVisibility = $visConfig.migration.targetRepoVisibility
+}
+Write-Host "  Repo visibility: $targetVisibility"
+
 # ── Output folder ─────────────────────────────────────────────────────────────
 $reportDir = "$OutputDir\reports"
 New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
@@ -129,6 +137,7 @@ foreach ($entry in $repoList) {
         GHOrg      = $GHOrg
         GHRepo     = $ghRepo
         OutputDir  = $OutputDir
+        TargetRepoVisibility = $targetVisibility
     }
     if ($SkipAudit) { $migParams['SkipAudit'] = $true }
     if ($DryRun)    { $migParams['DryRun']    = $true }
