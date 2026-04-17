@@ -30,3 +30,34 @@ stages:
             env:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Run audit-pipelines.ps1"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/audit-pipelines.ps1'
+              arguments: >-
+                -AdoOrg "$(ADO_ORG)"
+                -AdoProject "$(ADO_PROJECT)"
+                -AdoPat "$(ADO_PAT)"
+                -GitHubPat "$(GH_PAT)"
+                -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Audit Artifact"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit'
+              artifact: "pipeline-audit"
+              publishLocation: pipeline
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Audit Report on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
+              tabName: "Pipeline Audit Report"
