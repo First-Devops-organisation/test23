@@ -22,6 +22,8 @@
     Target GitHub repository name (defaults to ADORepo if omitted)
 .PARAMETER OutputDir
     Directory for all reports, logs and dashboards  (default: ./output)
+.PARAMETER TargetRepoVisibility
+    GitHub repo visibility after migration: private, internal, or public (default: private)
 .PARAMETER SkipAudit
     If set, skips the branch-wise audit (Step 4) — useful for large repos
 .PARAMETER DryRun
@@ -35,6 +37,9 @@ param(
     [Parameter(Mandatory = $true)]  [string]$GHOrg,
     [Parameter(Mandatory = $false)] [string]$GHRepo     = $ADORepo,
     [Parameter(Mandatory = $false)] [string]$OutputDir  = "$PSScriptRoot\..\output",
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('private', 'internal', 'public')]
+    [string]$TargetRepoVisibility = 'private',
     [switch]$SkipAudit,
     [switch]$DryRun
 )
@@ -164,7 +169,7 @@ if ($repoStatus -eq "ALREADY_EXISTS") {
 }
 elseif ($DryRun) {
     Write-Host "`n[Step 3] DRY RUN — GEI command that would run:" -ForegroundColor DarkYellow
-    Write-Host "  gh ado2gh migrate-repo --ado-org `"$ADOOrg`" --ado-team-project `"$ADOProject`" --ado-repo `"$ADORepo`" --github-org `"$GHOrg`" --github-repo `"$GHRepo`""
+    Write-Host "  gh ado2gh migrate-repo --ado-org `"$ADOOrg`" --ado-team-project `"$ADOProject`" --ado-repo `"$ADORepo`" --github-org `"$GHOrg`" --github-repo `"$GHRepo`" --target-repo-visibility $TargetRepoVisibility"
     $migState = "DRY_RUN"
     $migState | Out-File $stateFile -Encoding utf8
 }
@@ -186,7 +191,8 @@ else {
         --ado-team-project $ADOProject `
         --ado-repo         $ADORepo `
         --github-org       $GHOrg `
-        --github-repo      $GHRepo 2>&1
+        --github-repo      $GHRepo `
+        --target-repo-visibility $TargetRepoVisibility 2>&1
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
 
