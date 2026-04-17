@@ -527,14 +527,22 @@ $summaryMd | Out-File -FilePath $summaryMdPath -Encoding utf8
 
 # --- Upload Build Summary to ADO pipeline summary tab ---
 if ($env:BUILD_SOURCESDIRECTORY) {
-    # Running inside ADO pipeline
-    Write-Host "##vso[task.uploadsummary]$summaryMdPath"
-    Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Pipeline Audit Results;]$summaryMdPath"
+    # ##vso commands require absolute paths — resolve them
+    $absOutputDir   = (Resolve-Path $OutputDir).Path
+    $absSummaryPath = Join-Path $absOutputDir "pipeline-audit-summary.md"
+    if (Test-Path $absSummaryPath) {
+        Write-Host "##vso[task.uploadsummary]$absSummaryPath"
+        Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Pipeline Audit Results;]$absSummaryPath"
+    } else {
+        Write-Host "WARNING: Summary file not found at $absSummaryPath" -ForegroundColor Yellow
+    }
 }
 
 Write-Host "`nReports saved:" -ForegroundColor Cyan
-Write-Host "  Audit output : $OutputDir"
-Write-Host "  Manual tasks : $manualTasksFile"
-Write-Host "  HTML report  : $htmlOut"
-Write-Host "  Build summary: $summaryMdPath"
+$absOut = (Resolve-Path $OutputDir -ErrorAction SilentlyContinue).Path
+if (-not $absOut) { $absOut = $OutputDir }
+Write-Host "  Audit output : $absOut"
+Write-Host "  Manual tasks : $(Join-Path $absOut 'manual-tasks-summary.md')"
+Write-Host "  HTML report  : $(Join-Path $absOut 'dashboard/index.html')"
+Write-Host "  Build summary: $(Join-Path $absOut 'pipeline-audit-summary.md')"
 Write-Host "`nPipeline audit complete." -ForegroundColor Cyan
