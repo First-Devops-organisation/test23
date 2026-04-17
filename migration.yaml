@@ -4,7 +4,7 @@ trigger:
       - pipeline-migrate
 
 pool:
-  vmImage: windows-latest
+  vmImage: ubuntu-latest
 
 
 variables:
@@ -49,6 +49,7 @@ stages:
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Audit Artifact"
