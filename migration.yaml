@@ -42,7 +42,7 @@ stages:
                 -AdoProject "$(ADO_PROJECT)"
                 -AdoPat "$(ADO_PAT)"
                 -GitHubPat "$(GH_PAT)"
-                -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit"
+                -OutputDir "output/pipeline-audit"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
