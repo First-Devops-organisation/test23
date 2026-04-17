@@ -60,10 +60,13 @@ Write-Host "Updating actions-importer image..." -ForegroundColor Yellow
 gh actions-importer update 2>&1
 
 # --- Run Audit ---
+# Handle both full URL and org-name-only for $AdoOrg
+$adoOrgUrl = if ($AdoOrg -match '^https?://') { $AdoOrg.TrimEnd('/') } else { "https://dev.azure.com/$AdoOrg" }
+
 $auditArgs = @(
     "actions-importer", "audit", "azure-devops",
     "--output-dir", $OutputDir,
-    "--azure-devops-organization", "https://dev.azure.com/$AdoOrg"
+    "--azure-devops-organization", $adoOrgUrl
 )
 
 if ($AdoProject) {
