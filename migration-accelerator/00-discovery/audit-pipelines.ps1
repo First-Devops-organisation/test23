@@ -104,11 +104,11 @@ if (Test-Path $auditSummaryFile) {
     Write-Host "`n=== Audit Summary ===" -ForegroundColor Cyan
     $content = Get-Content $auditSummaryFile -Raw
 
-    # Extract key metrics
-    $successMatch = [regex]::Match($content, "Successful:\s*(\d+)")
-    $partialMatch = [regex]::Match($content, "Partially successful:\s*(\d+)")
-    $unsupportedMatch = [regex]::Match($content, "Unsupported:\s*(\d+)")
-    $failedMatch = [regex]::Match($content, "Failed:\s*(\d+)")
+    # Extract key metrics (handles **N** markdown bold and optional percentages)
+    $successMatch = [regex]::Match($content, "Successful:\s*\*{0,2}(\d+)\*{0,2}")
+    $partialMatch = [regex]::Match($content, "Partially successful:\s*\*{0,2}(\d+)\*{0,2}")
+    $unsupportedMatch = [regex]::Match($content, "Unsupported:\s*\*{0,2}(\d+)\*{0,2}")
+    $failedMatch = [regex]::Match($content, "Failed:\s*\*{0,2}(\d+)\*{0,2}")
 
     if ($successMatch.Success) { Write-Host "  Fully Convertible:    $($successMatch.Groups[1].Value)" -ForegroundColor Green }
     if ($partialMatch.Success) { Write-Host "  Partially Convertible: $($partialMatch.Groups[1].Value)" -ForegroundColor Yellow }
@@ -166,11 +166,16 @@ $projLabel = if ($AdoProject) { $AdoProject } else { "All Projects" }
 $auditMetrics = @{ Successful="0"; Partial="0"; Unsupported="0"; Failed="0"; Total="0" }
 if (Test-Path $auditSummaryFile) {
     $raw = Get-Content $auditSummaryFile -Raw
-    $s=[regex]::Match($raw,"Successful:\s*(\d+)");           if($s.Success){$auditMetrics.Successful=$s.Groups[1].Value}
-    $p=[regex]::Match($raw,"Partially successful:\s*(\d+)"); if($p.Success){$auditMetrics.Partial=$p.Groups[1].Value}
-    $u=[regex]::Match($raw,"Unsupported:\s*(\d+)");          if($u.Success){$auditMetrics.Unsupported=$u.Groups[1].Value}
-    $f=[regex]::Match($raw,"Failed:\s*(\d+)");               if($f.Success){$auditMetrics.Failed=$f.Groups[1].Value}
+    Write-Host "DEBUG audit_summary.md content:" -ForegroundColor Magenta
+    Write-Host $raw
+    $s=[regex]::Match($raw,"Successful:\s*\*{0,2}(\d+)\*{0,2}");           if($s.Success){$auditMetrics.Successful=$s.Groups[1].Value}
+    $p=[regex]::Match($raw,"Partially successful:\s*\*{0,2}(\d+)\*{0,2}"); if($p.Success){$auditMetrics.Partial=$p.Groups[1].Value}
+    $u=[regex]::Match($raw,"Unsupported:\s*\*{0,2}(\d+)\*{0,2}");          if($u.Success){$auditMetrics.Unsupported=$u.Groups[1].Value}
+    $f=[regex]::Match($raw,"Failed:\s*\*{0,2}(\d+)\*{0,2}");               if($f.Success){$auditMetrics.Failed=$f.Groups[1].Value}
     $auditMetrics.Total = [int]$auditMetrics.Successful + [int]$auditMetrics.Partial + [int]$auditMetrics.Unsupported + [int]$auditMetrics.Failed
+    Write-Host "DEBUG parsed metrics: Total=$($auditMetrics.Total) Success=$($auditMetrics.Successful) Partial=$($auditMetrics.Partial) Unsupported=$($auditMetrics.Unsupported) Failed=$($auditMetrics.Failed)" -ForegroundColor Magenta
+} else {
+    Write-Host "WARNING: audit_summary.md not found at $auditSummaryFile" -ForegroundColor Yellow
 }
 
 # Manual tasks content
