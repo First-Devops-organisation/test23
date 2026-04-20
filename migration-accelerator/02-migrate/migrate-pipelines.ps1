@@ -179,7 +179,7 @@ if ($Mode -eq "audit") {
     $auditArgs = @(
         "actions-importer", "audit", "azure-devops",
         "--output-dir", $OutputDir,
-        "--azure-devops-organization", $adoOrgUrl,
+        "--azure-devops-organization", $adoOrgName,
         "--azure-devops-project", $AdoProject
     )
     gh @auditArgs 2>&1
@@ -229,7 +229,7 @@ foreach ($pipeline in $pipelines) {
     $importerArgs = @(
         "actions-importer", $Mode, "azure-devops", "pipeline",
         "--output-dir", $outputSubDir,
-        "--azure-devops-organization", $adoOrgUrl,
+        "--azure-devops-organization", $adoOrgName,
         "--azure-devops-project", $AdoProject,
         "--pipeline-id", $currentId
     )
