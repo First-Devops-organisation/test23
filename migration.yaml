@@ -132,6 +132,13 @@ stages:
               artifact: "pipeline-dry-run"
               publishLocation: pipeline
 
+          - task: PublishHtmlReport@1
+            displayName: "Dry-Run Dashboard on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
+              tabName: "Dry-Run Migration Dashboard"
+
       - job: Migrate
         displayName: "2.2 Migrate to GitHub"
         dependsOn: DryRun
@@ -176,3 +183,10 @@ stages:
               targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
               artifact: "pipeline-migrate"
               publishLocation: pipeline
+              
+          - task: PublishHtmlReport@1
+            displayName: "Migration Dashboard on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
+              tabName: "Migration Dashboard"
