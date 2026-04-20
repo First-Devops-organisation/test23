@@ -1,13 +1,13 @@
 {
   "source": {
-    "organization": "https://dev.azure.com/YOUR_ADO_ORG",
-    "pat": "",
-    "projects": []
+    "type": "AzureDevOps",
+    "organization": "$(ADO_ORG)",
+    "project": "$(ADO_PROJECT)",
+    "pat": "$(ADO_PAT)"
   },
   "target": {
-    "organization": "YOUR_GITHUB_ORG",
-    "pat": "",
-    "enterprise": "YOUR_GITHUB_ENTERPRISE"
+    "organization": "$(GH_ORG)",
+    "pat": "$(GH_PAT)"
   },
   "options": {
     "maxParallelMigrations": 5,
