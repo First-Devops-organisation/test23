@@ -80,6 +80,22 @@ if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir
 $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
+# Parse PIPELINE_REPO_MAP (format: "1106=repo1,1135=repo2,717=repo3")
+$pipelineRepoMap = @{}
+$repoMapRaw = if ($env:PIPELINE_REPO_MAP) { $env:PIPELINE_REPO_MAP } else { $null }
+if ($repoMapRaw) {
+    foreach ($entry in $repoMapRaw.Split(',')) {
+        $parts = $entry.Trim().Split('=', 2)
+        if ($parts.Count -eq 2) {
+            $pipelineRepoMap[$parts[0].Trim()] = $parts[1].Trim()
+        }
+    }
+    Write-Host "  Pipeline-to-Repo map: $($pipelineRepoMap.Count) entries loaded" -ForegroundColor Gray
+}
+
+# Default target repo from GH_REPO env var
+$defaultTargetRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
+
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
 Write-Host "  Project:      $AdoProject" -ForegroundColor Gray
@@ -215,13 +231,18 @@ foreach ($pipeline in $pipelines) {
     $currentId = [int]$pipeline.id
     Write-Host "`n  Processing: $pipelineName (ID: $currentId)" -ForegroundColor Yellow
 
-    # Determine target repo
-    $targetRepo = if ($pipeline.repository) {
-        ($pipeline.repository.name).ToLower() -replace " ", "-"
+    # Determine target repo: PIPELINE_REPO_MAP > GH_REPO > ADO repo name
+    $targetRepo = $null
+    if ($pipelineRepoMap.ContainsKey("$currentId")) {
+        $targetRepo = $pipelineRepoMap["$currentId"]
+    } elseif ($defaultTargetRepo) {
+        $targetRepo = $defaultTargetRepo
+    } elseif ($pipeline.repository) {
+        $targetRepo = ($pipeline.repository.name).ToLower() -replace " ", "-"
+    } else {
+        $targetRepo = $AdoProject.ToLower() -replace " ", "-"
     }
-    else {
-        $AdoProject.ToLower() -replace " ", "-"
-    }
+    Write-Host "    Target repo: $ghOrg/$targetRepo" -ForegroundColor Gray
 
     $outputSubDir = Join-Path $OutputDir "$pipelineName"
     if (-not (Test-Path $outputSubDir)) { New-Item -ItemType Directory -Path $outputSubDir -Force | Out-Null }
