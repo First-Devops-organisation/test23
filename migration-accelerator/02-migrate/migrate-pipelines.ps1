@@ -47,7 +47,10 @@ $adoOrg = if ($config) { $config.source.organization } else { $null }
 if (-not $adoOrg -or $adoOrg -match '^\$\(') {
     $adoOrg = if ($env:ADO_ORG) { $env:ADO_ORG } elseif ($env:ADO_Org) { $env:ADO_Org } else { $null }
 }
-$adoOrg = ($adoOrg -replace "https://dev\.azure\.com/", "").TrimEnd("/")
+# Normalize: build full URL if just org name, keep as-is if already a URL
+$adoOrg = $adoOrg.TrimEnd('/')
+$adoOrgUrl = if ($adoOrg -match '^https?://') { $adoOrg } else { "https://dev.azure.com/$adoOrg" }
+$adoOrgName = ($adoOrg -replace 'https?://dev\.azure\.com/', '')
 
 $ghOrg = if ($config) { $config.target.organization } else { $null }
 if (-not $ghOrg -or $ghOrg -match '^\$\(') {
@@ -68,7 +71,7 @@ if (-not $AdoProject -or $AdoProject -match '^\$\(') {
     }
 }
 
-if (-not $adoOrg) { Write-Host "ERROR: ADO org not set. Set ADO_ORG env var." -ForegroundColor Red; exit 1 }
+if (-not $adoOrgName) { Write-Host "ERROR: ADO org not set. Set ADO_ORG env var." -ForegroundColor Red; exit 1 }
 if (-not $adoPat) { Write-Host "ERROR: ADO PAT not set. Set ADO_PAT env var." -ForegroundColor Red; exit 1 }
 if (-not $AdoProject) { Write-Host "ERROR: ADO project not set. Pass -AdoProject or set ADO_PROJECT env var." -ForegroundColor Red; exit 1 }
 
@@ -78,7 +81,7 @@ $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
-Write-Host "  Organization: $adoOrg" -ForegroundColor Gray
+Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
 Write-Host "  Project:      $AdoProject" -ForegroundColor Gray
 
 # --- List mode: show all pipeline IDs and exit ---
@@ -88,13 +91,13 @@ if ($Mode -eq "list") {
     $adoHeaders = @{ Authorization = "Basic $base64Auth" }
 
     # Fetch Build pipelines (YAML + Classic Build)
-    $buildUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
+    $buildUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
     $buildPipelines = (Invoke-RestMethod -Uri $buildUrl -Headers $adoHeaders).value
 
     # Fetch Classic Release pipelines (separate API)
     $releasePipelines = @()
     try {
-        $releaseUrl = "https://vsrm.dev.azure.com/$adoOrg/$AdoProject/_apis/release/definitions?api-version=7.1"
+        $releaseUrl = "https://vsrm.dev.azure.com/$adoOrgName/$AdoProject/_apis/release/definitions?api-version=7.1"
         $releasePipelines = (Invoke-RestMethod -Uri $releaseUrl -Headers $adoHeaders).value
     } catch {
         Write-Host "  Note: Could not fetch release pipelines (may require additional permissions)" -ForegroundColor Yellow
@@ -131,7 +134,7 @@ if ($Mode -eq "audit") {
     $auditArgs = @(
         "actions-importer", "audit", "azure-devops",
         "--output-dir", $OutputDir,
-        "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
+        "--azure-devops-organization", $adoOrgUrl,
         "--azure-devops-project", $AdoProject
     )
     gh @auditArgs 2>&1
@@ -150,7 +153,7 @@ if ($LASTEXITCODE -ne 0) {
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $adoHeaders = @{ Authorization = "Basic $base64Auth" }
 
-$pipelinesUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
+$pipelinesUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
 $pipelines = (Invoke-RestMethod -Uri $pipelinesUrl -Headers $adoHeaders).value
 
 if ($PipelineId -and $PipelineId.Count -gt 0) {
@@ -181,7 +184,7 @@ foreach ($pipeline in $pipelines) {
     $importerArgs = @(
         "actions-importer", $Mode, "azure-devops", "pipeline",
         "--output-dir", $outputSubDir,
-        "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
+        "--azure-devops-organization", $adoOrgUrl,
         "--azure-devops-project", $AdoProject,
         "--pipeline-id", $currentId
     )
