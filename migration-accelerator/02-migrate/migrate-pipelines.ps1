@@ -37,7 +37,8 @@ $ErrorActionPreference = "Stop"
 
 $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
 
-$adoOrg = ($config.source.organization -replace "https://dev.azure.com/", "").TrimEnd("/")
+# $adoOrg = ($config.source.organization -replace "https://dev.azure.com/", "").TrimEnd("/")
+$adoOrgUrl = $config.source.organization.TrimEnd("/")
 $ghOrg = $config.target.organization
 $adoPat = if ($config.source.pat) { $config.source.pat } else { $env:ADO_PAT }
 $ghPat = if ($config.target.pat) { $config.target.pat } else { $env:GH_PAT }
@@ -55,7 +56,8 @@ if ($Mode -eq "list") {
     Write-Host "`nFetching pipelines from ADO..." -ForegroundColor Yellow
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
     $adoHeaders = @{ Authorization = "Basic $base64Auth" }
-    $pipelinesUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
+    # $pipelinesUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
+    $pipelinesUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
     $allPipelines = (Invoke-RestMethod -Uri $pipelinesUrl -Headers $adoHeaders).value
 
     Write-Host "`n=== Available Pipelines ($($allPipelines.Count) found) ===" -ForegroundColor Cyan
@@ -75,6 +77,7 @@ if ($Mode -eq "audit") {
         "actions-importer", "audit", "azure-devops",
         "--output-dir", $OutputDir,
         "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
+        
         "--azure-devops-project", $AdoProject
     )
     gh @auditArgs 2>&1
@@ -116,7 +119,8 @@ foreach ($pipeline in $pipelines) {
     $importerArgs = @(
         "actions-importer", $Mode, "azure-devops", "pipeline",
         "--output-dir", $outputSubDir,
-        "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
+        # "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
+        "--azure-devops-organization", $adoOrgUrl",
         "--azure-devops-project", $AdoProject,
         "--pipeline-id", $pId
     )
