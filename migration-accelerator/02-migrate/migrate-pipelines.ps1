@@ -81,16 +81,42 @@ if ($Mode -eq "list") {
     Write-Host "`nFetching pipelines from ADO..." -ForegroundColor Yellow
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
     $adoHeaders = @{ Authorization = "Basic $base64Auth" }
-    $pipelinesUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
-    $allPipelines = (Invoke-RestMethod -Uri $pipelinesUrl -Headers $adoHeaders).value
 
-    Write-Host "`n=== Available Pipelines ($($allPipelines.Count) found) ===" -ForegroundColor Cyan
+    # Fetch Build pipelines (YAML + Classic Build)
+    $buildUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
+    $buildPipelines = (Invoke-RestMethod -Uri $buildUrl -Headers $adoHeaders).value
+
+    # Fetch Classic Release pipelines (separate API)
+    $releasePipelines = @()
+    try {
+        $releaseUrl = "https://vsrm.dev.azure.com/$adoOrg/$AdoProject/_apis/release/definitions?api-version=7.1"
+        $releasePipelines = (Invoke-RestMethod -Uri $releaseUrl -Headers $adoHeaders).value
+    } catch {
+        Write-Host "  Note: Could not fetch release pipelines (may require additional permissions)" -ForegroundColor Yellow
+    }
+
+    $totalCount = $buildPipelines.Count + $releasePipelines.Count
+    Write-Host "`n=== Available Pipelines ($totalCount found) ===" -ForegroundColor Cyan
+
+    # Build pipelines
+    Write-Host "`n--- Build Pipelines ($($buildPipelines.Count)) ---" -ForegroundColor White
     Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f "ID", "Name", "Type", "Path") -ForegroundColor White
     Write-Host ("-" * 90)
-    foreach ($p in $allPipelines | Sort-Object id) {
-        $pType = if ($p.process.yamlFilename) { "YAML" } else { "Classic" }
+    foreach ($p in $buildPipelines | Sort-Object id) {
+        $pType = if ($p.process.yamlFilename) { "YAML" } else { "Classic Build" }
         Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f $p.id, $p.name, $pType, $p.path)
     }
+
+    # Release pipelines
+    if ($releasePipelines.Count -gt 0) {
+        Write-Host "`n--- Classic Release Pipelines ($($releasePipelines.Count)) ---" -ForegroundColor White
+        Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f "ID", "Name", "Type", "Path") -ForegroundColor White
+        Write-Host ("-" * 90)
+        foreach ($r in $releasePipelines | Sort-Object id) {
+            Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f $r.id, $r.name, "Release", $r.path)
+        }
+    }
+
     Write-Host "`nTo migrate a pipeline, re-run with: -PipelineId <ID> -Mode migrate" -ForegroundColor Green
     return
 }
