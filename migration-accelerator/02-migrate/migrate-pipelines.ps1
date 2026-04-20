@@ -238,6 +238,13 @@ foreach ($pipeline in $pipelines) {
                     Write-Host "    Other files in output:" -ForegroundColor Yellow
                     $generatedFiles | ForEach-Object { Write-Host "      $($_.FullName)" -ForegroundColor Yellow }
                 }
+                # Print log file contents for debugging
+                $logFiles = Get-ChildItem $outputSubDir -Filter "*.log" -Recurse -ErrorAction SilentlyContinue
+                foreach ($logFile in $logFiles) {
+                    Write-Host "    --- Log: $($logFile.Name) ---" -ForegroundColor Yellow
+                    Get-Content $logFile.FullName -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "      $_" -ForegroundColor Yellow }
+                    Write-Host "    --- end log ---" -ForegroundColor Yellow
+                }
             }
         }
     }
