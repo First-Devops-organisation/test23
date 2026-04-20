@@ -73,12 +73,12 @@ stages:
               artifact: "pipeline-audit"
               publishLocation: pipeline
 
-          - task: PublishHtmlReport@1
-            displayName: "Audit Dashboard on Pipeline Tab"
-            condition: always()
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
-              tabName: "Pipeline Audit Dashboard"
+          # - task: PublishHtmlReport@1
+          #   displayName: "Audit Dashboard on Pipeline Tab"
+          #   condition: always()
+          #   inputs:
+          #     reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
+          #     tabName: "Pipeline Audit Dashboard"
 
   # ===========================================================================
   # STAGE 2 – MIGRATE (skipped if PIPELINE_IDS is empty)
@@ -183,7 +183,7 @@ stages:
               targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
               artifact: "pipeline-migrate"
               publishLocation: pipeline
-              
+
           - task: PublishHtmlReport@1
             displayName: "Migration Dashboard on Pipeline Tab"
             condition: always()
