@@ -17,10 +17,8 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
     [string]$ConfigFile,
 
-    [Parameter(Mandatory = $true)]
     [string]$AdoProject,
 
     [int[]]$PipelineId,
@@ -35,29 +33,36 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+# Load config file if provided, otherwise use env vars from variable group
+$config = $null
+if ($ConfigFile -and (Test-Path $ConfigFile)) {
+    $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+    Write-Host "Loaded config from: $ConfigFile" -ForegroundColor Gray
+} else {
+    Write-Host "No config file — using environment variables from variable group" -ForegroundColor Gray
+}
 
-# Read from config, fallback to env vars (config may have $(ADO_ORG) placeholders)
-$adoOrg = $config.source.organization
+# Read from config, fallback to env vars (variable group)
+$adoOrg = if ($config) { $config.source.organization } else { $null }
 if (-not $adoOrg -or $adoOrg -match '^\$\(') {
     $adoOrg = if ($env:ADO_ORG) { $env:ADO_ORG } elseif ($env:ADO_Org) { $env:ADO_Org } else { $null }
 }
 $adoOrg = ($adoOrg -replace "https://dev\.azure\.com/", "").TrimEnd("/")
 
-$ghOrg = $config.target.organization
+$ghOrg = if ($config) { $config.target.organization } else { $null }
 if (-not $ghOrg -or $ghOrg -match '^\$\(') {
     $ghOrg = if ($env:GH_ORG) { $env:GH_ORG } else { $null }
 }
 
-$adoPat = $config.source.pat
+$adoPat = if ($config) { $config.source.pat } else { $null }
 if (-not $adoPat -or $adoPat -match '^\$\(') { $adoPat = $env:ADO_PAT }
 
-$ghPat = $config.target.pat
+$ghPat = if ($config) { $config.target.pat } else { $null }
 if (-not $ghPat -or $ghPat -match '^\$\(') { $ghPat = $env:GH_PAT }
 
 # Use project from config if not passed as parameter
 if (-not $AdoProject -or $AdoProject -match '^\$\(') {
-    $AdoProject = $config.source.project
+    if ($config) { $AdoProject = $config.source.project }
     if (-not $AdoProject -or $AdoProject -match '^\$\(') {
         $AdoProject = $env:ADO_PROJECT
     }
