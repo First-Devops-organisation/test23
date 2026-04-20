@@ -120,7 +120,7 @@ foreach ($pipeline in $pipelines) {
         "actions-importer", $Mode, "azure-devops", "pipeline",
         "--output-dir", $outputSubDir,
         # "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
-        "--azure-devops-organization", $adoOrgUrl",
+        "--azure-devops-organization", $adoOrgUrl,
         "--azure-devops-project", $AdoProject,
         "--pipeline-id", $pId
     )
