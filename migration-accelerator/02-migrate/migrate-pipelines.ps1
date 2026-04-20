@@ -157,8 +157,8 @@ $results = @()
 
 foreach ($pipeline in $pipelines) {
     $pipelineName = $pipeline.name
-    $pipelineId = $pipeline.id
-    Write-Host "`n  Processing: $pipelineName (ID: $pipelineId)" -ForegroundColor Yellow
+    $currentId = [int]$pipeline.id
+    Write-Host "`n  Processing: $pipelineName (ID: $currentId)" -ForegroundColor Yellow
 
     # Determine target repo
     $targetRepo = if ($pipeline.repository) {
@@ -176,7 +176,7 @@ foreach ($pipeline in $pipelines) {
         "--output-dir", $outputSubDir,
         "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
         "--azure-devops-project", $AdoProject,
-        "--pipeline-id", $pipelineId
+        "--pipeline-id", $currentId
     )
 
     if ($Mode -eq "migrate") {
@@ -211,7 +211,7 @@ foreach ($pipeline in $pipelines) {
 
         $results += [PSCustomObject]@{
             Pipeline   = $pipelineName
-            Id         = $pipelineId
+            Id         = $currentId
             TargetRepo = $targetRepo
             Mode       = $Mode
             Status     = $status
@@ -238,7 +238,7 @@ foreach ($pipeline in $pipelines) {
         Write-Warning "    Error: $_"
         $results += [PSCustomObject]@{
             Pipeline   = $pipelineName
-            Id         = $pipelineId
+            Id         = $currentId
             TargetRepo = $targetRepo
             Mode       = $Mode
             Status     = "ERROR"
