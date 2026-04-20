@@ -115,6 +115,34 @@ if (Test-Path $auditSummaryFile) {
     if ($unsupportedMatch.Success) { Write-Host "  Unsupported:          $($unsupportedMatch.Groups[1].Value)" -ForegroundColor Red }
     if ($failedMatch.Success) { Write-Host "  Failed:               $($failedMatch.Groups[1].Value)" -ForegroundColor Red }
 
+    # --- List Individual Pipelines by Status ---
+    $statusSections = @(
+        @{ Header = 'Successful';            Color = 'Green';  Pattern = '(?ms)^### Successful\s*\n(.*?)(?=^### |\z)' },
+        @{ Header = 'Partially Successful';   Color = 'Yellow'; Pattern = '(?ms)^### Partially successful\s*\n(.*?)(?=^### |\z)' },
+        @{ Header = 'Unsupported';            Color = 'Red';    Pattern = '(?ms)^### Unsupported\s*\n(.*?)(?=^### |\z)' },
+        @{ Header = 'Failed';                 Color = 'Red';    Pattern = '(?ms)^### Failed\s*\n(.*?)(?=^### |\z)' }
+    )
+
+    foreach ($sec in $statusSections) {
+        $sectionMatch = [regex]::Match($content, $sec.Pattern)
+        if ($sectionMatch.Success) {
+            $sectionBody = $sectionMatch.Groups[1].Value
+            $pipelineNames = [regex]::Matches($sectionBody, '(?m)^####\s+.+/(.+)$')
+            if ($pipelineNames.Count -gt 0) {
+                Write-Host "`n=== $($sec.Header) Pipelines ($($pipelineNames.Count)) ===" -ForegroundColor $sec.Color
+                foreach ($pm in $pipelineNames) {
+                    $pipeName = $pm.Groups[1].Value.Trim()
+                    $idMatch = [regex]::Match($pipeName, '\((\d+)\)')
+                    if ($idMatch.Success) {
+                        Write-Host "  [$($idMatch.Groups[1].Value)] $pipeName" -ForegroundColor $sec.Color
+                    } else {
+                        Write-Host "         $pipeName" -ForegroundColor $sec.Color
+                    }
+                }
+            }
+        }
+    }
+
     Write-Host "`nFull audit report: $auditSummaryFile" -ForegroundColor Green
 }
 
