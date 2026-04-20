@@ -115,6 +115,26 @@ if (Test-Path $auditSummaryFile) {
     if ($unsupportedMatch.Success) { Write-Host "  Unsupported:          $($unsupportedMatch.Groups[1].Value)" -ForegroundColor Red }
     if ($failedMatch.Success) { Write-Host "  Failed:               $($failedMatch.Groups[1].Value)" -ForegroundColor Red }
 
+    # --- Build name-to-ID lookup from ADO API ---
+    $nameToId = @{}
+    try {
+        $adoOrgUrl = "https://dev.azure.com/$AdoOrg"
+        $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$AdoPat"))
+        $adoHeaders = @{ Authorization = "Basic $base64Auth" }
+        if ($AdoProject) {
+            $buildUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
+            $buildDefs = (Invoke-RestMethod -Uri $buildUrl -Headers $adoHeaders).value
+            foreach ($bd in $buildDefs) { $nameToId[$bd.name] = $bd.id }
+            try {
+                $releaseUrl = "https://vsrm.dev.azure.com/$AdoOrg/$AdoProject/_apis/release/definitions?api-version=7.1"
+                $relDefs = (Invoke-RestMethod -Uri $releaseUrl -Headers $adoHeaders).value
+                foreach ($rd in $relDefs) { $nameToId[$rd.name] = $rd.id }
+            } catch { }
+        }
+    } catch {
+        Write-Host "  Note: Could not fetch pipeline IDs from API" -ForegroundColor Yellow
+    }
+
     # --- List Individual Pipelines by Status ---
     $statusSections = @(
         @{ Header = 'Successful';            Color = 'Green';  Pattern = '(?ms)^### Successful\s*\n(.*?)(?=^### |\z)' },
@@ -127,16 +147,17 @@ if (Test-Path $auditSummaryFile) {
         $sectionMatch = [regex]::Match($content, $sec.Pattern)
         if ($sectionMatch.Success) {
             $sectionBody = $sectionMatch.Groups[1].Value
-            $pipelineNames = [regex]::Matches($sectionBody, '(?m)^####\s+.+/(.+)$')
-            if ($pipelineNames.Count -gt 0) {
-                Write-Host "`n=== $($sec.Header) Pipelines ($($pipelineNames.Count)) ===" -ForegroundColor $sec.Color
-                foreach ($pm in $pipelineNames) {
-                    $pipeName = $pm.Groups[1].Value.Trim()
-                    $idMatch = [regex]::Match($pipeName, '\((\d+)\)')
-                    if ($idMatch.Success) {
-                        Write-Host "  [$($idMatch.Groups[1].Value)] $pipeName" -ForegroundColor $sec.Color
+            $pipelineEntries = [regex]::Matches($sectionBody, '(?m)^####\s+(.+)$')
+            if ($pipelineEntries.Count -gt 0) {
+                Write-Host "`n=== $($sec.Header) Pipelines ($($pipelineEntries.Count)) ===" -ForegroundColor $sec.Color
+                foreach ($pm in $pipelineEntries) {
+                    $fullPath = $pm.Groups[1].Value.Trim()
+                    $pipeName = ($fullPath -split '/')[-1]
+                    $pipelineIdVal = $nameToId[$pipeName]
+                    if ($pipelineIdVal) {
+                        Write-Host ("  [{0}] {1}" -f $pipelineIdVal, $pipeName) -ForegroundColor $sec.Color
                     } else {
-                        Write-Host "         $pipeName" -ForegroundColor $sec.Color
+                        Write-Host "       $pipeName" -ForegroundColor $sec.Color
                     }
                 }
             }
