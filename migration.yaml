@@ -99,7 +99,7 @@ stages:
             displayName: 'Install required tooling'
             inputs:
               targetType: filePath
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/01-prep/install-tools.ps1'
+              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
               pwsh: true
 
           - task: PowerShell@2
@@ -134,7 +134,7 @@ stages:
             displayName: 'Install required tooling'
             inputs:
               targetType: filePath
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/01-prep/install-tools.ps1'
+              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
               pwsh: true
 
           - task: PowerShell@2
