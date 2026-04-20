@@ -9,6 +9,10 @@
     "organization": "$(GH_ORG)",
     "pat": "$(GH_PAT)"
   },
+  "pipelineMigration": {
+    "pipelineIds": [],
+    "mode": "dry-run"
+  },
   "options": {
     "maxParallelMigrations": 5,
     "retryCount": 3,
