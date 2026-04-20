@@ -116,7 +116,11 @@ stages:
                 -Mode "dry-run"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
-
+            env:
+             
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+           
           - task: PublishPipelineArtifact@1
             displayName: "Publish Dry-Run Output"
             condition: always()
@@ -154,6 +158,11 @@ stages:
                 -Mode "migrate"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+           
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Migration Output"
