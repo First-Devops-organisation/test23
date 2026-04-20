@@ -42,7 +42,7 @@ stages:
                 -AdoProject "$(ADO_PROJECT)"
                 -AdoPat "$(ADO_PAT)"
                 -GitHubPat "$(GH_PAT)"
-                -OutputDir "output/pipeline-audit"
+                -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
@@ -66,14 +66,14 @@ stages:
               tabName: "Pipeline Audit Dashboard"
 
   # ===========================================================================
-  # STAGE 2 – MIGRATE PIPELINES
+  # STAGE 2 – LIST PIPELINE IDs (pick one, add to migration-config.json)
   # ===========================================================================
-  - stage: Migrate
-    displayName: "2. Migrate Pipelines"
+  - stage: ListPipelines
+    displayName: "2. List Pipeline IDs"
     dependsOn: Discover
     jobs:
-      - job: ListPipelines
-        displayName: "2.1 List Pipeline IDs"
+      - job: ListPipelineIDs
+        displayName: "2.1 Fetch & Display Pipeline IDs"
         pool:
           vmImage: ubuntu-latest
         steps:
@@ -91,73 +91,7 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
+              ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
-
-      # TODO: Uncomment and replace <PIPELINE_ID_HERE> to migrate a specific pipeline
-      # - job: DryRunPipeline
-      #   displayName: "2.2 Dry-Run Single Pipeline"
-      #   dependsOn: ListPipelines
-      #   pool:
-      #     vmImage: ubuntu-latest
-      #   steps:
-      #     - checkout: self
-      #       fetchDepth: 0
-      #     - task: PowerShell@2
-      #       displayName: 'Install required tooling'
-      #       inputs:
-      #         targetType: 'filePath'
-      #         filePath: 'migration-accelerator/01-prep/install-tools.ps1'
-      #         pwsh: true
-      #       env:
-      #         GH_PAT: $(GH_PAT)
-      #         GH_TOKEN: $(GH_PAT)
-      #     - task: PowerShell@2
-      #       displayName: "Dry-Run Pipeline Migration"
-      #       inputs:
-      #         filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
-      #         arguments: >-
-      #           -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
-      #           -AdoProject "$(ADO_PROJECT)"
-      #           -PipelineId <PIPELINE_ID_HERE>
-      #           -Mode "dry-run"
-      #         pwsh: true
-      #         workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
-      #       env:
-      #         ADO_PAT: $(ADO_PAT)
-      #         GH_PAT: $(GH_PAT)
-      #         GH_TOKEN: $(GH_PAT)
-
-      # - job: MigratePipeline
-      #   displayName: "2.3 Migrate Single Pipeline (creates PR)"
-      #   dependsOn: DryRunPipeline
-      #   pool:
-      #     vmImage: ubuntu-latest
-      #   steps:
-      #     - checkout: self
-      #       fetchDepth: 0
-      #     - task: PowerShell@2
-      #       displayName: 'Install required tooling'
-      #       inputs:
-      #         targetType: 'filePath'
-      #         filePath: 'migration-accelerator/01-prep/install-tools.ps1'
-      #         pwsh: true
-      #       env:
-      #         GH_PAT: $(GH_PAT)
-      #         GH_TOKEN: $(GH_PAT)
-      #     - task: PowerShell@2
-      #       displayName: "Migrate Pipeline to GitHub Actions"
-      #       inputs:
-      #         filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
-      #         arguments: >-
-      #           -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
-      #           -AdoProject "$(ADO_PROJECT)"
-      #           -PipelineId <PIPELINE_ID_HERE>
-      #           -Mode "migrate"
-      #         pwsh: true
-      #         workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
-      #       env:
-      #         ADO_PAT: $(ADO_PAT)
-      #         GH_PAT: $(GH_PAT)
-      #         GH_TOKEN: $(GH_PAT)
