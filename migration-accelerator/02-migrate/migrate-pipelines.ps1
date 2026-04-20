@@ -144,20 +144,26 @@ if ($Mode -eq "list") {
             @{ Header = 'Failed';                 Color = 'Red';    Pattern = '(?ms)^### Failed\s*\n(.*?)(?=^### |\z)' }
         )
 
+        # Build name-to-ID lookup from already-fetched pipeline lists
+        $nameToId = @{}
+        foreach ($bp in $buildPipelines) { $nameToId[$bp.name] = $bp.id }
+        foreach ($rp in $releasePipelines) { $nameToId[$rp.name] = $rp.id }
+
         foreach ($sec in $statusSections) {
             $sectionMatch = [regex]::Match($auditContent, $sec.Pattern)
             if ($sectionMatch.Success) {
                 $sectionBody = $sectionMatch.Groups[1].Value
-                $pipelineNames = [regex]::Matches($sectionBody, '(?m)^####\s+.+/(.+)$')
-                if ($pipelineNames.Count -gt 0) {
-                    Write-Host "`n--- $($sec.Header) Pipelines ($($pipelineNames.Count)) ---" -ForegroundColor $sec.Color
-                    foreach ($pm in $pipelineNames) {
-                        $pipeName = $pm.Groups[1].Value.Trim()
-                        $idMatch = [regex]::Match($pipeName, '\((\d+)\)')
-                        if ($idMatch.Success) {
-                            Write-Host ("  [{0}] {1}" -f $idMatch.Groups[1].Value, $pipeName) -ForegroundColor $sec.Color
+                $pipelineEntries = [regex]::Matches($sectionBody, '(?m)^####\s+(.+)$')
+                if ($pipelineEntries.Count -gt 0) {
+                    Write-Host "`n--- $($sec.Header) Pipelines ($($pipelineEntries.Count)) ---" -ForegroundColor $sec.Color
+                    foreach ($pm in $pipelineEntries) {
+                        $fullPath = $pm.Groups[1].Value.Trim()
+                        $pipeName = ($fullPath -split '/')[-1]
+                        $pipelineIdVal = $nameToId[$pipeName]
+                        if ($pipelineIdVal) {
+                            Write-Host ("  [{0}] {1}" -f $pipelineIdVal, $pipeName) -ForegroundColor $sec.Color
                         } else {
-                            Write-Host "         $pipeName" -ForegroundColor $sec.Color
+                            Write-Host "       $pipeName" -ForegroundColor $sec.Color
                         }
                     }
                 }
