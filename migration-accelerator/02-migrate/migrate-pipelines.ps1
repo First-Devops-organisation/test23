@@ -126,6 +126,45 @@ if ($Mode -eq "list") {
     }
 
     Write-Host "`nTo migrate a pipeline, re-run with: -PipelineId <ID> -Mode migrate" -ForegroundColor Green
+
+    # --- Show audit status per pipeline if audit_summary.md exists ---
+    $auditFile = Join-Path $OutputDir "audit_summary.md"
+    if (-not (Test-Path $auditFile)) {
+        # Also check default audit output location
+        $auditFile = "./output/pipeline-audit/audit_summary.md"
+    }
+    if (Test-Path $auditFile) {
+        $auditContent = Get-Content $auditFile -Raw
+        Write-Host "`n=== Audit Results (from audit_summary.md) ===" -ForegroundColor Cyan
+
+        $statusSections = @(
+            @{ Header = 'Successful';            Color = 'Green';  Pattern = '(?ms)^### Successful\s*\n(.*?)(?=^### |\z)' },
+            @{ Header = 'Partially Successful';   Color = 'Yellow'; Pattern = '(?ms)^### Partially successful\s*\n(.*?)(?=^### |\z)' },
+            @{ Header = 'Unsupported';            Color = 'Red';    Pattern = '(?ms)^### Unsupported\s*\n(.*?)(?=^### |\z)' },
+            @{ Header = 'Failed';                 Color = 'Red';    Pattern = '(?ms)^### Failed\s*\n(.*?)(?=^### |\z)' }
+        )
+
+        foreach ($sec in $statusSections) {
+            $sectionMatch = [regex]::Match($auditContent, $sec.Pattern)
+            if ($sectionMatch.Success) {
+                $sectionBody = $sectionMatch.Groups[1].Value
+                $pipelineNames = [regex]::Matches($sectionBody, '(?m)^####\s+.+/(.+)$')
+                if ($pipelineNames.Count -gt 0) {
+                    Write-Host "`n--- $($sec.Header) Pipelines ($($pipelineNames.Count)) ---" -ForegroundColor $sec.Color
+                    foreach ($pm in $pipelineNames) {
+                        $pipeName = $pm.Groups[1].Value.Trim()
+                        $idMatch = [regex]::Match($pipeName, '\((\d+)\)')
+                        if ($idMatch.Success) {
+                            Write-Host ("  [{0}] {1}" -f $idMatch.Groups[1].Value, $pipeName) -ForegroundColor $sec.Color
+                        } else {
+                            Write-Host "         $pipeName" -ForegroundColor $sec.Color
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return
 }
 
