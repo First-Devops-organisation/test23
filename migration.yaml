@@ -125,7 +125,7 @@ stages:
             displayName: "Publish Dry-Run Output"
             condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines-dry-run'
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
               artifact: "pipeline-dry-run"
               publishLocation: pipeline
 
