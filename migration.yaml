@@ -98,9 +98,12 @@ stages:
           - task: PowerShell@2
             displayName: 'Install required tooling'
             inputs:
-              targetType: filePath
+              targetType: 'filePath'
               filePath: 'migration-accelerator/01-prep/install-tools.ps1'
               pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
@@ -133,9 +136,12 @@ stages:
           - task: PowerShell@2
             displayName: 'Install required tooling'
             inputs:
-              targetType: filePath
+              targetType: 'filePath'
               filePath: 'migration-accelerator/01-prep/install-tools.ps1'
               pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Migrate pipelines: $(PIPELINE_IDS)"
