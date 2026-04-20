@@ -116,9 +116,13 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
-             
+              ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+              GH_REPO: $(GH_REPO)
+              PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
+ 
            
           - task: PublishPipelineArtifact@1
             displayName: "Publish Dry-Run Output"
