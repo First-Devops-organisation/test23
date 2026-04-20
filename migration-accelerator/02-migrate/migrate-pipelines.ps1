@@ -23,7 +23,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$AdoProject,
 
-    [int]$PipelineId,
+    [int[]]$PipelineId,
 
     [ValidateSet("list", "dry-run", "migrate", "audit")]
     [string]$Mode = "dry-run",
@@ -141,8 +141,9 @@ $adoHeaders = @{ Authorization = "Basic $base64Auth" }
 $pipelinesUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
 $pipelines = (Invoke-RestMethod -Uri $pipelinesUrl -Headers $adoHeaders).value
 
-if ($PipelineId) {
-    $pipelines = $pipelines | Where-Object { $_.id -eq $PipelineId }
+if ($PipelineId -and $PipelineId.Count -gt 0) {
+    $pipelines = $pipelines | Where-Object { $_.id -in $PipelineId }
+    Write-Host "Filtering to pipeline IDs: $($PipelineId -join ', ')" -ForegroundColor Gray
 }
 
 Write-Host "Found $($pipelines.Count) pipeline(s) to process" -ForegroundColor Gray
