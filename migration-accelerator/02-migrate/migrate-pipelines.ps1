@@ -37,11 +37,35 @@ $ErrorActionPreference = "Stop"
 
 $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
 
-# $adoOrg = ($config.source.organization -replace "https://dev.azure.com/", "").TrimEnd("/")
-$adoOrgUrl = $config.source.organization.TrimEnd("/")
+# Read from config, fallback to env vars (config may have $(ADO_ORG) placeholders)
+$adoOrg = $config.source.organization
+if (-not $adoOrg -or $adoOrg -match '^\$\(') {
+    $adoOrg = if ($env:ADO_ORG) { $env:ADO_ORG } elseif ($env:ADO_Org) { $env:ADO_Org } else { $null }
+}
+$adoOrg = ($adoOrg -replace "https://dev\.azure\.com/", "").TrimEnd("/")
+
 $ghOrg = $config.target.organization
-$adoPat = if ($config.source.pat) { $config.source.pat } else { $env:ADO_PAT }
-$ghPat = if ($config.target.pat) { $config.target.pat } else { $env:GH_PAT }
+if (-not $ghOrg -or $ghOrg -match '^\$\(') {
+    $ghOrg = if ($env:GH_ORG) { $env:GH_ORG } else { $null }
+}
+
+$adoPat = $config.source.pat
+if (-not $adoPat -or $adoPat -match '^\$\(') { $adoPat = $env:ADO_PAT }
+
+$ghPat = $config.target.pat
+if (-not $ghPat -or $ghPat -match '^\$\(') { $ghPat = $env:GH_PAT }
+
+# Use project from config if not passed as parameter
+if (-not $AdoProject -or $AdoProject -match '^\$\(') {
+    $AdoProject = $config.source.project
+    if (-not $AdoProject -or $AdoProject -match '^\$\(') {
+        $AdoProject = $env:ADO_PROJECT
+    }
+}
+
+if (-not $adoOrg) { Write-Host "ERROR: ADO org not set. Set ADO_ORG env var." -ForegroundColor Red; exit 1 }
+if (-not $adoPat) { Write-Host "ERROR: ADO PAT not set. Set ADO_PAT env var." -ForegroundColor Red; exit 1 }
+if (-not $AdoProject) { Write-Host "ERROR: ADO project not set. Pass -AdoProject or set ADO_PROJECT env var." -ForegroundColor Red; exit 1 }
 
 if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
 
@@ -49,15 +73,15 @@ $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
-Write-Host "Project: $AdoProject" -ForegroundColor Gray
+Write-Host "  Organization: $adoOrg" -ForegroundColor Gray
+Write-Host "  Project:      $AdoProject" -ForegroundColor Gray
 
 # --- List mode: show all pipeline IDs and exit ---
 if ($Mode -eq "list") {
     Write-Host "`nFetching pipelines from ADO..." -ForegroundColor Yellow
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
     $adoHeaders = @{ Authorization = "Basic $base64Auth" }
-    # $pipelinesUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
-    $pipelinesUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
+    $pipelinesUrl = "https://dev.azure.com/$adoOrg/$AdoProject/_apis/build/definitions?api-version=7.1"
     $allPipelines = (Invoke-RestMethod -Uri $pipelinesUrl -Headers $adoHeaders).value
 
     Write-Host "`n=== Available Pipelines ($($allPipelines.Count) found) ===" -ForegroundColor Cyan
@@ -67,7 +91,7 @@ if ($Mode -eq "list") {
         $pType = if ($p.process.yamlFilename) { "YAML" } else { "Classic" }
         Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f $p.id, $p.name, $pType, $p.path)
     }
-    Write-Host "`nUsage: migrate-pipelines.ps1 -PipelineId <ID> -Mode dry-run" -ForegroundColor Green
+    Write-Host "`nTo migrate a pipeline, re-run with: -PipelineId <ID> -Mode migrate" -ForegroundColor Green
     return
 }
 
@@ -77,7 +101,6 @@ if ($Mode -eq "audit") {
         "actions-importer", "audit", "azure-devops",
         "--output-dir", $OutputDir,
         "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
-        
         "--azure-devops-project", $AdoProject
     )
     gh @auditArgs 2>&1
@@ -119,8 +142,7 @@ foreach ($pipeline in $pipelines) {
     $importerArgs = @(
         "actions-importer", $Mode, "azure-devops", "pipeline",
         "--output-dir", $outputSubDir,
-        # "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
-        "--azure-devops-organization", $adoOrgUrl,
+        "--azure-devops-organization", "https://dev.azure.com/$adoOrg",
         "--azure-devops-project", $AdoProject,
         "--pipeline-id", $pId
     )
