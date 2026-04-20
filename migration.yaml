@@ -1,7 +1,7 @@
 trigger: none
 
 pool:
-  vmImage: windows-latest
+  vmImage: ubuntu-latest
 
 
 variables:
@@ -50,6 +50,22 @@ stages:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
+          - task: PowerShell@2
+            displayName: "List all ADO Pipeline IDs"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                -AdoProject "$(ADO_PROJECT)"
+                -Mode "list"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
           - task: PublishPipelineArtifact@1
             displayName: "Publish Audit Artifact"
             condition: always()
@@ -66,32 +82,77 @@ stages:
               tabName: "Pipeline Audit Dashboard"
 
   # ===========================================================================
-  # STAGE 2 – LIST PIPELINE IDs (pick one, add to migration-config.json)
+  # STAGE 2 – MIGRATE (skipped if PIPELINE_IDS is empty)
   # ===========================================================================
-  - stage: ListPipelines
-    displayName: "2. List Pipeline IDs"
+  - stage: MigratePipeline
+    displayName: "2. Migrate Pipelines"
     dependsOn: Discover
+    condition: and(succeeded(), ne(variables['PIPELINE_IDS'], ''))
     jobs:
-      - job: ListPipelineIDs
-        displayName: "2.1 Fetch & Display Pipeline IDs"
-        pool:
-          vmImage: ubuntu-latest
+      - job: DryRun
+        displayName: "2.1 Dry-Run Preview"
         steps:
           - checkout: self
             fetchDepth: 0
 
           - task: PowerShell@2
-            displayName: "List all ADO Pipeline IDs"
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: filePath
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/01-prep/install-tools.ps1'
+              pwsh: true
+
+          - task: PowerShell@2
+            displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                -ConfigFile "$(configFile)"
                 -AdoProject "$(ADO_PROJECT)"
-                -Mode "list"
+                -PipelineId $(PIPELINE_IDS)
+                -Mode "dry-run"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
-            env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PAT: $(ADO_PAT)
-              GH_PAT: $(GH_PAT)
-              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Dry-Run Output"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+              artifact: "pipeline-dry-run"
+              publishLocation: pipeline
+
+      - job: Migrate
+        displayName: "2.2 Migrate to GitHub"
+        dependsOn: DryRun
+        condition: and(succeeded(), eq(variables['MIGRATE_MODE'], 'migrate'))
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: PowerShell@2
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: filePath
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/01-prep/install-tools.ps1'
+              pwsh: true
+
+          - task: PowerShell@2
+            displayName: "Migrate pipelines: $(PIPELINE_IDS)"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+                -ConfigFile "$(configFile)"
+                -AdoProject "$(ADO_PROJECT)"
+                -PipelineId $(PIPELINE_IDS)
+                -Mode "migrate"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Migration Output"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+              artifact: "pipeline-migrate"
+              publishLocation: pipeline
