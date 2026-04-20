@@ -73,12 +73,12 @@ stages:
               artifact: "pipeline-audit"
               publishLocation: pipeline
 
-          # - task: PublishHtmlReport@1
-          #   displayName: "Audit Dashboard on Pipeline Tab"
-          #   condition: always()
-          #   inputs:
-          #     reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
-          #     tabName: "Pipeline Audit Dashboard"
+          - task: PublishHtmlReport@1
+            displayName: "Audit Dashboard on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
+              tabName: "Pipeline Audit Dashboard"
 
   # ===========================================================================
   # STAGE 2 – MIGRATE (skipped if PIPELINE_IDS is empty)
@@ -132,12 +132,12 @@ stages:
               artifact: "pipeline-dry-run"
               publishLocation: pipeline
 
-          - task: PublishHtmlReport@1
-            displayName: "Dry-Run Dashboard on Pipeline Tab"
-            condition: always()
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
-              tabName: "Dry-Run Migration Dashboard"
+          # - task: PublishHtmlReport@1
+          #   displayName: "Dry-Run Dashboard on Pipeline Tab"
+          #   condition: always()
+          #   inputs:
+          #     reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
+          #     tabName: "Dry-Run Migration Dashboard"
 
       - job: Migrate
         displayName: "2.2 Migrate to GitHub"
