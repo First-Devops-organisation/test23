@@ -110,7 +110,7 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -ConfigFile "$(configFile)"
+               
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -Mode "dry-run"
@@ -148,7 +148,7 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -ConfigFile "$(configFile)"
+              
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -Mode "migrate"
