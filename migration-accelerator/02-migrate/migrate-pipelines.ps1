@@ -139,6 +139,13 @@ if ($Mode -eq "audit") {
     return
 }
 
+# Ensure actions-importer Docker image is available
+Write-Host "`nEnsuring actions-importer image is up to date..." -ForegroundColor Yellow
+gh actions-importer update 2>&1 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  WARNING: Could not update actions-importer image." -ForegroundColor Yellow
+}
+
 # --- Get pipelines ---
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $adoHeaders = @{ Authorization = "Basic $base64Auth" }
