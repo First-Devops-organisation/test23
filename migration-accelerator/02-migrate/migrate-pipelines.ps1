@@ -190,11 +190,23 @@ foreach ($pipeline in $pipelines) {
     }
 
     try {
+        Write-Host "    Command: gh $($importerArgs -join ' ')" -ForegroundColor DarkGray
         $output = gh @importerArgs 2>&1
+        $exitCode = $LASTEXITCODE
         $outputStr = $output | Out-String
 
-        $status = if ($outputStr -match "error|failed") { "FAILED" }
+        Write-Host "    --- actions-importer output (exit code: $exitCode) ---" -ForegroundColor DarkGray
+        Write-Host $outputStr
+        Write-Host "    --- end output ---" -ForegroundColor DarkGray
+
+        # Check generated files
+        $generatedFiles = Get-ChildItem $outputSubDir -Recurse -ErrorAction SilentlyContinue
+        $yamlFiles = $generatedFiles | Where-Object { $_.Extension -in '.yml','.yaml' }
+
+        $status = if ($exitCode -ne 0) { "FAILED" }
+        elseif ($outputStr -match "error|failed") { "FAILED" }
         elseif ($outputStr -match "partially") { "PARTIAL" }
+        elseif ($Mode -eq "dry-run" -and -not $yamlFiles) { "NO_OUTPUT" }
         else { "SUCCESS" }
 
         $results += [PSCustomObject]@{
@@ -206,13 +218,19 @@ foreach ($pipeline in $pipelines) {
             OutputDir  = $outputSubDir
         }
 
-        $color = switch ($status) { "SUCCESS" { "Green" } "PARTIAL" { "Yellow" } default { "Red" } }
+        $color = switch ($status) { "SUCCESS" { "Green" } "PARTIAL" { "Yellow" } "NO_OUTPUT" { "Yellow" } default { "Red" } }
         Write-Host "    $status" -ForegroundColor $color
 
         if ($Mode -eq "dry-run") {
-            $yamlFiles = Get-ChildItem $outputSubDir -Filter "*.yml" -Recurse -ErrorAction SilentlyContinue
             if ($yamlFiles) {
-                Write-Host "    Generated: $($yamlFiles.Name -join ', ')" -ForegroundColor Gray
+                Write-Host "    Generated files:" -ForegroundColor Gray
+                $yamlFiles | ForEach-Object { Write-Host "      $($_.FullName)" -ForegroundColor Gray }
+            } else {
+                Write-Host "    WARNING: No .yml files generated in $outputSubDir" -ForegroundColor Yellow
+                if ($generatedFiles) {
+                    Write-Host "    Other files in output:" -ForegroundColor Yellow
+                    $generatedFiles | ForEach-Object { Write-Host "      $($_.FullName)" -ForegroundColor Yellow }
+                }
             }
         }
     }
@@ -260,3 +278,5 @@ Historical logs remain in Azure DevOps.
 
 Remove-Item Env:\GITHUB_ACCESS_TOKEN -ErrorAction SilentlyContinue
 Remove-Item Env:\AZURE_DEVOPS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+
+exit 0
