@@ -128,6 +128,14 @@ stages:
       #         publishLocation: pipeline
       #       condition: always()
 
+      #     - task: PublishHtmlReport@1
+      #       displayName: "Show Discovery Report on Pipeline Tab"
+      #       condition: always()
+      #       continueOnError: true
+      #       inputs:
+      #         reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\repo-inventory.html'
+      #         tabName: "Discovery Report"
+
       # - job: ScanSecrets
       #   displayName: "1.3 Scan Secrets (gitleaks)"
       #   dependsOn: DiscoverAndAudit
@@ -208,7 +216,14 @@ stages:
       #         artifact: "scan-reports-batch$(BATCH_INDEX)"
       #         publishLocation: pipeline
       #       condition: always()
-
+      
+      #     - task: PublishHtmlReport@1
+      #       displayName: "Show Secret Scan Report on Pipeline Tab"
+      #       condition: always()
+      #       continueOnError: true
+      #       inputs:
+      #         reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
+      #         tabName: "Secret Scan Report"
   # ===========================================================================
   # STAGE 2 – REVIEW GATE  (human reviews discovery + scan before migrating)
   # ===========================================================================
