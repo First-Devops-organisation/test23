@@ -130,7 +130,7 @@ if ($Mode -eq "list") {
     Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f "ID", "Name", "Type", "Path") -ForegroundColor White
     Write-Host ("-" * 90)
     foreach ($p in $buildPipelines | Sort-Object id) {
-        $pType = if ($p.process.yamlFilename) { "YAML" } else { "Classic Build" }
+        $pType = if ($p.process.type -eq 2) { "YAML" } else { "Classic Build" }
         Write-Host ("{0,-8} {1,-45} {2,-12} {3}" -f $p.id, $p.name, $pType, $p.path)
     }
 
@@ -164,17 +164,23 @@ if ($Mode -eq "list") {
             @{ Header = 'Failed';                 Color = 'Red';    Pattern = '(?ms)^### Failed\s*\n(.*?)(?=^### |\z)' }
         )
 
-        # Build name-to-ID and name-to-Type lookups from already-fetched pipeline lists
+        # Build name-to-ID, ID-to-name, and name-to-Type lookups from already-fetched pipeline lists
         $nameToId = @{}
+        $idToName = @{}
         $nameToType = @{}
+        $idToType = @{}
         foreach ($bp in $buildPipelines) {
             $nameToId[$bp.name] = $bp.id
-            $bType = if ($bp.process.yamlFilename) { "YAML" } else { "Classic Build" }
+            $idToName["$($bp.id)"] = $bp.name
+            $bType = if ($bp.process.type -eq 2) { "YAML" } else { "Classic Build" }
             $nameToType[$bp.name] = $bType
+            $idToType["$($bp.id)"] = $bType
         }
         foreach ($rp in $releasePipelines) {
             $nameToId[$rp.name] = $rp.id
+            $idToName["$($rp.id)"] = $rp.name
             $nameToType[$rp.name] = "Release"
+            $idToType["$($rp.id)"] = "Release"
         }
 
         foreach ($sec in $statusSections) {
@@ -189,13 +195,26 @@ if ($Mode -eq "list") {
                     foreach ($pm in $pipelineEntries) {
                         $fullPath = $pm.Groups[1].Value.Trim()
                         $pipeName = ($fullPath -split '/')[-1]
+
+                        # Try direct name match first
                         $pipelineIdVal = $nameToId[$pipeName]
                         $pipeTypeVal = $nameToType[$pipeName]
+
+                        # If not found, try extracting ID from _(ID) suffix
+                        if (-not $pipelineIdVal -and $pipeName -match '_\((\d+)\)$') {
+                            $extractedId = $matches[1]
+                            $pipelineIdVal = [int]$extractedId
+                            $pipeName = $idToName[$extractedId]
+                            if (-not $pipeName) { $pipeName = ($fullPath -split '/')[-1] -replace '_\(\d+\)$', '' }
+                            $pipeTypeVal = $idToType[$extractedId]
+                        }
+
+                        if (-not $pipeTypeVal) { $pipeTypeVal = "Unknown" }
                         $migrateWith = if ($pipeTypeVal -eq "Release") { "-PipelineType release" } else { "-PipelineType build" }
                         if ($pipelineIdVal) {
                             Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f $pipelineIdVal, $pipeName, $pipeTypeVal, $migrateWith) -ForegroundColor $sec.Color
                         } else {
-                            Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f "?", $pipeName, "Unknown", "") -ForegroundColor $sec.Color
+                            Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f "?", $pipeName, $pipeTypeVal, "") -ForegroundColor $sec.Color
                         }
                     }
                 }
