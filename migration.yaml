@@ -65,6 +65,68 @@ stages:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
+          - task: PowerShell@2
+            displayName: "Patch config.yml with shared-workflows target"
+            inputs:
+              targetType: 'inline'
+              script: |
+                $configFile = "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
+                $patchedFile = "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config-patched.yml"
+                $sharedRepoUrl = "https://github.com/$(GH_ORG)/shared-workflows"
+
+                if (-not (Test-Path $configFile)) {
+                    Write-Host "No config.yml found from audit — skipping patch" -ForegroundColor Yellow
+                    # Create empty config so migrate doesn't fail
+                    "---`ncomposite_actions: []" | Out-File -FilePath $patchedFile -Encoding utf8
+                    exit 0
+                }
+
+                Write-Host "Patching config.yml with target_url: $sharedRepoUrl" -ForegroundColor Cyan
+                $content = Get-Content $configFile -Raw
+                $lines = Get-Content $configFile
+
+                $seen = @{}
+                $output = @()
+                $i = 0
+                while ($i -lt $lines.Count) {
+                    $line = $lines[$i]
+                    # Detect "- name: xxx" entries
+                    if ($line -match '^\s*-\s+name:\s+(.+)$') {
+                        $name = $matches[1].Trim()
+                        # Skip duplicates
+                        if ($seen.ContainsKey($name)) {
+                            # Skip this entry and its following lines (ref, target_url, path)
+                            $i++
+                            while ($i -lt $lines.Count -and $lines[$i] -match '^\s+(ref|target_url|path):') { $i++ }
+                            continue
+                        }
+                        $seen[$name] = $true
+                        $output += $line
+                        $output += "  target_url: $sharedRepoUrl"
+                        # Check if next line is already target_url or ref
+                        $i++
+                        while ($i -lt $lines.Count -and $lines[$i] -match '^\s+(ref|target_url|path):') {
+                            if ($lines[$i] -match '^\s+target_url:') {
+                                # Skip original target_url, we already added ours
+                                $i++
+                                continue
+                            }
+                            $output += $lines[$i]
+                            $i++
+                        }
+                    } else {
+                        $output += $line
+                        $i++
+                    }
+                }
+
+                $output -join "`n" | Out-File -FilePath $patchedFile -Encoding utf8
+                Write-Host "Patched config saved to: $patchedFile" -ForegroundColor Green
+                Write-Host "--- Patched config.yml ---"
+                Get-Content $patchedFile
+                Write-Host "--- end ---"
+              pwsh: true
+
           - task: PublishPipelineArtifact@1
             displayName: "Publish Audit Artifact"
             condition: always()
@@ -114,6 +176,7 @@ stages:
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
+                -ImporterConfigFile "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config-patched.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
@@ -168,6 +231,7 @@ stages:
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
+                -ImporterConfigFile "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config-patched.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
