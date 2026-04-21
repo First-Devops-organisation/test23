@@ -31,6 +31,8 @@ param(
 
     [string]$CustomTransformersDir,
 
+    [string]$ImporterConfigFile,
+
     [string]$OutputDir = "./output/pipelines"
 )
 
@@ -340,6 +342,11 @@ foreach ($pipeline in $pipelines) {
     if ($CustomTransformersDir -and (Test-Path $CustomTransformersDir)) {
         $importerArgs += "--custom-transformers"
         $importerArgs += $CustomTransformersDir
+    }
+
+    if ($ImporterConfigFile -and (Test-Path $ImporterConfigFile)) {
+        $importerArgs += "--config-file-path"
+        $importerArgs += $ImporterConfigFile
     }
 
     try {
