@@ -109,8 +109,8 @@ if ($Mode -eq "list") {
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
     $adoHeaders = @{ Authorization = "Basic $base64Auth" }
 
-    # Fetch Build pipelines (YAML + Classic Build)
-    $buildUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
+    # Fetch Build pipelines (YAML + Classic Build) — includeAllProperties ensures process.type is returned
+    $buildUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1&includeAllProperties=true"
     $buildPipelines = (Invoke-RestMethod -Uri $buildUrl -Headers $adoHeaders).value
 
     # Fetch Classic Release pipelines (separate API)
@@ -288,7 +288,7 @@ if ($PipelineType -eq "release") {
     $pipelinesUrl = "https://vsrm.dev.azure.com/$adoOrgName/$AdoProject/_apis/release/definitions?api-version=7.1"
     Write-Host "  Fetching release pipelines..." -ForegroundColor Yellow
 } else {
-    $pipelinesUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
+    $pipelinesUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1&includeAllProperties=true"
     Write-Host "  Fetching build pipelines..." -ForegroundColor Yellow
 }
 $pipelines = (Invoke-RestMethod -Uri $pipelinesUrl -Headers $adoHeaders).value
