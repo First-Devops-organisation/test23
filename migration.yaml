@@ -156,6 +156,12 @@ stages:
           - checkout: self
             fetchDepth: 0
 
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download audit config"
+            inputs:
+              artifact: "pipeline-audit"
+              path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit'
+
           - task: PowerShell@2
             displayName: 'Install required tooling'
             inputs:
@@ -210,6 +216,12 @@ stages:
         steps:
           - checkout: self
             fetchDepth: 0
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download audit config"
+            inputs:
+              artifact: "pipeline-audit"
+              path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit'
 
           - task: PowerShell@2
             displayName: 'Install required tooling'
