@@ -164,23 +164,32 @@ if ($Mode -eq "list") {
             @{ Header = 'Failed';                 Color = 'Red';    Pattern = '(?ms)^### Failed\s*\n(.*?)(?=^### |\z)' }
         )
 
-        # Build name-to-ID, ID-to-name, and name-to-Type lookups from already-fetched pipeline lists
+        # Build lookups: exact name, lowercase name, slug name, ID-based
         $nameToId = @{}
         $idToName = @{}
         $nameToType = @{}
         $idToType = @{}
+        $slugToId = @{}
+        $slugToType = @{}
         foreach ($bp in $buildPipelines) {
             $nameToId[$bp.name] = $bp.id
             $idToName["$($bp.id)"] = $bp.name
             $bType = if ($bp.process.type -eq 2) { "YAML" } else { "Classic Build" }
             $nameToType[$bp.name] = $bType
             $idToType["$($bp.id)"] = $bType
+            # Slug: lowercase, spaces/special chars to hyphens
+            $slug = ($bp.name.ToLower() -replace '[^a-z0-9\-]', '-') -replace '-+', '-' -replace '^-|-$', ''
+            $slugToId[$slug] = $bp.id
+            $slugToType[$slug] = $bType
         }
         foreach ($rp in $releasePipelines) {
             $nameToId[$rp.name] = $rp.id
             $idToName["$($rp.id)"] = $rp.name
             $nameToType[$rp.name] = "Release"
             $idToType["$($rp.id)"] = "Release"
+            $slug = ($rp.name.ToLower() -replace '[^a-z0-9\-]', '-') -replace '-+', '-' -replace '^-|-$', ''
+            $slugToId[$slug] = $rp.id
+            $slugToType[$slug] = "Release"
         }
 
         foreach ($sec in $statusSections) {
@@ -196,17 +205,43 @@ if ($Mode -eq "list") {
                         $fullPath = $pm.Groups[1].Value.Trim()
                         $pipeName = ($fullPath -split '/')[-1]
 
-                        # Try direct name match first
+                        # Try direct name match first (case-sensitive)
                         $pipelineIdVal = $nameToId[$pipeName]
                         $pipeTypeVal = $nameToType[$pipeName]
 
-                        # If not found, try extracting ID from _(ID) suffix
+                        # Fallback: case-insensitive match
+                        if (-not $pipelineIdVal) {
+                            $ciMatch = $nameToId.Keys | Where-Object { $_ -ieq $pipeName } | Select-Object -First 1
+                            if ($ciMatch) {
+                                $pipelineIdVal = $nameToId[$ciMatch]
+                                $pipeTypeVal = $nameToType[$ciMatch]
+                                $pipeName = $ciMatch
+                            }
+                        }
+
+                        # Fallback: extract ID from _(ID) suffix
                         if (-not $pipelineIdVal -and $pipeName -match '_\((\d+)\)$') {
                             $extractedId = $matches[1]
                             $pipelineIdVal = [int]$extractedId
                             $pipeName = $idToName[$extractedId]
                             if (-not $pipeName) { $pipeName = ($fullPath -split '/')[-1] -replace '_\(\d+\)$', '' }
                             $pipeTypeVal = $idToType[$extractedId]
+                        }
+
+                        # Fallback: slug match (lowercase, special chars normalized)
+                        if (-not $pipelineIdVal) {
+                            $auditSlug = ($pipeName.ToLower() -replace '[^a-z0-9\-]', '-') -replace '-+', '-' -replace '^-|-$', ''
+                            # Also try without _(ID) suffix
+                            $auditSlugClean = ($auditSlug -replace '-+\d+$', '')
+                            $matchSlug = $auditSlug
+                            if ($slugToId.ContainsKey($auditSlug)) { $matchSlug = $auditSlug }
+                            elseif ($slugToId.ContainsKey($auditSlugClean)) { $matchSlug = $auditSlugClean }
+                            if ($slugToId.ContainsKey($matchSlug)) {
+                                $pipelineIdVal = $slugToId[$matchSlug]
+                                $pipeTypeVal = $slugToType[$matchSlug]
+                                $pipeName = $idToName["$pipelineIdVal"]
+                                if (-not $pipeName) { $pipeName = ($fullPath -split '/')[-1] }
+                            }
                         }
 
                         if (-not $pipeTypeVal) { $pipeTypeVal = "Unknown" }
