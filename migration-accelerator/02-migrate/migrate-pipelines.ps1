@@ -26,6 +26,9 @@ param(
     [ValidateSet("list", "dry-run", "migrate", "audit")]
     [string]$Mode = "dry-run",
 
+    [ValidateSet("build", "release")]
+    [string]$PipelineType = "build",
+
     [string]$CustomTransformersDir,
 
     [string]$OutputDir = "./output/pipelines"
@@ -214,7 +217,13 @@ if ($LASTEXITCODE -ne 0) {
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $adoHeaders = @{ Authorization = "Basic $base64Auth" }
 
-$pipelinesUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
+if ($PipelineType -eq "release") {
+    $pipelinesUrl = "https://vsrm.dev.azure.com/$adoOrgName/$AdoProject/_apis/release/definitions?api-version=7.1"
+    Write-Host "  Fetching release pipelines..." -ForegroundColor Yellow
+} else {
+    $pipelinesUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1"
+    Write-Host "  Fetching build pipelines..." -ForegroundColor Yellow
+}
 $pipelines = (Invoke-RestMethod -Uri $pipelinesUrl -Headers $adoHeaders).value
 
 if ($PipelineId -and $PipelineId.Count -gt 0) {
@@ -247,8 +256,9 @@ foreach ($pipeline in $pipelines) {
     $outputSubDir = Join-Path $OutputDir "$pipelineName"
     if (-not (Test-Path $outputSubDir)) { New-Item -ItemType Directory -Path $outputSubDir -Force | Out-Null }
 
+    $importerSubCommand = if ($PipelineType -eq "release") { "release" } else { "pipeline" }
     $importerArgs = @(
-        "actions-importer", $Mode, "azure-devops", "pipeline",
+        "actions-importer", $Mode, "azure-devops", $importerSubCommand,
         "--output-dir", $outputSubDir,
         "--azure-devops-organization", $adoOrgName,
         "--azure-devops-project", $AdoProject,
