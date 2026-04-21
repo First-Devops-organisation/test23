@@ -144,7 +144,8 @@ if ($Mode -eq "list") {
         }
     }
 
-    Write-Host "`nTo migrate a pipeline, re-run with: -PipelineId <ID> -Mode migrate" -ForegroundColor Green
+    Write-Host "`nTo migrate a build pipeline:   -PipelineId <ID> -PipelineType build -Mode migrate" -ForegroundColor Green
+    Write-Host "To migrate a release pipeline: -PipelineId <ID> -PipelineType release -Mode migrate" -ForegroundColor Green
 
     # --- Show audit status per pipeline if audit_summary.md exists ---
     $auditFile = Join-Path $OutputDir "audit_summary.md"
@@ -163,10 +164,18 @@ if ($Mode -eq "list") {
             @{ Header = 'Failed';                 Color = 'Red';    Pattern = '(?ms)^### Failed\s*\n(.*?)(?=^### |\z)' }
         )
 
-        # Build name-to-ID lookup from already-fetched pipeline lists
+        # Build name-to-ID and name-to-Type lookups from already-fetched pipeline lists
         $nameToId = @{}
-        foreach ($bp in $buildPipelines) { $nameToId[$bp.name] = $bp.id }
-        foreach ($rp in $releasePipelines) { $nameToId[$rp.name] = $rp.id }
+        $nameToType = @{}
+        foreach ($bp in $buildPipelines) {
+            $nameToId[$bp.name] = $bp.id
+            $bType = if ($bp.process.yamlFilename) { "YAML" } else { "Classic Build" }
+            $nameToType[$bp.name] = $bType
+        }
+        foreach ($rp in $releasePipelines) {
+            $nameToId[$rp.name] = $rp.id
+            $nameToType[$rp.name] = "Release"
+        }
 
         foreach ($sec in $statusSections) {
             $sectionMatch = [regex]::Match($auditContent, $sec.Pattern)
@@ -175,14 +184,18 @@ if ($Mode -eq "list") {
                 $pipelineEntries = [regex]::Matches($sectionBody, '(?m)^####\s+(.+)$')
                 if ($pipelineEntries.Count -gt 0) {
                     Write-Host "`n--- $($sec.Header) Pipelines ($($pipelineEntries.Count)) ---" -ForegroundColor $sec.Color
+                    Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f "ID", "Name", "Type", "Migrate With") -ForegroundColor White
+                    Write-Host ("-" * 90)
                     foreach ($pm in $pipelineEntries) {
                         $fullPath = $pm.Groups[1].Value.Trim()
                         $pipeName = ($fullPath -split '/')[-1]
                         $pipelineIdVal = $nameToId[$pipeName]
+                        $pipeTypeVal = $nameToType[$pipeName]
+                        $migrateWith = if ($pipeTypeVal -eq "Release") { "-PipelineType release" } else { "-PipelineType build" }
                         if ($pipelineIdVal) {
-                            Write-Host ("  [{0}] {1}" -f $pipelineIdVal, $pipeName) -ForegroundColor $sec.Color
+                            Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f $pipelineIdVal, $pipeName, $pipeTypeVal, $migrateWith) -ForegroundColor $sec.Color
                         } else {
-                            Write-Host "       $pipeName" -ForegroundColor $sec.Color
+                            Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f "?", $pipeName, "Unknown", "") -ForegroundColor $sec.Color
                         }
                     }
                 }
