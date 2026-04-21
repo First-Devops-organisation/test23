@@ -112,6 +112,7 @@ stages:
                
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
+                -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
@@ -165,6 +166,7 @@ stages:
               
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
+                -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
