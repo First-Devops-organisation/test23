@@ -24,10 +24,8 @@
       "repos": [
         "SSPM",
          "Advanced-Security",
-         "APIOPS",
-         "APIOPS-poc",
-         "runtime2gb",
-         "NodeJS"
+         "APIOPS"
+
         
       ]
     }
