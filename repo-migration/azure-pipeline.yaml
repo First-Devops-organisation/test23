@@ -584,13 +584,16 @@ stages:
               artifact: "MigrationAudit-${{ parameters.ADORepo }}"
               path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
 
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Audit Data"
-            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
-            continueOnError: true
-            inputs:
-              artifact: "BatchMigrationAudit"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
+
+          # Download all batch audit artifacts (for BatchTotal=3)
+          - ${{ each idx in range(0, 3) }}:
+              - task: DownloadPipelineArtifact@2
+                displayName: "Download Batch Audit Data ${{ idx }}"
+                condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+                continueOnError: true
+                inputs:
+                  artifact: "BatchMigrationAudit-${{ idx }}"
+                  path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Reports (for batch-migration-summary.json)"
