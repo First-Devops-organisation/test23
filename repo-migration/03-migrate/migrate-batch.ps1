@@ -179,16 +179,25 @@ while (@($jobs | Where-Object { $_.State -eq 'Running' }).Count -gt 0) {
 }
 
 # Collect results
+
 foreach ($job in $jobs) {
     $result = Receive-Job $job -ErrorAction SilentlyContinue
-    if ($result -and $result.Success) {
+    Write-Host "Job result: $($result | Out-String)" -ForegroundColor Gray
+    if ($null -eq $result) {
+        Write-Host "  [Unknown Repo] FAILED: No result returned from job." -ForegroundColor Red
+        $failedRepos += "[Unknown Repo]"
+    }
+    elseif ($result.PSObject.Properties.Match('Success').Count -gt 0 -and $result.Success) {
         Write-Host "  [$($result.Repo)] Completed successfully." -ForegroundColor Green
         $successRepos += $result.Repo
-    } elseif ($result) {
+    }
+    elseif ($result.PSObject.Properties.Match('Success').Count -gt 0) {
         Write-Host "  [$($result.Repo)] FAILED: $($result.Error)" -ForegroundColor Red
         $failedRepos += $result.Repo
-    } else {
-        Write-Host "  [Unknown Repo] FAILED: No result returned from job." -ForegroundColor Red
+    }
+    else {
+        Write-Host "  [Unknown Repo] FAILED: Unexpected job result: $($result | Out-String)" -ForegroundColor Red
+        $failedRepos += "[Unknown Repo]"
     }
     Remove-Job $job -Force
 }
