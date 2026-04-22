@@ -646,12 +646,30 @@ stages:
               artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
               path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
 
+
+          # Download all batch dashboard artifacts (explicit for BatchTotal=3)
           - task: DownloadPipelineArtifact@2
-            displayName: "Download Migration Dashboards (Batch)"
+            displayName: "Download Batch Dashboards 0"
             condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
-              artifact: "BatchMigrationDashboards"
+              artifact: "BatchMigrationDashboards-0"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Dashboards 1"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationDashboards-1"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Dashboards 2"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationDashboards-2"
               path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
 
           # Single mode — validate one repo
