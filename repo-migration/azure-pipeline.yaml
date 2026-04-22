@@ -237,7 +237,6 @@ stages:
         pool: server
         timeoutInMinutes: 4320
         steps:
- 
           - task: ManualValidation@0
             timeoutInMinutes: 4320
             inputs:
@@ -613,6 +612,7 @@ stages:
               path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
 
 
+
           # Download all batch report artifacts (explicit for BatchTotal=3)
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Reports 0"
@@ -620,7 +620,7 @@ stages:
             continueOnError: true
             inputs:
               artifact: "BatchMigrationReports-0"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports\batch0'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Reports 1"
@@ -628,7 +628,7 @@ stages:
             continueOnError: true
             inputs:
               artifact: "BatchMigrationReports-1"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports\batch1'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Reports 2"
@@ -636,7 +636,30 @@ stages:
             continueOnError: true
             inputs:
               artifact: "BatchMigrationReports-2"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports\batch2'
+
+          # Merge all batch-migration-summary.json files into one
+          - task: PowerShell@2
+            displayName: "Merge batch-migration-summary.json files"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            inputs:
+              targetType: inline
+              script: |
+                $outDir = "$(Build.SourcesDirectory)\repo-migration\output\reports"
+                $merged = @()
+                for ($i = 0; $i -lt 3; $i++) {
+                  $file = "$outDir\batch$i\batch-migration-summary.json"
+                  if (Test-Path $file) {
+                    $merged += Get-Content $file | ConvertFrom-Json
+                  }
+                }
+                if ($merged.Count -gt 0) {
+                  $merged | ConvertTo-Json -Depth 10 | Set-Content "$outDir\batch-migration-summary.json"
+                  Write-Host "Merged $($merged.Count) batch-migration-summary.json entries."
+                } else {
+                  Write-Warning "No batch-migration-summary.json files found to merge."
+                }
+              pwsh: true
 
           # Download migration dashboards for HTML tab
           - task: DownloadPipelineArtifact@2
