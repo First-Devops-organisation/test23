@@ -345,7 +345,7 @@ if (Test-Path $configYamlPath) {
                     Write-Host "    FAILED" -ForegroundColor Red
                 }
             } catch {
-                Write-Warning "    Error migrating template $templateName: $_"
+                Write-Warning "    Error migrating template ${templateName}: ${_}"
             }
         }
     } catch {
