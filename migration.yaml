@@ -221,7 +221,7 @@ stages:
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
-                -ImporterConfigFile "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config-patched.yml"
+                -ImporterConfigFile "output/pipeline-audit/config-patched.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
@@ -282,7 +282,7 @@ stages:
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
-                -ImporterConfigFile "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config-patched.yml"
+                -ImporterConfigFile "output/pipeline-audit/config-patched.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
