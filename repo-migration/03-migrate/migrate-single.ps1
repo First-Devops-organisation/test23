@@ -203,7 +203,24 @@ else {
         Write-Host "  Log URL captured: $migLogUrl"
     }
 
-    if ($LASTEXITCODE -eq 0) {
+    # Parse migration ID from output (look for "Migration queued with ID: <id>")
+    $migIdLine = $migOutput | Where-Object { $_ -match 'Migration queued with ID: (\d+)' } | Select-Object -First 1
+    if ($migIdLine -and $migIdLine -match 'Migration queued with ID: (\d+)') {
+        $migrationId = $Matches[1]
+        Write-Host "  Migration ID: $migrationId"
+        # Wait for migration to complete
+        Write-Host "  Waiting for migration to complete..."
+        gh gei wait-for-migration --migration-id $migrationId
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  Migration completed successfully."
+            $migState = "COMPLETE"
+        } else {
+            Write-Warning "Migration failed or timed out."
+            $migState = "FAILED"
+        }
+        $migState | Out-File $stateFile -Encoding utf8
+    }
+    elseif ($LASTEXITCODE -eq 0) {
         Write-Host "  State: COMPLETE" -ForegroundColor Green
         $migState = "COMPLETE"
         $migState | Out-File $stateFile -Encoding utf8
