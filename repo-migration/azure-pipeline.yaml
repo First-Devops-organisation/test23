@@ -585,15 +585,31 @@ stages:
               path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
 
 
-          # Download all batch audit artifacts (for BatchTotal=3)
-          - ${{ each idx in range(0, 3) }}:
-              - task: DownloadPipelineArtifact@2
-                displayName: "Download Batch Audit Data ${{ idx }}"
-                condition: eq('${{ parameters.MigrationMode }}', 'Batch')
-                continueOnError: true
-                inputs:
-                  artifact: "BatchMigrationAudit-${{ idx }}"
-                  path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
+
+          # Download all batch audit artifacts (explicit for BatchTotal=3)
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Audit Data 0"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationAudit-0"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Audit Data 1"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationAudit-1"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Audit Data 2"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationAudit-2"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Reports (for batch-migration-summary.json)"
