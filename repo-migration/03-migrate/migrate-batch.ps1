@@ -102,7 +102,7 @@ if ($BatchTotal -gt 1) {
         if ($i % $BatchTotal -eq $BatchIndex) { $myRepos.Add($repoList[$i]) }
     }
     $repoList = $myRepos
-    Write-Host "Agent $($BatchIndex + 1) of $BatchTotal: migrating $($repoList.Count) of $totalRepoCount repos" -ForegroundColor Cyan
+    Write-Host ("Agent {0} of {1}: migrating {2} of {3} repos" -f ($BatchIndex + 1), $BatchTotal, $repoList.Count, $totalRepoCount) -ForegroundColor Cyan
 }
 
 # ── Read target repo visibility from config ───────────────────────────────────────────
