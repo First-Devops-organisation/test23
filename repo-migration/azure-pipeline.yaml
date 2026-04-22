@@ -393,12 +393,24 @@ stages:
     displayName: "3b. Migrate (Batch)"
     dependsOn: ReviewGate
     condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
+
     jobs:
       - job: MigrateBatchRepos
-        displayName: "Migrate Batch"
+        displayName: "Migrate Batch (Parallel)"
         timeoutInMinutes: 480
+        strategy:
+          matrix:
+            Agent0:
+              BatchIndex: 0
+              BatchTotal: 3
+            Agent1:
+              BatchIndex: 1
+              BatchTotal: 3
+            Agent2:
+              BatchIndex: 2
+              BatchTotal: 3
+          maxParallel: 3
         steps:
-
           - task: PowerShell@2
             displayName: "Install GitHub CLI + ado2gh extension"
             inputs:
@@ -468,6 +480,8 @@ stages:
                     BatchName   = '${{ parameters.BatchName }}'
                     OutputDir   = '$(Build.SourcesDirectory)\repo-migration\output'
                     MaxParallel = 3
+                    BatchIndex  = $(BatchIndex)
+                    BatchTotal  = $(BatchTotal)
                 }
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
                 if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
