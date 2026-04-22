@@ -498,7 +498,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
-              artifact: "BatchMigrationLogs"
+              artifact: "BatchMigrationLogs-$(BatchIndex)"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -506,7 +506,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\audit'
-              artifact: "BatchMigrationAudit"
+              artifact: "BatchMigrationAudit-$(BatchIndex)"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -514,7 +514,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-              artifact: "BatchMigrationDashboards"
+              artifact: "BatchMigrationDashboards-$(BatchIndex)"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -522,7 +522,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-              artifact: "BatchMigrationReports"
+              artifact: "BatchMigrationReports-$(BatchIndex)"
               publishLocation: pipeline
 
   # ===========================================================================
