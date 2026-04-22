@@ -39,6 +39,8 @@ param(
     [Parameter(Mandatory = $false)] [string]$RepoListCsv,
     [Parameter(Mandatory = $false)] [string]$OutputDir    = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)] [int]   $MaxParallel  = 3,
+    [Parameter(Mandatory = $false)] [int]   $BatchIndex   = 0,
+    [Parameter(Mandatory = $false)] [int]   $BatchTotal   = 1,
     [switch]$SkipAudit,
     [switch]$DryRun
 )
@@ -92,6 +94,17 @@ else {
 
 if ($repoList.Count -eq 0) { Write-Error "No repos found to migrate." }
 
+# ── Agent-level batch splitting (round-robin for matrix strategy) ─────────────
+$totalRepoCount = $repoList.Count
+if ($BatchTotal -gt 1) {
+    $myRepos = [System.Collections.Generic.List[hashtable]]::new()
+    for ($i = 0; $i -lt $repoList.Count; $i++) {
+        if ($i % $BatchTotal -eq $BatchIndex) { $myRepos.Add($repoList[$i]) }
+    }
+    $repoList = $myRepos
+    Write-Host "Agent $($BatchIndex + 1) of $BatchTotal: migrating $($repoList.Count) of $totalRepoCount repos" -ForegroundColor Cyan
+}
+
 # ── Read target repo visibility from config ───────────────────────────────────────────
 $targetVisibility = 'private'
 $visConfig = if (Test-Path $ConfigPath) { Get-Content $ConfigPath -Raw | ConvertFrom-Json } else { $null }
@@ -114,21 +127,19 @@ Write-Host "  MaxParallel: $MaxParallel"
 Write-Host "  DryRun:      $DryRun"
 Write-Host "======================================================" -ForegroundColor Cyan
 
-# ── Run migrations sequentially (in-process) ─────────────────────────────────
-# NOTE: Start-Job / Receive-Job was removed because gh CLI writes informational
-#       messages to stderr (e.g. "GH_TOKEN environment variable is being used")
-#       which PowerShell strict mode treats as terminating errors, causing
-#       pipeline exit code 1 even on successful migrations.
+
+# ── Run migrations in parallel using PowerShell jobs ─────────────────────────
 $successRepos = @()
 $failedRepos  = @()
 $repoIndex    = 0
+$jobs         = @()
 
 foreach ($entry in $repoList) {
     $repoIndex++
     $adoRepo = $entry.ADORepo
     $ghRepo  = $entry.GHRepo
 
-    Write-Host "`n[$repoIndex/$($repoList.Count)] Migrating: $adoRepo → $ghRepo" -ForegroundColor Yellow
+    Write-Host "`n[$repoIndex/$($repoList.Count)] Queuing migration: $adoRepo → $ghRepo" -ForegroundColor Yellow
 
     $migParams = @{
         ADOOrg     = $ADOOrg
@@ -142,15 +153,44 @@ foreach ($entry in $repoList) {
     if ($SkipAudit) { $migParams['SkipAudit'] = $true }
     if ($DryRun)    { $migParams['DryRun']    = $true }
 
-    try {
-        & $singleScript @migParams
-        Write-Host "  [$adoRepo] Completed successfully." -ForegroundColor Green
-        $successRepos += $adoRepo
+    $job = Start-Job -ScriptBlock {
+        param($singleScript, $migParams, $adoRepo)
+        try {
+            & $singleScript @migParams
+            [PSCustomObject]@{ Repo = $adoRepo; Success = $true; Error = $null }
+        }
+        catch {
+            [PSCustomObject]@{ Repo = $adoRepo; Success = $false; Error = $_.Exception.Message }
+        }
+    } -ArgumentList $singleScript, $migParams, $adoRepo
+    $jobs += $job
+
+    # Throttle: Wait if MaxParallel jobs are running
+    while (@($jobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel) {
+        Start-Sleep -Seconds 2
+        $jobs = $jobs | Where-Object { $_.State -ne 'Completed' -or $_.HasMoreData }
     }
-    catch {
-        Write-Host "  [$adoRepo] FAILED: $($_.Exception.Message)" -ForegroundColor Red
-        $failedRepos += $adoRepo
+}
+
+# Wait for all jobs to finish
+Write-Host "\nWaiting for all migrations to complete..." -ForegroundColor Cyan
+while (@($jobs | Where-Object { $_.State -eq 'Running' }).Count -gt 0) {
+    Start-Sleep -Seconds 2
+}
+
+# Collect results
+foreach ($job in $jobs) {
+    $result = Receive-Job $job -ErrorAction SilentlyContinue
+    if ($result -and $result.Success) {
+        Write-Host "  [$($result.Repo)] Completed successfully." -ForegroundColor Green
+        $successRepos += $result.Repo
+    } elseif ($result) {
+        Write-Host "  [$($result.Repo)] FAILED: $($result.Error)" -ForegroundColor Red
+        $failedRepos += $result.Repo
+    } else {
+        Write-Host "  [Unknown Repo] FAILED: No result returned from job." -ForegroundColor Red
     }
+    Remove-Job $job -Force
 }
 
 Write-Host "`nAll $($repoList.Count) repo(s) processed." -ForegroundColor Cyan
