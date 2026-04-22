@@ -611,12 +611,30 @@ stages:
               artifact: "BatchMigrationAudit-2"
               path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
 
+
+          # Download all batch report artifacts (explicit for BatchTotal=3)
           - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Reports (for batch-migration-summary.json)"
+            displayName: "Download Batch Reports 0"
             condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
             inputs:
-              artifact: "BatchMigrationReports"
+              artifact: "BatchMigrationReports-0"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Reports 1"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationReports-1"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Reports 2"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              artifact: "BatchMigrationReports-2"
               path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
 
           # Download migration dashboards for HTML tab
