@@ -140,7 +140,7 @@ stages:
                 foreach ($key in $auditEntries.Keys)  { $merged[$key] = $auditEntries[$key] }
                 $addedCount = 0
                 foreach ($key in $repoTemplates.Keys) {
-                    if (-not $merged.ContainsKey($key)) {
+                    if (-not $merged.Contains($key)) {
                         $merged[$key] = $repoTemplates[$key]
                         $addedCount++
                     }
