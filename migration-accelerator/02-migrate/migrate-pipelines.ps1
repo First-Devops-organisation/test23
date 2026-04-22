@@ -33,7 +33,9 @@ param(
 
     [string]$ImporterConfigFile,
 
-    [string]$OutputDir = "./output/pipelines"
+    [string]$OutputDir = "./output/pipelines",
+
+    [switch]$ForceAllTemplates
 )
 
 $ErrorActionPreference = "Stop"
@@ -301,6 +303,39 @@ if ($PipelineId -and $PipelineId.Count -gt 0) {
 }
 
 Write-Host "Found $($pipelines.Count) pipeline(s) to process" -ForegroundColor Gray
+
+
+# If ForceAllTemplates is set, migrate all templates in config-patched.yml
+if ($ForceAllTemplates -and $ImporterConfigFile -and (Test-Path $ImporterConfigFile)) {
+    Write-Host "\n[ForceAllTemplates] Migrating all templates from config-patched.yml..." -ForegroundColor Cyan
+    $configPatched = Get-Content $ImporterConfigFile -Raw | ConvertFrom-Yaml
+    if ($configPatched.templates) {
+        foreach ($template in $configPatched.templates.Keys) {
+            Write-Host "  Migrating template: $template" -ForegroundColor Yellow
+            $importerArgs = @(
+                "actions-importer", $Mode, "azure-devops", "template",
+                "--template", $template,
+                "--config-file-path", $ImporterConfigFile,
+                "--output-dir", $OutputDir
+            )
+            try {
+                Write-Host "    Command: gh $($importerArgs -join ' ')" -ForegroundColor DarkGray
+                $output = gh @importerArgs 2>&1
+                $exitCode = $LASTEXITCODE
+                $outputStr = $output | Out-String
+                Write-Host $outputStr
+                $color = if ($exitCode -eq 0) { "Green" } else { "Red" }
+                Write-Host "    Status: $exitCode" -ForegroundColor $color
+            } catch {
+                Write-Warning "    Error migrating template $template: $_"
+            }
+        }
+    } else {
+        Write-Host "  No templates found in config-patched.yml." -ForegroundColor Red
+    }
+    Write-Host "[ForceAllTemplates] All templates processed." -ForegroundColor Cyan
+    exit 0
+}
 
 $results = @()
 
