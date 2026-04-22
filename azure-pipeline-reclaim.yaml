@@ -196,26 +196,26 @@ stages:
     jobs:
       - job: ReviewMappings
         displayName: "Gate: Review Mannequin Mappings"
-  #       pool: server
-  #       timeoutInMinutes: 4320
-  #       steps:
-  #         - task: ManualValidation@0
-  #           timeoutInMinutes: 4320
-  #           inputs:
-  #             notifyUsers: ""
-  #             instructions: |
-  #               Review the mannequin mapping preview in the pipeline summary tab.
+        pool: server
+        timeoutInMinutes: 4320
+        steps:
+          - task: ManualValidation@0
+            timeoutInMinutes: 4320
+            inputs:
+              notifyUsers: ""
+              instructions: |
+                Review the mannequin mapping preview in the pipeline summary tab.
 
-  #               Mode   : ${{ parameters.ReclaimMode }}
-  #               Target : $(GH_ORG)
+                Mode   : ${{ parameters.ReclaimMode }}
+                Target : $(GH_ORG)
 
-  #               Check:
-  #                 1. All mannequins have correct GitHub username mappings
-  #                 2. No unmapped mannequins (add to user-mappings.csv if needed)
-  #                 3. Target GitHub users are already org members
+                Check:
+                  1. All mannequins have correct GitHub username mappings
+                  2. No unmapped mannequins (add to user-mappings.csv if needed)
+                  3. Target GitHub users are already org members
 
-  #               Approve to send reclaim invitations, or Reject to abort.
-  #             onTimeout: reject
+                Approve to send reclaim invitations, or Reject to abort.
+              onTimeout: reject
 
   # ===========================================================================
   # STAGE 3 – RECLAIM MANNEQUINS
