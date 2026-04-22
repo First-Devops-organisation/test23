@@ -237,6 +237,8 @@ stages:
         pool: server
         timeoutInMinutes: 4320
         steps:
+          - checkout: self
+            clean: true
           - task: ManualValidation@0
             timeoutInMinutes: 4320
             inputs:
