@@ -327,7 +327,7 @@ if ($ForceAllTemplates -and $ImporterConfigFile -and (Test-Path $ImporterConfigF
                 $color = if ($exitCode -eq 0) { "Green" } else { "Red" }
                 Write-Host "    Status: $exitCode" -ForegroundColor $color
             } catch {
-                Write-Warning "    Error migrating template $template: $_"
+                Write-Warning ("    Error migrating template {0}: {1}" -f $template, $_)
             }
         }
     } else {
