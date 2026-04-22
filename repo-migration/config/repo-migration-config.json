@@ -23,7 +23,11 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "SSPM",
-         "Advanced-Security"
+         "Advanced-Security",
+         "APIOPS",
+         "APIOPS-poc",
+         "runtime2gb",
+         "NodeJS"
         
       ]
     }
