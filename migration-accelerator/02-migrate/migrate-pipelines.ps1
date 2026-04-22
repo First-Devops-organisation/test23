@@ -305,6 +305,54 @@ Write-Host "Found $($pipelines.Count) pipeline(s) to process" -ForegroundColor G
 
 
 
+
+# --- Migrate templates to shared repo if config.yml exists ---
+$sharedTemplatesRepo = "shared-workflows"  # Change if your shared repo name is different
+$configYamlPath = Join-Path $OutputDir "config.yml"
+if (Test-Path $configYamlPath) {
+    Write-Host "\nMigrating templates to shared repo: $ghOrg/$sharedTemplatesRepo" -ForegroundColor Cyan
+    try {
+        $configYaml = Get-Content $configYamlPath -Raw
+        # Parse YAML for templates (requires powershell-yaml module)
+        if (-not (Get-Module -ListAvailable -Name powershell-yaml)) {
+            Install-Module powershell-yaml -Force -Scope CurrentUser
+        }
+        Import-Module powershell-yaml
+        $configObj = ConvertFrom-Yaml $configYaml
+        $templates = $configObj | Where-Object { $_.name -and $_.target_url -and $_.target_url -like "*shared-workflows*" }
+        foreach ($template in $templates) {
+            $templateName = $template.name
+            Write-Host "  Migrating template: $templateName" -ForegroundColor Yellow
+            $outputSubDir = Join-Path $OutputDir "templates/$templateName"
+            if (-not (Test-Path $outputSubDir)) { New-Item -ItemType Directory -Path $outputSubDir -Force | Out-Null }
+            $importerArgs = @(
+                "actions-importer", "migrate", "azure-devops", "template",
+                "--output-dir", $outputSubDir,
+                "--azure-devops-organization", $adoOrgName,
+                "--azure-devops-project", $AdoProject,
+                "--template-name", $templateName,
+                "--target-url", "https://github.com/$ghOrg/$sharedTemplatesRepo"
+            )
+            try {
+                Write-Host "    Command: gh $($importerArgs -join ' ')" -ForegroundColor DarkGray
+                $output = gh @importerArgs 2>&1
+                $exitCode = $LASTEXITCODE
+                $outputStr = $output | Out-String
+                Write-Host $outputStr
+                if ($exitCode -eq 0) {
+                    Write-Host "    SUCCESS" -ForegroundColor Green
+                } else {
+                    Write-Host "    FAILED" -ForegroundColor Red
+                }
+            } catch {
+                Write-Warning "    Error migrating template $templateName: $_"
+            }
+        }
+    } catch {
+        Write-Warning "Error parsing or migrating templates from config.yml: $_"
+    }
+}
+
 $results = @()
 
 foreach ($pipeline in $pipelines) {
@@ -325,7 +373,15 @@ foreach ($pipeline in $pipelines) {
     }
     Write-Host "    Target repo: $ghOrg/$targetRepo" -ForegroundColor Gray
 
-    $outputSubDir = Join-Path $OutputDir "$pipelineName"
+
+    # Use different output directories for dry-run and migrate
+    if ($Mode -eq "dry-run") {
+        $outputSubDir = Join-Path $OutputDir "dry-run/$pipelineName"
+    } elseif ($Mode -eq "migrate") {
+        $outputSubDir = Join-Path $OutputDir "migrate/$pipelineName"
+    } else {
+        $outputSubDir = Join-Path $OutputDir $pipelineName
+    }
     if (-not (Test-Path $outputSubDir)) { New-Item -ItemType Directory -Path $outputSubDir -Force | Out-Null }
 
     $importerSubCommand = if ($PipelineType -eq "release") { "release" } else { "pipeline" }
