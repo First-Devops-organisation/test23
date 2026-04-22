@@ -67,127 +67,6 @@ stages:
                 }
               pwsh: true
 
-          # - task: PowerShell@2
-          #   displayName: "List Mannequins & Preview Mappings"
-          #   inputs:
-          #     targetType: inline
-          #     script: |
-          #       $ghOrg     = '$(GH_ORG)'
-          #       $reportDir = '$(Build.SourcesDirectory)\repo-migration\output\reports'
-
-          #       # ── 1. Generate mannequin CSV from GitHub org ──
-          #       Write-Host "=== Fetching Mannequins from $ghOrg ===" -ForegroundColor Cyan
-          #       $mannequinCsv = "$reportDir\mannequins.csv"
-          #       gh ado2gh generate-mannequin-csv --github-org $ghOrg --output $mannequinCsv 2>&1 | ForEach-Object { Write-Host "  $_" }
-
-          #       if (-not (Test-Path $mannequinCsv)) {
-          #           Write-Warning "No mannequin CSV generated — org may have no mannequins."
-          #           "login,id,target_user" | Out-File $mannequinCsv -Encoding utf8
-          #       }
-
-          #       $mannequins = @(Import-Csv $mannequinCsv)
-          #       Write-Host "`n  Total mannequins found: $($mannequins.Count)"
-
-          #       # ── 2. Load user mappings ──
-          #       $mappingPath = '$(Build.SourcesDirectory)\repo-migration\config\user-mappings.csv'
-          #       if (-not (Test-Path $mappingPath)) {
-          #           Write-Warning "user-mappings.csv not found at $mappingPath"
-          #           $mappings = @()
-          #       } else {
-          #           $mappings = @(Import-Csv $mappingPath)
-          #           Write-Host "  User mappings loaded: $($mappings.Count)"
-          #       }
-
-          #       # ── 3. Preview mapping matches ──
-          #       $preview = @()
-          #       foreach ($m in $mannequins) {
-          #           $login = $m.login
-          #           $match = $mappings | Where-Object {
-          #               $_.ADOEmail -eq $login -or
-          #               $_.ADOUsername -eq $login -or
-          #               $_.ADODisplayName -eq $login
-          #           } | Select-Object -First 1
-
-          #           $preview += [PSCustomObject]@{
-          #               Mannequin    = $login
-          #               MannequinId  = $m.id
-          #               MappedTo     = if ($match) { $match.GitHubUsername } else { "*** NO MAPPING ***" }
-          #               MatchedBy    = if ($match) {
-          #                   if ($match.ADOEmail -eq $login) { "ADOEmail" }
-          #                   elseif ($match.ADOUsername -eq $login) { "ADOUsername" }
-          #                   else { "ADODisplayName" }
-          #               } else { "-" }
-          #           }
-          #       }
-
-          #       # ── 4. Display preview ──
-          #       Write-Host "`n=== Mapping Preview ===" -ForegroundColor Cyan
-          #       Write-Host ("-" * 90)
-          #       Write-Host ("{0,-30} {1,-25} {2,-15}" -f "Mannequin", "Mapped To", "Matched By")
-          #       Write-Host ("-" * 90)
-          #       foreach ($p in $preview) {
-          #           $color = if ($p.MappedTo -eq "*** NO MAPPING ***") { "Red" } else { "Green" }
-          #           Write-Host ("{0,-30} {1,-25} {2,-15}" -f $p.Mannequin, $p.MappedTo, $p.MatchedBy) -ForegroundColor $color
-          #       }
-          #       Write-Host ("-" * 90)
-
-          #       $mapped   = @($preview | Where-Object { $_.MappedTo -ne "*** NO MAPPING ***" })
-          #       $unmapped = @($preview | Where-Object { $_.MappedTo -eq "*** NO MAPPING ***" })
-          #       Write-Host "`n  Mapped:   $($mapped.Count)"
-          #       Write-Host "  Unmapped: $($unmapped.Count)"
-
-          #       if ($unmapped.Count -gt 0) {
-          #           Write-Host "`n  Unmapped mannequins — add these to user-mappings.csv:" -ForegroundColor Yellow
-          #           foreach ($u in $unmapped) {
-          #               Write-Host "    $($u.Mannequin)" -ForegroundColor Yellow
-          #           }
-          #       }
-
-          #       # ── 5. Save preview report ──
-          #       $preview | Export-Csv "$reportDir\mannequin-mapping-preview.csv" -NoTypeInformation -Encoding utf8
-
-          #       # ── 6. Generate reclaim CSV (for gh ado2gh) ──
-          #       $reclaimRows = @()
-          #       foreach ($p in $preview) {
-          #           if ($p.MappedTo -ne "*** NO MAPPING ***") {
-          #               $reclaimRows += [PSCustomObject]@{
-          #                   mannequin_user = $p.Mannequin
-          #                   mannequin_id   = $p.MannequinId
-          #                   target_user    = $p.MappedTo
-          #               }
-          #           }
-          #       }
-          #       if ($reclaimRows.Count -gt 0) {
-          #           $reclaimRows | Export-Csv "$reportDir\reclaim-input.csv" -NoTypeInformation -Encoding utf8
-          #           Write-Host "`n  Reclaim CSV saved: reclaim-input.csv ($($reclaimRows.Count) entries)"
-          #       }
-
-          #       # ── 7. Summary markdown ──
-          #       $md  = "# Mannequin Reclaim Preview`n`n"
-          #       $md += "| Mannequin | Mapped To | Matched By |`n|---|---|---|`n"
-          #       foreach ($p in $preview) {
-          #           $status = if ($p.MappedTo -eq "*** NO MAPPING ***") { "❌ $($p.MappedTo)" } else { "✅ $($p.MappedTo)" }
-          #           $md += "| $($p.Mannequin) | $status | $($p.MatchedBy) |`n"
-          #       }
-          #       $md += "`n**Mapped:** $($mapped.Count) | **Unmapped:** $($unmapped.Count)`n"
-          #       $md | Out-File "$reportDir\mannequin-preview.md" -Encoding utf8
-
-          #       Write-Host "##vso[task.uploadsummary]$reportDir\mannequin-preview.md"
-          #     pwsh: true
-          #   env:
-          #     GH_TOKEN: $(GH_PAT)
-          #     GH_PAT:  $(GH_PAT)
-
-          # - task: PublishPipelineArtifact@1
-          #   displayName: "Publish Mannequin Reports"
-          #   condition: always()
-          #   inputs:
-          #     targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-          #     artifact: "MannequinReports"
-          #     publishLocation: pipeline
-
-
-
           - task: PowerShell@2
             displayName: "List Mannequins & Preview Mappings"
             inputs:
@@ -203,11 +82,11 @@ stages:
 
                 if (-not (Test-Path $mannequinCsv)) {
                     Write-Warning "No mannequin CSV generated — org may have no mannequins."
-                    "mannequin-user,mannequin-id,target_user" | Out-File $mannequinCsv -Encoding utf8
+                    "login,id,target_user" | Out-File $mannequinCsv -Encoding utf8
                 }
 
                 $mannequins = @(Import-Csv $mannequinCsv)
-                Write-Host "`nTotal mannequins found: $($mannequins.Count)"
+                Write-Host "`n  Total mannequins found: $($mannequins.Count)"
 
                 # ── 2. Load user mappings ──
                 $mappingPath = '$(Build.SourcesDirectory)\repo-migration\config\user-mappings.csv'
@@ -216,52 +95,27 @@ stages:
                     $mappings = @()
                 } else {
                     $mappings = @(Import-Csv $mappingPath)
-                    Write-Host "User mappings loaded: $($mappings.Count)"
+                    Write-Host "  User mappings loaded: $($mappings.Count)"
                 }
 
                 # ── 3. Preview mapping matches ──
                 $preview = @()
                 foreach ($m in $mannequins) {
-                    # Support actual gh ado2gh mannequin CSV headers
-                    $login = if ($m.login) { $m.login } elseif ($m.'mannequin-user') { $m.'mannequin-user' } else { $null }
-                    $mid   = if ($m.id)    { $m.id }    elseif ($m.'mannequin-id')   { $m.'mannequin-id' }   else { $null }
-
-                    if (-not $login) {
-                        Write-Warning "Skipping a mannequin row because login/mannequin-user is missing."
-                        continue
-                    }
-
-                  
-                        $loginNorm = "$login".Trim().ToLower()
-
-                        $match = $mappings | Where-Object {
-                            ("$($_.ADOEmail)".Trim().ToLower()       -eq $loginNorm) -or
-                            ("$($_.ADOUsername)".Trim().ToLower()    -eq $loginNorm) -or
-                            ("$($_.ADODisplayName)".Trim().ToLower() -eq $loginNorm) -or
-                            ("$($_.ADOLogin)".Trim().ToLower()       -eq $loginNorm)
-                        } | Select-Object -First 1
-
-
-                    $mappedTo = $null
-                    if ($match) {
-                        if ($match.GitHubUsername) {
-                            $mappedTo = $match.GitHubUsername
-                        }
-                        elseif ($match.target_user) {
-                            $mappedTo = $match.target_user
-                        }
-                    }
+                    $login = $m.login
+                    $match = $mappings | Where-Object {
+                        $_.ADOEmail -eq $login -or
+                        $_.ADOUsername -eq $login -or
+                        $_.ADODisplayName -eq $login
+                    } | Select-Object -First 1
 
                     $preview += [PSCustomObject]@{
-                        Mannequin   = $login
-                        MannequinId = $mid
-                        MappedTo    = if ($mappedTo) { $mappedTo } else { "*** NO MAPPING ***" }
-                        MatchedBy   = if ($match) {
+                        Mannequin    = $login
+                        MannequinId  = $m.id
+                        MappedTo     = if ($match) { $match.GitHubUsername } else { "*** NO MAPPING ***" }
+                        MatchedBy    = if ($match) {
                             if ($match.ADOEmail -eq $login) { "ADOEmail" }
                             elseif ($match.ADOUsername -eq $login) { "ADOUsername" }
-                            elseif ($match.ADODisplayName -eq $login) { "ADODisplayName" }
-                            elseif ($match.ADOLogin -eq $login) { "ADOLogin" }
-                            else { "-" }
+                            else { "ADODisplayName" }
                         } else { "-" }
                     }
                 }
@@ -279,14 +133,13 @@ stages:
 
                 $mapped   = @($preview | Where-Object { $_.MappedTo -ne "*** NO MAPPING ***" })
                 $unmapped = @($preview | Where-Object { $_.MappedTo -eq "*** NO MAPPING ***" })
-
-                Write-Host "`nMapped:   $($mapped.Count)"
-                Write-Host "Unmapped: $($unmapped.Count)"
+                Write-Host "`n  Mapped:   $($mapped.Count)"
+                Write-Host "  Unmapped: $($unmapped.Count)"
 
                 if ($unmapped.Count -gt 0) {
-                    Write-Host "`nUnmapped mannequins — add these to user-mappings.csv:" -ForegroundColor Yellow
+                    Write-Host "`n  Unmapped mannequins — add these to user-mappings.csv:" -ForegroundColor Yellow
                     foreach ($u in $unmapped) {
-                        Write-Host "  $($u.Mannequin)" -ForegroundColor Yellow
+                        Write-Host "    $($u.Mannequin)" -ForegroundColor Yellow
                     }
                 }
 
@@ -304,12 +157,9 @@ stages:
                         }
                     }
                 }
-
                 if ($reclaimRows.Count -gt 0) {
                     $reclaimRows | Export-Csv "$reportDir\reclaim-input.csv" -NoTypeInformation -Encoding utf8
-                    Write-Host "`nReclaim CSV saved: reclaim-input.csv ($($reclaimRows.Count) entries)"
-                } else {
-                    Write-Warning "No matched mannequin mappings found. reclaim-input.csv was not created."
+                    Write-Host "`n  Reclaim CSV saved: reclaim-input.csv ($($reclaimRows.Count) entries)"
                 }
 
                 # ── 7. Summary markdown ──
@@ -327,6 +177,15 @@ stages:
             env:
               GH_TOKEN: $(GH_PAT)
               GH_PAT:  $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Mannequin Reports"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              artifact: "MannequinReports"
+              publishLocation: pipeline
+
   # ===========================================================================
   # STAGE 2 – REVIEW GATE
   # ===========================================================================
@@ -429,7 +288,7 @@ stages:
                         $output = gh ado2gh reclaim-mannequin `
                             --github-org $ghOrg `
                             --mannequin-user $e.mannequin_user `
-                            --target_user $e.target_user `
+                            --target-user $e.target_user `
                             --force 2>&1
                         $output | ForEach-Object { Write-Host "    $_" }
 
