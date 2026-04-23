@@ -1,6 +1,10 @@
 # Unified Migration Pipeline YAML
 # Select migrationType at runtime to run either pipeline or repo migration
 
+
+
+trigger: none
+
 parameters:
   - name: migrationType
     displayName: 'Migration Type'
@@ -9,8 +13,6 @@ parameters:
     values:
       - pipeline
       - repo
-
-trigger: none
 
 pool:
   vmImage: 'windows-latest'
@@ -22,8 +24,8 @@ stages:
     jobs:
       - job: RunPipelineMigration
         displayName: 'Run Pipeline Migration'
-          variables:
-            - group: pipeline-migration  # Update with your actual variable group name
+        variables:
+          - group: pipeline-migration  # Update with your actual variable group name
         steps:
           - checkout: self
           - task: PowerShell@2
@@ -38,10 +40,9 @@ stages:
     jobs:
       - job: RunRepoMigration
         displayName: 'Run Repo Migration'
-          variables:
-                - group: repo-migration-discove  # ADO_ORG, ADO_PROJECT, ADO_PAT
-                - group: repo-migration-migrate
-             # Update with your actual variable group name
+        variables:
+          - group: repo-migration-discove  # ADO_ORG, ADO_PROJECT, ADO_PAT
+          - group: repo-migration-migrate
         steps:
           - checkout: self
           - task: PowerShell@2
