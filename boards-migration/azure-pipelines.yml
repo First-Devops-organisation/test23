@@ -11,6 +11,11 @@ trigger: none  # Manual trigger only
 
 pr: none
 
+resources:
+  repositories:
+  - repository: self
+    ref: refs/heads/board-migration
+
 pool:
   vmImage: 'windows-latest'
 
@@ -54,6 +59,9 @@ stages:
     displayName: 'Inventory & Analyze ADO Boards'
     steps:
 
+    - checkout: self
+      persistCredentials: true
+
     - task: PowerShell@2
       displayName: 'Install Azure DevOps CLI Extension'
       inputs:
@@ -72,10 +80,7 @@ stages:
       env:
         ADO_PAT: $(ADO_PAT)
         GH_PAT: $(GH_PAT)
-    - checkout: self
-      ref: refs/heads/board-migration    # ← ADD THIS as the first step
-      persistCredentials: true
-      
+
     - task: PowerShell@2
       displayName: 'Analyze Board Structure'
       inputs:
@@ -103,6 +108,9 @@ stages:
   - job: ValidateAndSetup
     displayName: 'Validate Mappings & Setup Labels'
     steps:
+
+    - checkout: self
+      persistCredentials: true
 
     - task: PowerShell@2
       displayName: 'Install Azure DevOps CLI Extension'
@@ -147,7 +155,6 @@ stages:
   condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'migrate'))
   jobs:
 
-  # Manual approval before migration (skipped for dry runs)
   - job: ApprovalGate
     displayName: 'Approval Gate'
     condition: eq('${{ parameters.dryRun }}', false)
@@ -171,6 +178,9 @@ stages:
     timeoutInMinutes: 360  # 6 hours max
     steps:
 
+    - checkout: self
+      persistCredentials: true
+
     - task: PowerShell@2
       displayName: 'Install Azure DevOps CLI Extension'
       inputs:
@@ -178,7 +188,6 @@ stages:
         script: az extension add --name azure-devops --yes
         pwsh: true
 
-    # Download discovery reports for reference
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Discovery Reports'
       inputs:
@@ -230,6 +239,9 @@ stages:
     displayName: 'Validate Migration & Generate Report'
     steps:
 
+    - checkout: self
+      persistCredentials: true
+
     - task: PowerShell@2
       displayName: 'Install Azure DevOps CLI Extension'
       inputs:
@@ -237,7 +249,6 @@ stages:
         script: az extension add --name azure-devops --yes
         pwsh: true
 
-    # Download migration reports
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Migration Reports'
       inputs:
@@ -273,7 +284,6 @@ stages:
         publishLocation: 'pipeline'
       condition: always()
 
-    # Publish markdown report as pipeline summary
     - task: PowerShell@2
       displayName: 'Publish Report to Pipeline Summary'
       inputs:
