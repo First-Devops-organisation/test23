@@ -33,7 +33,7 @@ stages:
           - task: PowerShell@2
             displayName: 'Run Pipeline Migration Script'
             inputs:
-              filePath: 'repo-migration/run-migration.ps1'
+              filePath: 'run-migration.ps1'
               pwsh: true
 
   - stage: RepoMigration
