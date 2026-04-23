@@ -65,107 +65,6 @@ stages:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
-          - task: PowerShell@2
-            displayName: "Scan template repo & build config.yml"
-            inputs:
-              targetType: 'inline'
-              script: |
-                $adoOrg       = "$(ADO_ORG)"
-                $templateProj = "$(TEMPLATE_REPO_PROJECT)"
-                $templateRepo = "$(TEMPLATE_REPO_NAME)"
-                $adoPat       = "$(ADO_PAT)"
-                $sharedRepoUrl = "https://github.com/$(GH_ORG)/shared-workflows"
-                $auditConfig  = "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
-                $patchedFile  = "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config-patched.yml"
-
-                # --- Skip if template repo variables are not set ---
-                if (-not $templateProj -or $templateProj -match '^\$\(' -or -not $templateRepo -or $templateRepo -match '^\$\(') {
-                    Write-Host "TEMPLATE_REPO_PROJECT or TEMPLATE_REPO_NAME not set — skipping template scan" -ForegroundColor Yellow
-                    if (Test-Path $auditConfig) {
-                        Copy-Item $auditConfig $patchedFile
-                    } else {
-                        "---`ncomposite_actions: []" | Out-File -FilePath $patchedFile -Encoding utf8
-                    }
-                    exit 0
-                }
-
-                # --- 1. Scan Azure-DevOpstemplate repo via ADO REST API ---
-                Write-Host "Scanning template repo: $templateProj/$templateRepo" -ForegroundColor Cyan
-                $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
-                $headers = @{ Authorization = "Basic $base64Auth" }
-                $apiUrl = "https://dev.azure.com/$adoOrg/$templateProj/_apis/git/repositories/$templateRepo/items?recursionLevel=Full&api-version=7.0"
-
-                try {
-                    $response = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
-                } catch {
-                    Write-Host "ERROR: Failed to scan template repo: $_" -ForegroundColor Red
-                    if (Test-Path $auditConfig) { Copy-Item $auditConfig $patchedFile } else { "---`ncomposite_actions: []" | Out-File -FilePath $patchedFile -Encoding utf8 }
-                    exit 0
-                }
-
-                # --- 2. Filter for .yaml/.yml files and derive names ---
-                $repoTemplates = @{}
-                foreach ($item in $response.value) {
-                    if ($item.gitObjectType -ne 'blob') { continue }
-                    $path = $item.path.TrimStart('/')
-                    if ($path -notmatch '\.(yaml|yml)$') { continue }
-                    # Derive name: Deploy/Dacpac.yaml -> Deploy_Dacpac
-                    $name = $path -replace '[/\\]', '_' -replace '\.(yaml|yml)$', ''
-                    $repoTemplates[$name.ToLower()] = $name
-                }
-                Write-Host "Found $($repoTemplates.Count) templates in $templateRepo" -ForegroundColor Green
-                $repoTemplates.Values | Sort-Object | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
-
-                # --- 3. Read audit-generated config.yml (if exists) ---
-                $auditEntries = @{}
-                if (Test-Path $auditConfig) {
-                    $lines = Get-Content $auditConfig
-                    $i = 0
-                    while ($i -lt $lines.Count) {
-                        if ($lines[$i] -match '^\s*-\s+name:\s+(.+)$') {
-                            $aName = $Matches[1].Trim()
-                            if (-not $auditEntries.ContainsKey($aName.ToLower())) {
-                                $auditEntries[$aName.ToLower()] = $aName
-                            }
-                        }
-                        $i++
-                    }
-                    Write-Host "Found $($auditEntries.Count) entries in audit config.yml" -ForegroundColor Cyan
-                } else {
-                    Write-Host "No audit config.yml found" -ForegroundColor Yellow
-                }
-
-                # --- 4. Merge: audit entries + repo-scan entries (dedup) ---
-                $merged = [ordered]@{}
-                foreach ($key in $auditEntries.Keys)  { $merged[$key] = $auditEntries[$key] }
-                $addedCount = 0
-                foreach ($key in $repoTemplates.Keys) {
-                    if (-not $merged.Contains($key)) {
-                        $merged[$key] = $repoTemplates[$key]
-                        $addedCount++
-                    }
-                }
-
-                # --- 5. Write config-patched.yml ---
-                $output = @("---", "composite_actions:")
-                foreach ($name in $merged.Values) {
-                    $output += "- name: $name"
-                    $output += "  target_url: $sharedRepoUrl"
-                    $output += "  ref: main"
-                }
-                $output -join "`n" | Out-File -FilePath $patchedFile -Encoding utf8
-
-                Write-Host "`n=== Config Summary ===" -ForegroundColor Green
-                Write-Host "  Audit entries:        $($auditEntries.Count)" -ForegroundColor Cyan
-                Write-Host "  Repo-scan additions:  $addedCount" -ForegroundColor Cyan
-                Write-Host "  Total entries:        $($merged.Count)" -ForegroundColor Green
-                Write-Host "`n--- config-patched.yml ---"
-                Get-Content $patchedFile
-                Write-Host "--- end ---"
-              pwsh: true
-            env:
-              ADO_PAT: $(ADO_PAT)
-
           - task: PublishPipelineArtifact@1
             displayName: "Publish Audit Artifact"
             condition: always()
@@ -195,12 +94,6 @@ stages:
           - checkout: self
             fetchDepth: 0
 
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download audit config"
-            inputs:
-              artifact: "pipeline-audit"
-              path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit'
-
           - task: PowerShell@2
             displayName: 'Install required tooling'
             inputs:
@@ -216,12 +109,11 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-               
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
-                -ImporterConfigFile "output/pipeline-audit/config-patched.yml"
+                -ImporterConfigFile "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
@@ -256,12 +148,6 @@ stages:
           - checkout: self
             fetchDepth: 0
 
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download audit config"
-            inputs:
-              artifact: "pipeline-audit"
-              path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit'
-
           - task: PowerShell@2
             displayName: 'Install required tooling'
             inputs:
@@ -277,12 +163,11 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-              
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
-                -ImporterConfigFile "output/pipeline-audit/config-patched.yml"
+                -ImporterConfigFile "output/pipeline-audit/config.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
