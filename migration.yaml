@@ -66,21 +66,31 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
 
- # --- Prepare template config for reusable workflow/composite action migration ---
+
+          # --- Rewrite config.yml with deduplication and target_url for all actions ---
           - task: PowerShell@2
-            displayName: "Prepare template config (config.yml)"
-            condition: and(succeeded(), ne(variables['TEMPLATE_REPO'], ''))
+            displayName: "Rewrite config.yml with target_url for shared repo"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/prepare-template-config.ps1'
-              arguments: >-
-                -ConfigYml "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
-                -GitHubOrg "$(GH_ORG)"
-                -TemplateRepo "$(TEMPLATE_REPO)"
-                -DefaultBranch "main"
-              pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
-            env:
-              GH_ORG: $(GH_ORG)
+              targetType: 'inline'
+              script: |
+                $configPath = "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
+                $targetUrl = "https://github.com/First-Devops-organisation/shared-workflows"
+                $ref = "main"
+                $actions = @()
+                foreach ($line in Get-Content $configPath) {
+                  if ($line -match '^\s*- name:') {
+                    $action = ($line -replace '^- name:\s*', '').Trim()
+                    $actions += $action
+                  }
+                }
+                $output = @("---", "composite_actions:")
+                foreach ($a in $actions | Sort-Object -Unique) {
+                  $output += "- name: $a"
+                  $output += "  target_url: $targetUrl"
+                  $output += "  ref: $ref"
+                }
+                $output | Set-Content $configPath -Encoding utf8
+            pwsh: true
 
               
           - task: PublishPipelineArtifact@1
