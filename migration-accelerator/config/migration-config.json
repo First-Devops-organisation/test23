@@ -47,5 +47,5 @@
     
   },
   "PIPELINE_TYPE": "build",
-  "MODE": ""
+  "MODE": "dry-run"
 }
