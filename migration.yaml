@@ -90,7 +90,7 @@ stages:
                   $output += "  ref: $ref"
                 }
                 $output | Set-Content $configPath -Encoding utf8
-            pwsh: true
+              pwsh: true
 
               
           - task: PublishPipelineArtifact@1
