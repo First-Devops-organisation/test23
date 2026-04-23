@@ -173,15 +173,16 @@ stages:
               publishLocation: pipeline
 
   # ===========================================================================
-  # STAGE 2 – MIGRATE (skipped if PIPELINE_IDS is empty)
+  # STAGE 2 – MIGRATE REPO (GEI: ADO → GitHub)
   # ===========================================================================
-  - stage: MigratePipeline
-    displayName: "2. Migrate Pipelines"
+  - stage: MigrateRepo
+    displayName: "2. GEI Migrate Repo to GitHub"
     dependsOn: ScrubSecrets
-    condition: and(succeeded(), ne(variables['PIPELINE_IDS'], ''))
+    condition: succeeded()
     jobs:
-      - job: DryRun
-        displayName: "2.1 Dry-Run Preview"
+      - job: MigrateWithGEI
+        displayName: "2.1 Migrate repo via GEI"
+        timeoutInMinutes: 120
         steps:
           - checkout: self
             fetchDepth: 0
@@ -197,101 +198,59 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
-            displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
+            displayName: "Migrate repo: $(ADO_Repo) → $(GitHub_Org)"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
-              arguments: >-
-                -AdoProject "$(ADO_Project)"
-                -PipelineId $(PIPELINE_IDS)
-                -PipelineType "$(PIPELINE_TYPE)"
-                -Mode "dry-run"
-                -ImporterConfigFile "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
+              targetType: 'inline'
+              script: |
+                $ErrorActionPreference = "Stop"
+
+                $adoOrg   = "$(ADO_Org)"
+                $adoProj  = "$(ADO_Project)"
+                $adoRepo  = "$(ADO_Repo)"
+                $ghOrg    = "$(GitHub_Org)"
+                $ghRepo   = $adoRepo.ToLower() -replace " ", "-"
+
+                Write-Host "=== GEI Repo Migration ===" -ForegroundColor Cyan
+                Write-Host "Source:  $adoOrg / $adoProj / $adoRepo" -ForegroundColor Yellow
+                Write-Host "Target:  $ghOrg / $ghRepo" -ForegroundColor Yellow
+
+                # Ensure GEI extension is installed
+                $installed = gh extension list 2>&1
+                if ($installed -notmatch "ado2gh") {
+                    Write-Host "Installing gh-ado2gh extension..." -ForegroundColor Gray
+                    gh extension install github/gh-ado2gh 2>&1
+                }
+
+                # Run GEI migration
+                Write-Host "`nStarting migration..." -ForegroundColor Cyan
+                gh ado2gh migrate-repo `
+                    --ado-org "$adoOrg" `
+                    --ado-team-project "$adoProj" `
+                    --ado-repo "$adoRepo" `
+                    --github-org "$ghOrg" `
+                    --github-repo "$ghRepo" `
+                    --verbose 2>&1
+
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Error "GEI migration failed with exit code $LASTEXITCODE"
+                    exit 1
+                }
+
+                Write-Host "`n✓ Migration complete: https://github.com/$ghOrg/$ghRepo" -ForegroundColor Green
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
-              ADO_ORG: $(ADO_Org)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
-              GH_REPO: $(GitHub_Repo)
-              PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
- 
-           
-          - task: PublishPipelineArtifact@1
-            displayName: "Publish Dry-Run Output"
-            condition: always()
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
-              artifact: "pipeline-dry-run"
-              publishLocation: pipeline
-
-          # - task: PublishHtmlReport@1
-          #   displayName: "Dry-Run Dashboard on Pipeline Tab"
-          #   condition: always()
-          #   inputs:
-          #     reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
-          #     tabName: "Dry-Run Migration Dashboard"
-
-      - job: Migrate
-        displayName: "2.2 Migrate to GitHub"
-        dependsOn: DryRun
-        condition: and(succeeded(), eq(variables['MIGRATE_MODE'], 'migrate'))
-        steps:
-          - checkout: self
-            fetchDepth: 0
-
-          - task: PowerShell@2
-            displayName: 'Install required tooling'
-            inputs:
-              targetType: 'filePath'
-              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
-              pwsh: true
-            env:
-              GH_PAT: $(GH_PAT)
-              GH_TOKEN: $(GH_PAT)
-
-          - task: PowerShell@2
-            displayName: "Migrate pipelines: $(PIPELINE_IDS)"
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
-              arguments: >-
-                -AdoProject "$(ADO_Project)"
-                -PipelineId $(PIPELINE_IDS)
-                -PipelineType "$(PIPELINE_TYPE)"
-                -Mode "migrate"
-                -ImporterConfigFile "output/pipeline-audit/config.yml"
-              pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
-            env:
-              ADO_ORG: $(ADO_Org)
-              ADO_PAT: $(ADO_PAT)
-              GH_PAT: $(GH_PAT)
-              GH_TOKEN: $(GH_PAT)
-              GH_REPO: $(GitHub_Repo)
-              PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
-
-          - task: PublishPipelineArtifact@1
-            displayName: "Publish Migration Output"
-            condition: always()
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
-              artifact: "pipeline-migrate"
-              publishLocation: pipeline
-
-          - task: PublishHtmlReport@1
-            displayName: "Migration Dashboard on Pipeline Tab"
-            condition: always()
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
-              tabName: "Migration Dashboard"
 
   # ===========================================================================
   # STAGE 3 – CREATE GITHUB SECRETS (after migration, repos now exist)
   # ===========================================================================
   - stage: CreateGitHubSecrets
     displayName: "3. Create GitHub Secrets"
-    dependsOn: ScrubSecrets
-    condition: succeeded('ScrubSecrets')
+    dependsOn: MigrateRepo
+    condition: succeeded('MigrateRepo')
     jobs:
       - job: PushSecrets
         displayName: "3.1 Push secrets to GitHub repos"
