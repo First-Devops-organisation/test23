@@ -72,7 +72,10 @@ stages:
       env:
         ADO_PAT: $(ADO_PAT)
         GH_PAT: $(GH_PAT)
-
+    - checkout: self
+      ref: refs/heads/board-migration    # ← ADD THIS as the first step
+      persistCredentials: true
+      
     - task: PowerShell@2
       displayName: 'Analyze Board Structure'
       inputs:
