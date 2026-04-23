@@ -5,7 +5,7 @@ pool:
 
 
 variables:
-  - group: pipeline-migration # ADO_ORG, ADO_PROJECT, ADO_PAT
+  - group: ankit-adotogit # ADO_ORG, ADO_PROJECT, ADO_PAT
   
 
 stages:
