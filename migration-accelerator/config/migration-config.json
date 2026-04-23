@@ -8,7 +8,6 @@
   "target": {
     "organization": "$(GH_ORG)",
     "pat": "$(GH_PAT)"
-    
   },
   "pipelineMigration": {
     "pipelineIds": [],
