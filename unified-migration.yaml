@@ -14,7 +14,8 @@ parameters:
       - pipeline
       - repo
 
-
+variables:
+    - group: pipeline-migration
 
 stages:
   - stage: PipelineMigration
@@ -25,8 +26,8 @@ stages:
     jobs:
       - job: RunPipelineMigration
         displayName: 'Run Pipeline Migration'
-        variables:
-          - group: pipeline-migration  # Update with your actual variable group name
+        # variables:
+        #   - group: pipeline-migration  # Update with your actual variable group name
         steps:
           - checkout: self
           - task: PowerShell@2
