@@ -7,7 +7,8 @@
   },
   "target": {
     "organization": "$(GH_ORG)",
-    "pat": "$(GH_PAT)"
+    "pat": "$(GH_PAT)",
+     "GH_REPO": ""
   },
   "pipelineMigration": {
     "pipelineIds": [],
@@ -41,9 +42,10 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [1156],
+  "PIPELINE_IDS": [1156,15],
   "PIPELINE_REPO_MAP": {
-    "1156": "repo1"
+    
   },
-  "PIPELINE_TYPE": "build"
+  "PIPELINE_TYPE": "build",
+  "MODE": ""
 }
