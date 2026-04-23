@@ -153,10 +153,13 @@ if ($pipelineRepoMap.Count -eq 0 -and $env:PIPELINE_REPO_MAP) {
     Write-Host "  Pipeline-to-Repo map: $($pipelineRepoMap.Count) entries loaded from env var" -ForegroundColor Gray
 }
 
-# Default target repo from config (PIPELINE_TYPE or PipelineType), else from env var
+# Default target repo from config (GH_REPO, PIPELINE_TYPE, or PipelineType), else from env var
 $defaultTargetRepo = $null
 if ($config) {
-    if ($config.PIPELINE_TYPE) {
+    if ($config.GH_REPO) {
+        $defaultTargetRepo = $config.GH_REPO
+        Write-Host "  Default target repo loaded from config.GH_REPO: $defaultTargetRepo" -ForegroundColor Gray
+    } elseif ($config.PIPELINE_TYPE) {
         $defaultTargetRepo = $config.PIPELINE_TYPE
         Write-Host "  Default target repo loaded from config.PIPELINE_TYPE: $defaultTargetRepo" -ForegroundColor Gray
     } elseif ($config.PipelineType) {
