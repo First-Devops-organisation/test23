@@ -128,3 +128,6 @@ Write-Host "`nScan summary saved to: $csvFile" -ForegroundColor Green
 
 # Cleanup
 if (Test-Path $TempDir) { Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue }
+
+# Exit 0 — finding secrets is expected (the scrub step handles them next)
+exit 0
