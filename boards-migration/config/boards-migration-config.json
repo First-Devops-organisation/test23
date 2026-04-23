@@ -1,18 +1,29 @@
 {
   "source": {
     "type": "AzureDevOps",
-    "organization": "YASHTech-ddd",
-    "project": "YASH-ddd-POC",
-    "areaPath": "YASH-Tdddd-POC",
+    "organization": "YashTech-DevOps",
+    "project": "YASH-DevOps-Serverless",
+    "areaPath": "YASH-DevOps-Serverless\\POC-Migration",
     "pat": "$(ADO_PAT)"
   },
-  "target": {
+  // "target": {
+  //   "type": "GitHub",
+  //   "organization": "First-Devops-organisation",
+  //   "repository": "migrate",
+  //   "projectNumber": 3,
+  //   "pat": "$(GH_PAT)"
+  // },
+
+    "target": {
     "type": "GitHub",
     "organization": "First-Devops-organisation",
     "repository": "migrate",
-    "projectNumber": 3,
+    "projectNumber": 2,
+    "projectOwner": "Urvashi773",
+    "projectOwnerType": "user",
     "pat": "$(GH_PAT)"
   },
+  
   "migration": {
     "migrateClosedWorkItems": true,
     "productionRun": false,
