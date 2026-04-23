@@ -35,6 +35,10 @@ stages:
             inputs:
               filePath: 'run-migration.ps1'
               pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
   - stage: RepoMigration
     displayName: 'Repo Migration'
