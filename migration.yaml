@@ -5,7 +5,7 @@ pool:
 
 
 variables:
-  - group: ankit-adotogit # ADO_ORG, ADO_PROJECT, ADO_PAT
+  - group: ankit-adotogit # ADO_Org, ADO_Project, ADO_Repo, ADO_PAT, GH_PAT, GitHub_Org, GitHub_Repo
   
 
 stages:
@@ -37,8 +37,8 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/audit-pipelines.ps1'
               arguments: >-
-                -AdoOrg "$(ADO_ORG)"
-                -AdoProject "$(ADO_PROJECT)"
+                -AdoOrg "$(ADO_Org)"
+                -AdoProject "$(ADO_Project)"
                 -AdoPat "$(ADO_PAT)"
                 -GitHubPat "$(GH_PAT)"
                 -OutputDir "output/pipeline-audit"
@@ -55,7 +55,7 @@ stages:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
-                -AdoProject "$(ADO_PROJECT)"
+                -AdoProject "$(ADO_Project)"
                 -Mode "list"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
@@ -81,15 +81,15 @@ stages:
               tabName: "Pipeline Audit Dashboard"
 
   # ===========================================================================
-  # STAGE 1.5 – SCRUB SECRETS (encrypt before migration)
+  # STAGE 1.5 – SCRUB SECRETS (redact & store in GitHub Secrets)
   # ===========================================================================
   - stage: ScrubSecrets
-    displayName: "1.5 Scrub & Encrypt Secrets"
+    displayName: "1.5 Scrub Secrets & Store in GitHub"
     dependsOn: Discover
     condition: succeeded()
     jobs:
-      - job: EncryptSecrets
-        displayName: "1.5.1 Encrypt Secrets in Repo History"
+      - job: ScrubSecrets
+        displayName: "1.5.1 Scrub Secrets in Repo History"
         timeoutInMinutes: 120
         steps:
           - checkout: self
@@ -106,14 +106,14 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
-            displayName: "Inventory ADO assets ($(ADO_PROJECT)/$(ADO_REPO))"
+            displayName: "Inventory ADO assets ($(ADO_Project)/$(ADO_Repo))"
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/inventory-assets.ps1'
               arguments: >-
-                -OrgUrl "https://dev.azure.com/$(ADO_ORG)"
+                -OrgUrl "https://dev.azure.com/$(ADO_Org)"
                 -Pat "$(ADO_PAT)"
-                -ProjectFilter "$(ADO_PROJECT)"
-                -RepoFilter "$(ADO_REPO)"
+                -ProjectFilter "$(ADO_Project)"
+                -RepoFilter "$(ADO_Repo)"
                 -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/inventory"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
@@ -156,14 +156,14 @@ stages:
               arguments: >-
                 -SecretScanDir "$(Build.SourcesDirectory)/migration-accelerator/output/secrets"
                 -Pat "$(ADO_PAT)"
-                -GitHubOrg "$(GH_ORG)"
+                -GitHubOrg "$(GitHub_Org)"
                 -GitHubPat "$(GH_PAT)"
                 -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
               ADO_PAT: $(ADO_PAT)
-              ADO_ORG: $(ADO_ORG)
+              ADO_ORG: $(ADO_Org)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
@@ -204,7 +204,7 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -AdoProject "$(ADO_PROJECT)"
+                -AdoProject "$(ADO_Project)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
@@ -212,11 +212,11 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
-              ADO_ORG: $(ADO_ORG)
+              ADO_ORG: $(ADO_Org)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
-              GH_REPO: $(GH_REPO)
+              GH_REPO: $(GitHub_Repo)
               PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
  
            
@@ -258,7 +258,7 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -AdoProject "$(ADO_PROJECT)"
+                -AdoProject "$(ADO_Project)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
@@ -266,11 +266,11 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
-              ADO_ORG: $(ADO_ORG)
+              ADO_ORG: $(ADO_Org)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
-              GH_REPO: $(GH_REPO)
+              GH_REPO: $(GitHub_Repo)
               PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
 
           - task: PublishPipelineArtifact@1
