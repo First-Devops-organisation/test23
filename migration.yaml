@@ -106,6 +106,35 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
+            displayName: "Inventory ADO assets"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/inventory-assets.ps1'
+              arguments: >-
+                -OrgUrl "https://dev.azure.com/$(ADO_ORG)"
+                -Pat "$(ADO_PAT)"
+                -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/inventory"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: PowerShell@2
+            displayName: "Create inventory-LATEST.json"
+            inputs:
+              targetType: 'inline'
+              script: |
+                $invDir = "$(Build.SourcesDirectory)/migration-accelerator/output/inventory"
+                $latest = Get-ChildItem $invDir -Filter "inventory-*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if ($latest) {
+                  Copy-Item $latest.FullName (Join-Path $invDir "inventory-LATEST.json") -Force
+                  Write-Host "Created inventory-LATEST.json from $($latest.Name)" -ForegroundColor Green
+                } else {
+                  Write-Error "No inventory file found in $invDir"
+                  exit 1
+                }
+              pwsh: true
+
+          - task: PowerShell@2
             displayName: "Scan for secrets (gitleaks)"
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/scan-secrets.ps1'
