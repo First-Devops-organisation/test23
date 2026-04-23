@@ -7,7 +7,7 @@
   },
   "target": {
     "organization": "$(GH_ORG)",
-    "pat": "$(GH_PAT)",
+    "pat": "$(GH_PAT)"
     
   },
   "pipelineMigration": {
@@ -43,8 +43,8 @@
     }
   ],
   "PIPELINE_IDS": [1156,15],
-  "PIPELINE_REPO_MAP": { },
-  "GH_REPO": "Appinsight",
+  "PIPELINE_REPO_MAP": {},
   "PIPELINE_TYPE": "build",
-  "MODE": "dry-run"
+  "MODE": "dry-run",
+  "GH_REPO": "Appinsight"
 }
