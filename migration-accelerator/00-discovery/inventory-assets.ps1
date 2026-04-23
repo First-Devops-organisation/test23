@@ -1,12 +1,17 @@
 <#
 .SYNOPSIS
-    Inventories all Azure DevOps assets (projects, repos, pipelines, teams, work items, service connections, etc.)
+    Inventories Azure DevOps assets (projects, repos, pipelines, teams, work items, service connections, etc.)
 .DESCRIPTION
     Connects to ADO REST API and produces a JSON inventory report for migration planning.
+    Use -ProjectFilter to limit to a single project, and -RepoFilter to limit to a single repo.
 .PARAMETER OrgUrl
     Azure DevOps organization URL (e.g., https://dev.azure.com/myorg)
 .PARAMETER Pat
     Personal Access Token with full scope or at minimum: Code(Read), Build(Read), Release(Read), Work Items(Read), Project(Read)
+.PARAMETER ProjectFilter
+    Optional. If specified, only inventories this specific project (by name).
+.PARAMETER RepoFilter
+    Optional. If specified, only inventories this specific repo (by name) within the filtered project.
 .PARAMETER OutputDir
     Directory for output files. Defaults to ./output/inventory
 #>
@@ -17,6 +22,10 @@ param(
 
     [Parameter(Mandatory = $true)]
     [string]$Pat,
+
+    [string]$ProjectFilter,
+
+    [string]$RepoFilter,
 
     [string]$OutputDir = "./output/inventory"
 )
@@ -61,9 +70,20 @@ $inventory = @{
 $projectsResp = Invoke-AdoApi "$OrgUrl/_apis/projects"
 if (-not $projectsResp) { Write-Error "Failed to list projects. Check PAT and org URL."; exit 1 }
 
-Write-Host "Found $($projectsResp.count) projects" -ForegroundColor Green
+Write-Host "Found $($projectsResp.count) projects in org" -ForegroundColor Green
 
-foreach ($project in $projectsResp.value) {
+# --- Filter to specific project if requested ---
+$projectsToScan = $projectsResp.value
+if ($ProjectFilter) {
+    $projectsToScan = $projectsToScan | Where-Object { $_.name -eq $ProjectFilter }
+    if ($projectsToScan.Count -eq 0) {
+        Write-Error "Project '$ProjectFilter' not found in org. Available: $($projectsResp.value.name -join ', ')"
+        exit 1
+    }
+    Write-Host "Filtered to project: $ProjectFilter" -ForegroundColor Yellow
+}
+
+foreach ($project in $projectsToScan) {
     $projName = $project.name
     Write-Host "  Scanning project: $projName" -ForegroundColor Yellow
 
@@ -85,7 +105,19 @@ foreach ($project in $projectsResp.value) {
     # --- Repos ---
     $reposResp = Invoke-AdoApi "$OrgUrl/$projName/_apis/git/repositories"
     if ($reposResp) {
-        foreach ($repo in $reposResp.value) {
+        $reposToInclude = $reposResp.value
+
+        # Filter to specific repo if requested
+        if ($RepoFilter) {
+            $reposToInclude = $reposToInclude | Where-Object { $_.name -eq $RepoFilter }
+            if ($reposToInclude.Count -eq 0) {
+                Write-Error "Repo '$RepoFilter' not found in project '$projName'. Available: $($reposResp.value.name -join ', ')"
+                exit 1
+            }
+            Write-Host "    Filtered to repo: $RepoFilter" -ForegroundColor Yellow
+        }
+
+        foreach ($repo in $reposToInclude) {
             $repoData = @{
                 name      = $repo.name
                 id        = $repo.id
@@ -98,8 +130,8 @@ foreach ($project in $projectsResp.value) {
             }
             $projData.repos += $repoData
         }
-        $inventory.totalRepos += $reposResp.count
-        Write-Host "    Repos: $($reposResp.count)" -ForegroundColor Gray
+        $inventory.totalRepos += $reposToInclude.Count
+        Write-Host "    Repos: $($reposToInclude.Count)" -ForegroundColor Gray
     }
 
     # --- Build Pipelines ---
