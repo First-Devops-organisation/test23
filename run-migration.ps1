@@ -41,7 +41,7 @@ Write-Host "Config File: $ConfigFile"
 
 if ($MigrationType -eq "pipeline") {
     Write-Host "Running pipeline migration script..."
-    . ./pipeline-migration/run-migration.ps1 -ConfigFile $ConfigFile -AdoOrg $AdoOrg -AdoProject $AdoProject -AdoPat $AdoPat -GitHubPat $GitHubPat
+    . ./run-migration.ps1 -ConfigFile $ConfigFile -AdoOrg $AdoOrg -AdoProject $AdoProject -AdoPat $AdoPat -GitHubPat $GitHubPat
     Write-Host "Pipeline migration completed."
 }
 elseif ($MigrationType -eq "repo") {
