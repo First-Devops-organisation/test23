@@ -150,22 +150,19 @@ stages:
               ADO_PAT: $(ADO_PAT)
 
           - task: PowerShell@2
-            displayName: "Scrub secrets & store in GitHub Secrets"
+            displayName: "Scrub secrets from repo history"
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/01-prep/scrub-secrets.ps1'
               arguments: >-
                 -SecretScanDir "$(Build.SourcesDirectory)/migration-accelerator/output/secrets"
                 -Pat "$(ADO_PAT)"
                 -GitHubOrg "$(GitHub_Org)"
-                -GitHubPat "$(GH_PAT)"
                 -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
               ADO_PAT: $(ADO_PAT)
               ADO_ORG: $(ADO_Org)
-              GH_PAT: $(GH_PAT)
-              GH_TOKEN: $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Scrub Artifacts"
@@ -286,4 +283,86 @@ stages:
             condition: always()
             inputs:
               reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
-              tabName: "Migration Dashboard"
+              tabName: "Migration Dashboard"
+
+  # ===========================================================================
+  # STAGE 3 – CREATE GITHUB SECRETS (after migration, repos now exist)
+  # ===========================================================================
+  - stage: CreateGitHubSecrets
+    displayName: "3. Create GitHub Secrets"
+    dependsOn: MigratePipeline
+    condition: succeeded()
+    jobs:
+      - job: PushSecrets
+        displayName: "3.1 Push secrets to GitHub repos"
+        timeoutInMinutes: 30
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download scrub results"
+            inputs:
+              artifactName: 'secret-scrub-results'
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed'
+
+          - task: PowerShell@2
+            displayName: "Create GitHub Secrets from saved values"
+            inputs:
+              targetType: 'inline'
+              script: |
+                $ErrorActionPreference = "Stop"
+
+                $secretsFile = "$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed/secret-values.json"
+
+                if (-not (Test-Path $secretsFile)) {
+                    Write-Host "No secret-values.json found — no secrets to create." -ForegroundColor Green
+                    exit 0
+                }
+
+                $secrets = Get-Content $secretsFile -Raw | ConvertFrom-Json
+                if ($secrets.Count -eq 0) {
+                    Write-Host "No secrets in secret-values.json — all repos were clean." -ForegroundColor Green
+                    exit 0
+                }
+
+                Write-Host "=== Creating GitHub Secrets ===" -ForegroundColor Cyan
+                Write-Host "Total secrets to create: $($secrets.Count)" -ForegroundColor Yellow
+
+                $created = 0
+                $failed = 0
+
+                foreach ($entry in $secrets) {
+                    Write-Host "`n  Repo: $($entry.GitHubRepo)" -ForegroundColor Yellow
+                    Write-Host "    Secret: $($entry.SecretName) ($($entry.RuleID))" -ForegroundColor Gray
+
+                    try {
+                        $entry.SecretValue | gh secret set $entry.SecretName --repo $entry.GitHubRepo 2>&1
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "    ✓ Created: $($entry.SecretName)" -ForegroundColor Green
+                            $created++
+                        } else {
+                            Write-Host "    ✗ Failed: $($entry.SecretName)" -ForegroundColor Red
+                            $failed++
+                        }
+                    }
+                    catch {
+                        Write-Host "    ✗ Error: $_" -ForegroundColor Red
+                        $failed++
+                    }
+                }
+
+                Write-Host "`n=== GitHub Secrets Summary ===" -ForegroundColor Cyan
+                Write-Host "Created: $created" -ForegroundColor Green
+                Write-Host "Failed:  $failed" -ForegroundColor $(if ($failed -gt 0) { "Red" } else { "Green" })
+
+                # Delete the secret-values.json for security
+                Remove-Item $secretsFile -Force
+                Write-Host "`nDeleted secret-values.json for security." -ForegroundColor Gray
+
+                if ($failed -gt 0) { exit 1 }
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
