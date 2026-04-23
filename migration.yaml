@@ -81,11 +81,73 @@ stages:
               tabName: "Pipeline Audit Dashboard"
 
   # ===========================================================================
+  # STAGE 1.5 – SCRUB SECRETS (encrypt before migration)
+  # ===========================================================================
+  - stage: ScrubSecrets
+    displayName: "1.5 Scrub & Encrypt Secrets"
+    dependsOn: Discover
+    condition: succeeded()
+    jobs:
+      - job: EncryptSecrets
+        displayName: "1.5.1 Encrypt Secrets in Repo History"
+        timeoutInMinutes: 120
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: PowerShell@2
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: 'filePath'
+              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Scan for secrets (gitleaks)"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/scan-secrets.ps1'
+              arguments: >-
+                -InventoryFile "$(Build.SourcesDirectory)/migration-accelerator/output/inventory/inventory-LATEST.json"
+                -Pat "$(ADO_PAT)"
+                -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/secrets"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: PowerShell@2
+            displayName: "Encrypt secrets in repo history"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/01-prep/scrub-secrets.ps1'
+              arguments: >-
+                -SecretScanDir "$(Build.SourcesDirectory)/migration-accelerator/output/secrets"
+                -Pat "$(ADO_PAT)"
+                -OutputDir "$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed"
+                -Mode "encrypt"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_PAT: $(ADO_PAT)
+              ADO_ORG: $(ADO_ORG)
+              SCRUB_PASSPHRASE: $(SCRUB_PASSPHRASE)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Scrub Artifacts"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed'
+              artifact: "secret-scrub-results"
+              publishLocation: pipeline
+
+  # ===========================================================================
   # STAGE 2 – MIGRATE (skipped if PIPELINE_IDS is empty)
   # ===========================================================================
   - stage: MigratePipeline
     displayName: "2. Migrate Pipelines"
-    dependsOn: Discover
+    dependsOn: ScrubSecrets
     condition: and(succeeded(), ne(variables['PIPELINE_IDS'], ''))
     jobs:
       - job: DryRun
@@ -192,3 +254,99 @@ stages:
             inputs:
               reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
               tabName: "Migration Dashboard"
+
+  # ===========================================================================
+  # STAGE 3 – DECRYPT SECRETS (restore originals on GitHub after migration)
+  # ===========================================================================
+  - stage: DecryptSecrets
+    displayName: "3. Decrypt Secrets on GitHub"
+    dependsOn: MigratePipeline
+    condition: succeeded()
+    jobs:
+      - job: DecryptSecrets
+        displayName: "3.1 Decrypt Secrets in Migrated Repos"
+        timeoutInMinutes: 120
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: PowerShell@2
+            displayName: "Decrypt secrets in migrated repos"
+            inputs:
+              targetType: 'inline'
+              script: |
+                $ErrorActionPreference = "Stop"
+
+                # --- Clone each migrated repo from GitHub and decrypt ---
+                $configFile = "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                $config = Get-Content $configFile -Raw | ConvertFrom-Json
+                $ghOrg = $config.target.organization
+                $ghPat = $env:GH_PAT
+
+                $outputDir = "$(Build.SourcesDirectory)/migration-accelerator/output/decrypted"
+                if (-not (Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
+
+                $batches = $config.batches
+                $totalDecrypted = 0
+                $totalFailed = 0
+
+                foreach ($batch in $batches) {
+                    Write-Host "`n--- Batch: $($batch.name) ---" -ForegroundColor Cyan
+
+                    foreach ($repoName in $batch.repos) {
+                        $targetRepo = $repoName.ToLower() -replace " ", "-"
+                        Write-Host "`n  Processing: $ghOrg/$targetRepo" -ForegroundColor Yellow
+
+                        $cloneDir = Join-Path $outputDir $targetRepo
+                        if (Test-Path $cloneDir) { Remove-Item -Recurse -Force $cloneDir }
+
+                        # Clone from GitHub
+                        $cloneUrl = "https://x-access-token:$ghPat@github.com/$ghOrg/$targetRepo.git"
+                        git clone $cloneUrl $cloneDir 2>&1 | Out-Null
+
+                        if (-not (Test-Path $cloneDir)) {
+                            Write-Warning "  Failed to clone $ghOrg/$targetRepo — skipping"
+                            continue
+                        }
+
+                        # Configure git identity
+                        Push-Location $cloneDir
+                        git config user.name "azure-pipelines[bot]"
+                        git config user.email "azure-pipelines[bot]@users.noreply.github.com"
+                        Pop-Location
+
+                        # Run decrypt
+                        & "$(Build.SourcesDirectory)/migration-accelerator/03-post-migrate/decrypt-secrets.ps1" `
+                            -RepoDir $cloneDir `
+                            -Passphrase $env:SCRUB_PASSPHRASE `
+                            -CommitChanges `
+                            -RemoveManifest
+
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "  ✓ Decryption complete for $targetRepo" -ForegroundColor Green
+                            $totalDecrypted++
+                        } else {
+                            Write-Host "  ✗ Decryption failed for $targetRepo" -ForegroundColor Red
+                            $totalFailed++
+                        }
+                    }
+                }
+
+                Write-Host "`n=== Decryption Summary ===" -ForegroundColor Cyan
+                Write-Host "Repos decrypted: $totalDecrypted" -ForegroundColor Green
+                Write-Host "Repos failed:    $totalFailed" -ForegroundColor $(if ($totalFailed -gt 0) { "Red" } else { "Green" })
+
+                if ($totalFailed -gt 0) { exit 1 }
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              GH_PAT: $(GH_PAT)
+              SCRUB_PASSPHRASE: $(SCRUB_PASSPHRASE)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Decryption Reports"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/decrypted'
+              artifact: "decryption-reports"
+              publishLocation: pipeline
