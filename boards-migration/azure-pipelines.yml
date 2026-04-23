@@ -17,7 +17,7 @@ pool:
 variables:
   - group: boards-migration  # Contains ADO_PAT and GH_PAT as secrets
   - name: workingDir
-    value: '$(Build.SourcesDirectory)/ADO_To_GHAS_Migration/boards-migration'
+    value: '$(Build.SourcesDirectory)/ADO_To_GHAS_Migration/board-migration'
 
 parameters:
   - name: phase
