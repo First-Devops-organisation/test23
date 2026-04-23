@@ -290,8 +290,8 @@ stages:
   # ===========================================================================
   - stage: CreateGitHubSecrets
     displayName: "3. Create GitHub Secrets"
-    dependsOn: MigratePipeline
-    condition: succeeded()
+    dependsOn: ScrubSecrets
+    condition: succeeded('ScrubSecrets')
     jobs:
       - job: PushSecrets
         displayName: "3.1 Push secrets to GitHub repos"
