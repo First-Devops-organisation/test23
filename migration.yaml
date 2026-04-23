@@ -65,34 +65,6 @@ stages:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
-
-
-          # --- Rewrite config.yml with deduplication and target_url for all actions ---
-          - task: PowerShell@2
-            displayName: "Rewrite config.yml with target_url for shared repo"
-            inputs:
-              targetType: 'inline'
-              script: |
-                $configPath = "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
-                $targetUrl = "https://github.com/First-Devops-organisation/shared-workflows"
-                $ref = "main"
-                $actions = @()
-                foreach ($line in Get-Content $configPath) {
-                  if ($line -match '^\s*- name:') {
-                    $action = ($line -replace '^- name:\s*', '').Trim()
-                    $actions += $action
-                  }
-                }
-                $output = @("---", "composite_actions:")
-                foreach ($a in $actions | Sort-Object -Unique) {
-                  $output += "- name: $a"
-                  $output += "  target_url: $targetUrl"
-                  $output += "  ref: $ref"
-                }
-                $output | Set-Content $configPath -Encoding utf8
-              pwsh: true
-
-              
           - task: PublishPipelineArtifact@1
             displayName: "Publish Audit Artifact"
             condition: always()
@@ -137,12 +109,11 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+               
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
-                -ImporterConfigFile "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
@@ -192,12 +163,11 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+              
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
-                -ImporterConfigFile "output/pipeline-audit/config.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
