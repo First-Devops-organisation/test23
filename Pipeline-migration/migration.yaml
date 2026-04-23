@@ -1,0 +1,194 @@
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+
+variables:
+  - group: pipeline-migration # ADO_ORG, ADO_PROJECT, ADO_PAT
+  
+
+stages:
+  # ===========================================================================
+  # STAGE 1 – DISCOVER  (reuse existing scripts — already working)
+  # ===========================================================================
+  - stage: Discover
+    displayName: "1. Discover & Audit Pipelines"
+    jobs:
+      - job: AuditPipelines
+        displayName: "1.1 Audit ADO Pipelines (actions-importer)"
+        timeoutInMinutes: 60
+
+        steps:
+          - checkout: self
+            fetchDepth: 0
+          - task: PowerShell@2
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: 'filePath'
+              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Run audit-pipelines.ps1"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/audit-pipelines.ps1'
+              arguments: >-
+                -AdoOrg "$(ADO_ORG)"
+                -AdoProject "$(ADO_PROJECT)"
+                -AdoPat "$(ADO_PAT)"
+                -GitHubPat "$(GH_PAT)"
+                -OutputDir "output/pipeline-audit"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "List all ADO Pipeline IDs"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                -AdoProject "$(ADO_PROJECT)"
+                -Mode "list"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+             
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Audit Artifact"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit'
+              artifact: "pipeline-audit"
+              publishLocation: pipeline
+
+          - task: PublishHtmlReport@1
+            displayName: "Audit Dashboard on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
+              tabName: "Pipeline Audit Dashboard"
+
+  # ===========================================================================
+  # STAGE 2 – MIGRATE (skipped if PIPELINE_IDS is empty)
+  # ===========================================================================
+  - stage: MigratePipeline
+    displayName: "2. Migrate Pipelines"
+    dependsOn: Discover
+    condition: and(succeeded(), ne(variables['PIPELINE_IDS'], ''))
+    jobs:
+      - job: DryRun
+        displayName: "2.1 Dry-Run Preview"
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: PowerShell@2
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: 'filePath'
+              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+               
+                -AdoProject "$(ADO_PROJECT)"
+                -PipelineId $(PIPELINE_IDS)
+                -PipelineType "$(PIPELINE_TYPE)"
+                -Mode "dry-run"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+              GH_REPO: $(GH_REPO)
+              PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
+ 
+           
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Dry-Run Output"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+              artifact: "pipeline-dry-run"
+              publishLocation: pipeline
+
+          # - task: PublishHtmlReport@1
+          #   displayName: "Dry-Run Dashboard on Pipeline Tab"
+          #   condition: always()
+          #   inputs:
+          #     reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
+          #     tabName: "Dry-Run Migration Dashboard"
+
+      - job: Migrate
+        displayName: "2.2 Migrate to GitHub"
+        dependsOn: DryRun
+        condition: and(succeeded(), eq(variables['MIGRATE_MODE'], 'migrate'))
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: PowerShell@2
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: 'filePath'
+              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Migrate pipelines: $(PIPELINE_IDS)"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+              
+                -AdoProject "$(ADO_PROJECT)"
+                -PipelineId $(PIPELINE_IDS)
+                -PipelineType "$(PIPELINE_TYPE)"
+                -Mode "migrate"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+              GH_REPO: $(GH_REPO)
+              PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Migration Output"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+              artifact: "pipeline-migrate"
+              publishLocation: pipeline
+
+          - task: PublishHtmlReport@1
+            displayName: "Migration Dashboard on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
+              tabName: "Migration Dashboard"
