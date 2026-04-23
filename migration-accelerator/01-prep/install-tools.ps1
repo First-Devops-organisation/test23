@@ -4,6 +4,7 @@
 .DESCRIPTION
     Checks for and installs: GitHub CLI, GEI extension, Actions Importer,
     git-sizer, gitleaks, git-filter-repo, and Docker.
+    Supports both Windows (winget) and Linux (apt/curl) environments.
 #>
 [CmdletBinding()]
 param()
@@ -12,81 +13,231 @@ $ErrorActionPreference = "Continue"
 
 Write-Host "=== Migration Tooling Installer ===" -ForegroundColor Cyan
 
-$tools = @(
-    @{
-        Name       = "GitHub CLI (gh)"
-        Command    = "gh"
-        InstallCmd = "winget install --id GitHub.cli -e"
-        Url        = "https://cli.github.com"
-    },
-    @{
-        Name       = "Git"
-        Command    = "git"
-        InstallCmd = "winget install --id Git.Git -e"
-        Url        = "https://git-scm.com"
-    },
-    @{
-        Name       = "Docker Desktop"
-        Command    = "docker"
-        InstallCmd = "winget install --id Docker.DockerDesktop -e"
-        Url        = "https://www.docker.com/products/docker-desktop"
-    },
-    @{
-        Name       = "Python (for git-filter-repo)"
-        Command    = "python"
-        InstallCmd = "winget install --id Python.Python.3.12 -e"
-        Url        = "https://python.org"
-    },
-    @{
-        Name       = "git-sizer"
-        Command    = "git-sizer"
-        InstallCmd = $null
-        Url        = "https://github.com/github/git-sizer/releases"
-    },
-    @{
-        Name       = "gitleaks"
-        Command    = "gitleaks"
-        InstallCmd = "winget install --id Gitleaks.Gitleaks -e"
-        Url        = "https://github.com/gitleaks/gitleaks/releases"
-    }
-)
+$isLinux = $IsLinux -or ($PSVersionTable.Platform -eq "Unix") -or (Test-Path "/usr/bin/apt-get")
+$isWindows = -not $isLinux
 
-$results = @()
+Write-Host "Platform: $(if ($isLinux) { 'Linux' } else { 'Windows' })" -ForegroundColor Gray
 
-foreach ($tool in $tools) {
-    $cmd = Get-Command $tool.Command -ErrorAction SilentlyContinue
+# ============================================================================
+# Helper: Install a tool if missing
+# ============================================================================
+function Install-ToolIfMissing {
+    param(
+        [string]$Name,
+        [string]$Command,
+        [scriptblock]$LinuxInstall,
+        [string]$WingetId,
+        [string]$Url
+    )
+
+    $cmd = Get-Command $Command -ErrorAction SilentlyContinue
     if ($cmd) {
         $version = ""
-        try { $version = & $tool.Command --version 2>&1 | Select-Object -First 1 } catch { }
-        Write-Host "[OK] $($tool.Name): $version" -ForegroundColor Green
-        $results += @{ Tool = $tool.Name; Status = "Installed"; Version = $version }
+        try { $version = & $Command --version 2>&1 | Select-Object -First 1 } catch { }
+        Write-Host "[OK] $Name : $version" -ForegroundColor Green
+        return $true
     }
-    else {
-        Write-Host "[MISSING] $($tool.Name)" -ForegroundColor Red
-        if ($tool.InstallCmd) {
-            Write-Host "  Install: $($tool.InstallCmd)" -ForegroundColor Yellow
+
+    Write-Host "[MISSING] $Name — Installing..." -ForegroundColor Yellow
+
+    if ($isLinux -and $LinuxInstall) {
+        try {
+            & $LinuxInstall
+            # Verify installation
+            $cmd = Get-Command $Command -ErrorAction SilentlyContinue
+            if ($cmd) {
+                Write-Host "[OK] $Name installed successfully" -ForegroundColor Green
+                return $true
+            }
+            else {
+                Write-Host "[FAIL] $Name installation did not produce '$Command' in PATH" -ForegroundColor Red
+                return $false
+            }
+        }
+        catch {
+            Write-Host "[FAIL] $Name installation error: $_" -ForegroundColor Red
+            return $false
+        }
+    }
+    elseif ($isWindows -and $WingetId) {
+        try {
+            winget install --id $WingetId -e --accept-package-agreements --accept-source-agreements 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "[OK] $Name installed via winget" -ForegroundColor Green
+                return $true
+            }
+        }
+        catch {
+            Write-Host "[FAIL] winget install failed for $Name : $_" -ForegroundColor Red
+        }
+    }
+
+    Write-Host "[FAIL] Could not auto-install $Name. Download from: $Url" -ForegroundColor Red
+    return $false
+}
+
+# ============================================================================
+# 1. Git
+# ============================================================================
+Install-ToolIfMissing -Name "Git" -Command "git" `
+    -LinuxInstall { sudo apt-get update -qq; sudo apt-get install -y -qq git } `
+    -WingetId "Git.Git" `
+    -Url "https://git-scm.com"
+
+# ============================================================================
+# 2. GitHub CLI
+# ============================================================================
+Install-ToolIfMissing -Name "GitHub CLI (gh)" -Command "gh" `
+    -LinuxInstall {
+        # Official GitHub CLI install for Linux
+        sudo mkdir -p -m 755 /etc/apt/keyrings 2>$null
+        $keyringPath = "/etc/apt/keyrings/githubcli-archive-keyring.gpg"
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee $keyringPath > /dev/null
+        sudo chmod go+r $keyringPath
+        "deb [arch=$(dpkg --print-architecture) signed-by=$keyringPath] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq gh
+    } `
+    -WingetId "GitHub.cli" `
+    -Url "https://cli.github.com"
+
+# ============================================================================
+# 3. Python (for git-filter-repo)
+# ============================================================================
+$pythonCmd = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" }
+             elseif (Get-Command python -ErrorAction SilentlyContinue) { "python" }
+             else { $null }
+
+if ($pythonCmd) {
+    $pyVer = & $pythonCmd --version 2>&1 | Select-Object -First 1
+    Write-Host "[OK] Python: $pyVer" -ForegroundColor Green
+}
+else {
+    Write-Host "[MISSING] Python — Installing..." -ForegroundColor Yellow
+    if ($isLinux) {
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq python3 python3-pip
+    }
+    elseif ($isWindows) {
+        winget install --id Python.Python.3.12 -e --accept-package-agreements --accept-source-agreements 2>&1
+    }
+    $pythonCmd = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" }
+}
+
+# ============================================================================
+# 4. gitleaks
+# ============================================================================
+Install-ToolIfMissing -Name "gitleaks" -Command "gitleaks" `
+    -LinuxInstall {
+        # Download latest gitleaks release for Linux
+        $releaseUrl = "https://api.github.com/repos/gitleaks/gitleaks/releases/latest"
+        $headers = @{ "User-Agent" = "migration-accelerator" }
+        $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers
+        $version = $release.tag_name -replace "^v", ""
+        $arch = if ((uname -m) -eq "aarch64") { "arm64" } else { "x64" }
+        $assetName = "gitleaks_${version}_linux_${arch}.tar.gz"
+        $asset = $release.assets | Where-Object { $_.name -eq $assetName }
+
+        if (-not $asset) {
+            # Fallback: try x86_64 naming
+            $assetName = "gitleaks_${version}_linux_x86_64.tar.gz"
+            $asset = $release.assets | Where-Object { $_.name -eq $assetName }
+        }
+
+        if ($asset) {
+            $downloadUrl = $asset.browser_download_url
+            Write-Host "  Downloading gitleaks $version..." -ForegroundColor Gray
+            $tmpFile = "/tmp/gitleaks.tar.gz"
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
+            sudo tar -xzf $tmpFile -C /usr/local/bin gitleaks
+            sudo chmod +x /usr/local/bin/gitleaks
+            Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue
         }
         else {
-            Write-Host "  Download from: $($tool.Url)" -ForegroundColor Yellow
+            throw "Could not find gitleaks release asset for Linux"
         }
-        $results += @{ Tool = $tool.Name; Status = "Missing"; InstallCmd = $tool.InstallCmd; Url = $tool.Url }
+    } `
+    -WingetId "Gitleaks.Gitleaks" `
+    -Url "https://github.com/gitleaks/gitleaks/releases"
+
+# ============================================================================
+# 5. git-filter-repo (Python package)
+# ============================================================================
+Write-Host "`n--- Python Packages ---" -ForegroundColor Cyan
+
+$pipCmd = if (Get-Command pip3 -ErrorAction SilentlyContinue) { "pip3" }
+          elseif (Get-Command pip -ErrorAction SilentlyContinue) { "pip" }
+          else { $null }
+
+if (-not $pipCmd) {
+    Write-Host "[MISSING] pip — attempting install..." -ForegroundColor Yellow
+    if ($isLinux) {
+        sudo apt-get install -y -qq python3-pip 2>&1 | Out-Null
+        $pipCmd = "pip3"
     }
 }
 
-# --- Python packages ---
-Write-Host "`n--- Python Packages ---" -ForegroundColor Cyan
 $pythonPackages = @("git-filter-repo")
 foreach ($pkg in $pythonPackages) {
-    $installed = pip show $pkg 2>&1
+    $installed = & $pipCmd show $pkg 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] $pkg" -ForegroundColor Green
     }
     else {
-        Write-Host "[MISSING] $pkg — Install: pip install $pkg" -ForegroundColor Red
+        Write-Host "[MISSING] $pkg — Installing..." -ForegroundColor Yellow
+        & $pipCmd install $pkg 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] $pkg installed" -ForegroundColor Green
+        }
+        else {
+            Write-Host "[FAIL] Could not install $pkg. Run: $pipCmd install $pkg" -ForegroundColor Red
+        }
     }
 }
 
-# --- GH Extensions ---
+# ============================================================================
+# 6. git-sizer
+# ============================================================================
+Install-ToolIfMissing -Name "git-sizer" -Command "git-sizer" `
+    -LinuxInstall {
+        $releaseUrl = "https://api.github.com/repos/github/git-sizer/releases/latest"
+        $headers = @{ "User-Agent" = "migration-accelerator" }
+        $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers
+        $assetName = "git-sizer-linux-amd64"
+        $asset = $release.assets | Where-Object { $_.name -like "*linux*amd64*" }
+
+        if ($asset) {
+            $downloadUrl = $asset.browser_download_url
+            Write-Host "  Downloading git-sizer..." -ForegroundColor Gray
+            $tmpFile = "/tmp/git-sizer.zip"
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
+            sudo unzip -o $tmpFile -d /usr/local/bin 2>&1 | Out-Null
+            sudo chmod +x /usr/local/bin/git-sizer
+            Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue
+        }
+        else {
+            throw "Could not find git-sizer release asset for Linux"
+        }
+    } `
+    -WingetId $null `
+    -Url "https://github.com/github/git-sizer/releases"
+
+# ============================================================================
+# 7. Docker (check only — typically pre-installed on CI agents)
+# ============================================================================
+$dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
+if ($dockerCmd) {
+    $dockerVer = docker --version 2>&1 | Select-Object -First 1
+    Write-Host "[OK] Docker: $dockerVer" -ForegroundColor Green
+}
+else {
+    Write-Host "[WARN] Docker not found — required for Actions Importer only" -ForegroundColor Yellow
+    Write-Host "  Install: https://www.docker.com/products/docker-desktop" -ForegroundColor Gray
+}
+
+# ============================================================================
+# 8. GitHub CLI Extensions
+# ============================================================================
 Write-Host "`n--- GitHub CLI Extensions ---" -ForegroundColor Cyan
 $ghExtensions = @(
     @{ Name = "gh-ado2gh"; Repo = "github/gh-ado2gh" },
@@ -129,7 +280,9 @@ else {
     Write-Host "[SKIP] Cannot check GH extensions — GitHub CLI not installed" -ForegroundColor Yellow
 }
 
-# --- PAT Configuration Reminder ---
+# ============================================================================
+# Summary
+# ============================================================================
 Write-Host "`n=== Token Configuration ===" -ForegroundColor Cyan
 Write-Host @"
 Create the following Personal Access Tokens:
@@ -148,4 +301,4 @@ Set as environment variables:
   `$env:GH_PAT = 'your-github-pat'
 "@ -ForegroundColor Gray
 
-Write-Host "`nTooling check complete." -ForegroundColor Cyan
+Write-Host "`nTooling installation complete." -ForegroundColor Cyan
