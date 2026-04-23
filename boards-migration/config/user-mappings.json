@@ -1,0 +1,49 @@
+{
+  "_comment": "Maps ADO user identifiers (email/unique name) to GitHub usernames. Add all team members here before running migration.",
+  "mappings": [
+    {
+      "adoDisplayName": "Vinay Yadav",
+      "adoEmail": "vinay.yadav@yash.com",
+      "adoAlternateEmails": ["vinaysinghyadav121@gmail.com"],
+      "githubUsername": "vinaysingh121"
+    },
+    {
+      "adoDisplayName": "Varsha Patil",
+      "adoEmail": "varsha.patil@yash.com",
+      "adoAlternateEmails": [],
+      "githubUsername": "varsha-patilyash"
+    },
+    {
+      "adoDisplayName": "Prateek Shivhare",
+      "adoEmail": "prateek.shivhare@yash.com",
+      "adoAlternateEmails": [],
+      "githubUsername": "prateekshivhari"
+    },
+    {
+      "adoDisplayName": "Arati Shibe",
+      "adoEmail": "arati.shibe@yash.com",
+      "adoAlternateEmails": [],
+      "githubUsername": "aratishibe"
+    },
+    {
+      "adoDisplayName": "Ankit Panwar",
+      "adoEmail": "ankit.panwar@yash.com",
+      "adoAlternateEmails": [],
+      "githubUsername": "ankitpanwar1"
+    },
+    {
+      "adoDisplayName": "Urvashi Upadhyay",
+      "adoEmail": "urvashi.upadhyay@yash.com",
+      "adoAlternateEmails": [],
+      "githubUsername": "Urvashi773"
+    },
+    {
+      "adoDisplayName": "Akash Kamble",
+      "adoEmail": "akash.kamble@yash.com",
+      "adoAlternateEmails": [],
+      "githubUsername": ""
+    }
+  ],
+  "defaultGithubUser": "",
+  "unmappedUserAction": "skip"
+}

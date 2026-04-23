@@ -1,0 +1,8 @@
+# Boards Migration - Generated Files
+reports/
+logs/
+tmp/
+
+# Don't commit PATs or secrets
+*.secret
+*.env

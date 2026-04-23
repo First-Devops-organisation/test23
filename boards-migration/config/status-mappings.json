@@ -1,0 +1,42 @@
+{
+  "_comment": "Maps ADO work item states to GitHub ProjectV2 Status column values. Supports per-type overrides. GitHub status values MUST match your ProjectV2 Status field options exactly (case-sensitive).",
+  "defaultMapping": {
+    "New": "Todo",
+    "Active": "In Progress",
+    "Resolved": "Done",
+    "Closed": "Done",
+    "Done": "Done",
+    "Removed": "Done"
+  },
+  "typeOverrides": {
+    "Bug": {
+      "New": "Todo",
+      "Active": "In Progress",
+      "Resolved": "Done",
+      "Closed": "Done"
+    },
+    "Task": {
+      "New": "Todo",
+      "Active": "In Progress",
+      "Closed": "Done"
+    },
+    "Epic": {
+      "New": "Todo",
+      "Active": "In Progress",
+      "Resolved": "Done",
+      "Closed": "Done"
+    },
+    "Feature": {
+      "New": "Todo",
+      "Active": "In Progress",
+      "Resolved": "Done",
+      "Closed": "Done"
+    }
+  },
+  "closedStates": ["Done", "Closed", "Resolved", "Removed"],
+  "githubProjectStatusOptions": [
+    "Todo",
+    "In Progress",
+    "Done"
+  ]
+}

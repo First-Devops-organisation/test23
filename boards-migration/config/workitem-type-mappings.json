@@ -1,0 +1,151 @@
+{
+  "_comment": "Maps ADO work item types to GitHub labels with colors and migration order. Lower migrationOrder values are processed first to establish parent references.",
+  "types": {
+    "Epic": {
+      "githubLabel": "epic",
+      "labelColor": "8B5CF6",
+      "labelDescription": "Epic-level work item migrated from Azure DevOps",
+      "migrationOrder": 1,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": true,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "Feature": {
+      "githubLabel": "feature",
+      "labelColor": "3B82F6",
+      "labelDescription": "Feature-level work item migrated from Azure DevOps",
+      "migrationOrder": 2,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": true,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "User Story": {
+      "githubLabel": "user-story",
+      "labelColor": "10B981",
+      "labelDescription": "User Story migrated from Azure DevOps",
+      "migrationOrder": 3,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": true,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "Task": {
+      "githubLabel": "task",
+      "labelColor": "F59E0B",
+      "labelDescription": "Task migrated from Azure DevOps",
+      "migrationOrder": 4,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "Bug": {
+      "githubLabel": "bug",
+      "labelColor": "EF4444",
+      "labelDescription": "Bug migrated from Azure DevOps",
+      "migrationOrder": 4,
+      "includeFields": {
+        "description": false,
+        "acceptanceCriteria": false,
+        "reproSteps": true,
+        "systemInfo": true,
+        "priority": true,
+        "severity": true
+      }
+    },
+    "Issue": {
+      "githubLabel": "issue",
+      "labelColor": "F97316",
+      "labelDescription": "Issue migrated from Azure DevOps",
+      "migrationOrder": 5,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "Impediment": {
+      "githubLabel": "impediment",
+      "labelColor": "EC4899",
+      "labelDescription": "Impediment migrated from Azure DevOps",
+      "migrationOrder": 5,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "Test Plan": {
+      "githubLabel": "test-plan",
+      "labelColor": "6366F1",
+      "labelDescription": "Test Plan migrated from Azure DevOps",
+      "migrationOrder": 6,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": false,
+        "severity": false
+      }
+    },
+    "Test Suite": {
+      "githubLabel": "test-suite",
+      "labelColor": "8B5CF6",
+      "labelDescription": "Test Suite migrated from Azure DevOps",
+      "migrationOrder": 7,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": false,
+        "severity": false
+      }
+    },
+    "Test Case": {
+      "githubLabel": "test-case",
+      "labelColor": "A855F7",
+      "labelDescription": "Test Case migrated from Azure DevOps",
+      "migrationOrder": 8,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": true,
+        "systemInfo": false,
+        "priority": false,
+        "severity": false
+      }
+    }
+  },
+  "additionalLabels": {
+    "migrated": {
+      "color": "BFDBFE",
+      "description": "Migrated from Azure DevOps"
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "source": {
+    "type": "AzureDevOps",
+    "organization": "YASHTech-ddd",
+    "project": "YASH-ddd-POC",
+    "areaPath": "YASH-Tdddd-POC",
+    "pat": "$(ADO_PAT)"
+  },
+  "target": {
+    "type": "GitHub",
+    "organization": "First-Devops-organisation",
+    "repository": "migrate",
+    "projectNumber": 3,
+    "pat": "$(GH_PAT)"
+  },
+  "migration": {
+    "migrateClosedWorkItems": true,
+    "productionRun": false,
+    "updateAssignedTo": true,
+    "addAdoComments": true,
+    "migrateAttachments": true,
+    "migrateLinks": true,
+    "migrateHistory": false,
+    "preserveParentChild": true,
+    "dryRun": false,
+    "batchSize": 50,
+    "rateLimitDelayMs": 1000,
+    "retryCount": 3,
+    "retryDelaySeconds": 10
+  },
+  "filters": {
+    "workItemTypes": [
+      "Epic",
+      "Feature",
+      "User Story",
+      "Task",
+      "Bug",
+      "Issue",
+      "Impediment",
+      "Test Plan",
+      "Test Suite",
+      "Test Case"
+    ],
+    "excludeStates": [],
+    "excludeTags": [],
+    "workItemIds": []
+  },
+  "areaPathMapping": {
+    "YASH-Tdddd-POC": "area:poc-migration",
+    "YASH-Tdddd-POC\\Backend": "area:backend",
+    "YASH-Tdddd-POC\\Frontend": "area:frontend"
+  },
+  "iterationPathMapping": {
+    "YASH-ddd-POC\\Sprint 1": "Sprint 1",
+    "YASH-ddd-POC\\Sprint 2": "Sprint 2",
+    "YASH-ddd-POC\\Sprint 3": "Sprint 3"
+  },
+  "priorityMapping": {
+    "1": "priority:critical",
+    "2": "priority:high",
+    "3": "priority:medium",
+    "4": "priority:low"
+  },
+  "severityMapping": {
+    "1 - Critical": "severity:critical",
+    "2 - High": "severity:high",
+    "3 - Medium": "severity:medium",
+    "4 - Low": "severity:low"
+  },
+  "output": {
+    "reportDir": "./reports",
+    "logDir": "./logs",
+    "migrationLogFile": "./reports/migration-log.json"
+  }
+}

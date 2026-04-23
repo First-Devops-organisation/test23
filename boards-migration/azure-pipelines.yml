@@ -1,0 +1,284 @@
+# ============================================================
+#  Azure DevOps Pipeline - Boards Migration
+#  Migrates ADO Work Items → GitHub Issues + ProjectV2
+#
+#  Pipeline Variables (set in ADO Variable Group 'boards-migration'):
+#    ADO_PAT  - Azure DevOps Personal Access Token (secret)
+#    GH_PAT   - GitHub Personal Access Token (secret)
+# ============================================================
+
+trigger: none  # Manual trigger only
+
+pr: none
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - group: boards-migration  # Contains ADO_PAT and GH_PAT as secrets
+  - name: workingDir
+    value: '$(Build.SourcesDirectory)/ADO_To_GHAS_Migration/boards-migration'
+
+parameters:
+  - name: phase
+    displayName: 'Migration Phase'
+    type: string
+    default: 'all'
+    values:
+      - all
+      - discover
+      - prep
+      - migrate
+      - validate
+
+  - name: dryRun
+    displayName: 'Dry Run (no changes made)'
+    type: boolean
+    default: true
+
+  - name: resume
+    displayName: 'Resume from previous run'
+    type: boolean
+    default: false
+
+stages:
+
+# ============================================================
+#  Stage 1: DISCOVER
+# ============================================================
+- stage: Discover
+  displayName: '🔍 Phase 1 — Discover Work Items'
+  condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'discover'))
+  jobs:
+  - job: DiscoverWorkItems
+    displayName: 'Inventory & Analyze ADO Boards'
+    steps:
+
+    - task: PowerShell@2
+      displayName: 'Install Azure DevOps CLI Extension'
+      inputs:
+        targetType: inline
+        script: |
+          az extension add --name azure-devops --yes
+          az --version
+        pwsh: true
+
+    - task: PowerShell@2
+      displayName: 'Discover Work Items'
+      inputs:
+        filePath: '$(workingDir)/01-discover/discover-workitems.ps1'
+        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+        GH_PAT: $(GH_PAT)
+
+    - task: PowerShell@2
+      displayName: 'Analyze Board Structure'
+      inputs:
+        filePath: '$(workingDir)/01-discover/analyze-board-structure.ps1'
+        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Discovery Reports'
+      inputs:
+        targetPath: '$(workingDir)/reports'
+        artifact: 'discovery-reports'
+        publishLocation: 'pipeline'
+
+# ============================================================
+#  Stage 2: PREPARE
+# ============================================================
+- stage: Prepare
+  displayName: '🔧 Phase 2 — Prepare & Validate'
+  dependsOn: Discover
+  condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'prep'))
+  jobs:
+  - job: ValidateAndSetup
+    displayName: 'Validate Mappings & Setup Labels'
+    steps:
+
+    - task: PowerShell@2
+      displayName: 'Install Azure DevOps CLI Extension'
+      inputs:
+        targetType: inline
+        script: az extension add --name azure-devops --yes
+        pwsh: true
+
+    - task: PowerShell@2
+      displayName: 'Validate Mappings'
+      inputs:
+        filePath: '$(workingDir)/02-prep/validate-mappings.ps1'
+        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+        GH_PAT: $(GH_PAT)
+
+    - task: PowerShell@2
+      displayName: 'Setup GitHub Labels'
+      inputs:
+        filePath: '$(workingDir)/02-prep/setup-github-labels.ps1'
+        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        pwsh: true
+      env:
+        GH_PAT: $(GH_PAT)
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Prep Logs'
+      inputs:
+        targetPath: '$(workingDir)/logs'
+        artifact: 'prep-logs'
+        publishLocation: 'pipeline'
+      condition: always()
+
+# ============================================================
+#  Stage 3: MIGRATE (with manual approval gate)
+# ============================================================
+- stage: Migrate
+  displayName: '🚀 Phase 3 — Migrate Work Items'
+  dependsOn: Prepare
+  condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'migrate'))
+  jobs:
+
+  # Manual approval before migration (skipped for dry runs)
+  - job: ApprovalGate
+    displayName: 'Approval Gate'
+    condition: eq('${{ parameters.dryRun }}', false)
+    pool: server
+    steps:
+    - task: ManualValidation@1
+      displayName: 'Approve Migration Execution'
+      inputs:
+        notifyUsers: ''
+        instructions: |
+          Review the discovery reports and prep logs.
+          Confirm that all mappings are correct.
+          Click APPROVE to start the migration.
+        onTimeout: 'reject'
+      timeoutInMinutes: 1440  # 24 hour timeout
+
+  - job: ExecuteMigration
+    displayName: 'Execute Migration'
+    dependsOn: ApprovalGate
+    condition: in(dependencies.ApprovalGate.result, 'Succeeded', 'Skipped')
+    timeoutInMinutes: 360  # 6 hours max
+    steps:
+
+    - task: PowerShell@2
+      displayName: 'Install Azure DevOps CLI Extension'
+      inputs:
+        targetType: inline
+        script: az extension add --name azure-devops --yes
+        pwsh: true
+
+    # Download discovery reports for reference
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Discovery Reports'
+      inputs:
+        buildType: 'current'
+        artifactName: 'discovery-reports'
+        targetPath: '$(workingDir)/reports'
+      condition: and(succeeded(), in('${{ parameters.phase }}', 'all'))
+      continueOnError: true
+
+    - task: PowerShell@2
+      displayName: 'Migrate Work Items'
+      inputs:
+        filePath: '$(workingDir)/03-migrate/migrate-workitems.ps1'
+        arguments: >-
+          -ConfigPath "$(workingDir)/config/boards-migration-config.json"
+          ${{ if parameters.dryRun }}: -DryRun
+          ${{ if parameters.resume }}: -Resume
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+        GH_PAT: $(GH_PAT)
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Migration Log'
+      inputs:
+        targetPath: '$(workingDir)/reports'
+        artifact: 'migration-reports'
+        publishLocation: 'pipeline'
+      condition: always()
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Migration Logs'
+      inputs:
+        targetPath: '$(workingDir)/logs'
+        artifact: 'migration-logs'
+        publishLocation: 'pipeline'
+      condition: always()
+
+# ============================================================
+#  Stage 4: VALIDATE
+# ============================================================
+- stage: Validate
+  displayName: '✅ Phase 4 — Validate & Report'
+  dependsOn: Migrate
+  condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'validate'))
+  jobs:
+  - job: ValidateAndReport
+    displayName: 'Validate Migration & Generate Report'
+    steps:
+
+    - task: PowerShell@2
+      displayName: 'Install Azure DevOps CLI Extension'
+      inputs:
+        targetType: inline
+        script: az extension add --name azure-devops --yes
+        pwsh: true
+
+    # Download migration reports
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Migration Reports'
+      inputs:
+        buildType: 'current'
+        artifactName: 'migration-reports'
+        targetPath: '$(workingDir)/reports'
+      continueOnError: true
+
+    - task: PowerShell@2
+      displayName: 'Validate Migration'
+      inputs:
+        filePath: '$(workingDir)/04-validate/validate-migration.ps1'
+        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+        GH_PAT: $(GH_PAT)
+      continueOnError: true
+
+    - task: PowerShell@2
+      displayName: 'Generate Summary Report'
+      inputs:
+        filePath: '$(workingDir)/04-validate/generate-report.ps1'
+        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        pwsh: true
+      condition: always()
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Final Reports'
+      inputs:
+        targetPath: '$(workingDir)/reports'
+        artifact: 'final-reports'
+        publishLocation: 'pipeline'
+      condition: always()
+
+    # Publish markdown report as pipeline summary
+    - task: PowerShell@2
+      displayName: 'Publish Report to Pipeline Summary'
+      inputs:
+        targetType: inline
+        script: |
+          $reportPath = "$(workingDir)/reports/migration-summary.md"
+          if (Test-Path $reportPath) {
+            $content = Get-Content $reportPath -Raw
+            Write-Host "##vso[task.uploadsummary]$reportPath"
+          }
+        pwsh: true
+      condition: always()
