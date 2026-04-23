@@ -65,6 +65,24 @@ stages:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
+
+ # --- Prepare template config for reusable workflow/composite action migration ---
+          - task: PowerShell@2
+            displayName: "Prepare template config (config.yml)"
+            condition: and(succeeded(), ne(variables['TEMPLATE_REPO'], ''))
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/prepare-template-config.ps1'
+              arguments: >-
+                -ConfigYml "$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/config.yml"
+                -GitHubOrg "$(GH_ORG)"
+                -TemplateRepo "$(TEMPLATE_REPO)"
+                -DefaultBranch "main"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              GH_ORG: $(GH_ORG)
+
+              
           - task: PublishPipelineArtifact@1
             displayName: "Publish Audit Artifact"
             condition: always()
