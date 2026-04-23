@@ -137,6 +137,7 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
@@ -191,6 +192,7 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
               arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
