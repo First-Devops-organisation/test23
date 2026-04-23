@@ -33,6 +33,8 @@ param(
 
     [string]$ImporterConfigFile,
 
+    [string]$ConfigFilePath,  # New parameter for --config-file-path
+
     [string]$OutputDir = "./output/pipelines"
 )
 
@@ -339,6 +341,7 @@ foreach ($pipeline in $pipelines) {
     if (-not (Test-Path $outputSubDir)) { New-Item -ItemType Directory -Path $outputSubDir -Force | Out-Null }
 
     $importerSubCommand = if ($PipelineType -eq "release") { "release" } else { "pipeline" }
+
     $importerArgs = @(
         "actions-importer", $Mode, "azure-devops", $importerSubCommand,
         "--output-dir", $outputSubDir,
@@ -357,7 +360,12 @@ foreach ($pipeline in $pipelines) {
         $importerArgs += $CustomTransformersDir
     }
 
-    if ($ImporterConfigFile -and (Test-Path $ImporterConfigFile)) {
+    # Add support for --config-file-path if provided
+    if ($ConfigFilePath -and (Test-Path $ConfigFilePath)) {
+        $importerArgs += "--config-file-path"
+        $importerArgs += $ConfigFilePath
+    } elseif ($ImporterConfigFile -and (Test-Path $ImporterConfigFile)) {
+        # Backward compatibility for ImporterConfigFile
         $importerArgs += "--config-file-path"
         $importerArgs += $ImporterConfigFile
     }
