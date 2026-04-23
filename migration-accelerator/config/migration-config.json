@@ -8,7 +8,7 @@
   "target": {
     "organization": "$(GH_ORG)",
     "pat": "$(GH_PAT)",
-     "GH_REPO": ""
+    "GH_REPO": "Appinsight"
   },
   "pipelineMigration": {
     "pipelineIds": [],
