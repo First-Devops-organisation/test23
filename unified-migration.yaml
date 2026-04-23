@@ -38,6 +38,7 @@ stages:
             env:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
+              ADO_PAT: $(ADO_PAT)
              
 
   - stage: RepoMigration
