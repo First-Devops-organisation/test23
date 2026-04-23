@@ -24,7 +24,7 @@ param(
     [int[]]$PipelineId,
 
     [ValidateSet("list", "dry-run", "migrate", "audit")]
-    [string]$Mode = $null,
+    [string]$Mode = "dry-run",
 
     [ValidateSet("build", "release")]
     [string]$PipelineType = "build",
@@ -38,28 +38,7 @@ param(
     [string]$OutputDir = "./output/pipelines"
 )
 
-
 $ErrorActionPreference = "Stop"
-
-# Set Mode from config if not provided as parameter
-if (-not $Mode) {
-    if ($config) {
-        if ($config.MODE) {
-            $Mode = $config.MODE
-            Write-Host "Loaded Mode from config.MODE: $Mode" -ForegroundColor Gray
-        } elseif ($config.Mode) {
-            $Mode = $config.Mode
-            Write-Host "Loaded Mode from config.Mode: $Mode" -ForegroundColor Gray
-        }
-    }
-}
-# Set Mode from MIGRATE_MODE env var if still not set
-if (-not $Mode -and $env:MIGRATE_MODE) {
-    $Mode = $env:MIGRATE_MODE
-    Write-Host "Loaded Mode from MIGRATE_MODE env var: $Mode" -ForegroundColor Gray
-}
-# Default to dry-run if still not set
-if (-not $Mode) { $Mode = "dry-run" }
 
 # Load config file if provided, otherwise use env vars from variable group
 $config = $null
@@ -68,25 +47,6 @@ if ($ConfigFile -and (Test-Path $ConfigFile)) {
     Write-Host "Loaded config from: $ConfigFile" -ForegroundColor Gray
 } else {
     Write-Host "No config file — using environment variables from variable group" -ForegroundColor Gray
-}
-
-# Fallback: If PipelineId is not provided, check config (PIPELINE_IDS or PipelineIds), then PIPELINE_IDS env var
-if ((-not $PipelineId) -or ($PipelineId.Count -eq 0)) {
-    if ($config) {
-        if ($config.PIPELINE_IDS) {
-            $PipelineId = $config.PIPELINE_IDS
-            Write-Host "Loaded PipelineIds from config.PIPELINE_IDS: $($PipelineId -join ', ')" -ForegroundColor Gray
-        } elseif ($config.PipelineIds) {
-            $PipelineId = $config.PipelineIds
-            Write-Host "Loaded PipelineIds from config.PipelineIds: $($PipelineId -join ', ')" -ForegroundColor Gray
-        }
-    }
-    if ((-not $PipelineId) -or ($PipelineId.Count -eq 0)) {
-        if ($env:PIPELINE_IDS) {
-            $PipelineId = $env:PIPELINE_IDS -split '[, ]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
-            Write-Host "Loaded PipelineIds from PIPELINE_IDS env var: $($PipelineId -join ', ')" -ForegroundColor Gray
-        }
-    }
 }
 
 # Read from config, fallback to env vars (variable group)
@@ -127,52 +87,21 @@ if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir
 $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
-
-
-# Parse PIPELINE_REPO_MAP from config (PIPELINE_REPO_MAP or PipelineRepoMap), else from env var
+# Parse PIPELINE_REPO_MAP (format: "1106=repo1,1135=repo2,717=repo3")
 $pipelineRepoMap = @{}
-if ($config) {
-    $repoMapObj = $null
-    if ($config.PIPELINE_REPO_MAP) { $repoMapObj = $config.PIPELINE_REPO_MAP }
-    elseif ($config.PipelineRepoMap) { $repoMapObj = $config.PipelineRepoMap }
-    if ($repoMapObj) {
-        foreach ($key in $repoMapObj.PSObject.Properties.Name) {
-            $pipelineRepoMap[$key] = $repoMapObj.$key
-        }
-        Write-Host "  Pipeline-to-Repo map: $($pipelineRepoMap.Count) entries loaded from config" -ForegroundColor Gray
-    }
-}
-if ($pipelineRepoMap.Count -eq 0 -and $env:PIPELINE_REPO_MAP) {
-    $repoMapRaw = $env:PIPELINE_REPO_MAP
+$repoMapRaw = if ($env:PIPELINE_REPO_MAP) { $env:PIPELINE_REPO_MAP } else { $null }
+if ($repoMapRaw) {
     foreach ($entry in $repoMapRaw.Split(',')) {
         $parts = $entry.Trim().Split('=', 2)
         if ($parts.Count -eq 2) {
             $pipelineRepoMap[$parts[0].Trim()] = $parts[1].Trim()
         }
     }
-    Write-Host "  Pipeline-to-Repo map: $($pipelineRepoMap.Count) entries loaded from env var" -ForegroundColor Gray
+    Write-Host "  Pipeline-to-Repo map: $($pipelineRepoMap.Count) entries loaded" -ForegroundColor Gray
 }
 
-# Default target repo from config (GH_REPO, PIPELINE_TYPE, or PipelineType), else from env var
-$defaultTargetRepo = $null
-if ($config) {
-    if ($config.GH_REPO) {
-        $defaultTargetRepo = $config.GH_REPO
-        Write-Host "  Default target repo loaded from config.GH_REPO: $defaultTargetRepo" -ForegroundColor Gray
-    } elseif ($config.PIPELINE_TYPE) {
-        $defaultTargetRepo = $config.PIPELINE_TYPE
-        Write-Host "  Default target repo loaded from config.PIPELINE_TYPE: $defaultTargetRepo" -ForegroundColor Gray
-    } elseif ($config.PipelineType) {
-        $defaultTargetRepo = $config.PipelineType
-        Write-Host "  Default target repo loaded from config.PipelineType: $defaultTargetRepo" -ForegroundColor Gray
-    }
-}
-if (-not $defaultTargetRepo) {
-    $defaultTargetRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
-    if ($defaultTargetRepo) {
-        Write-Host "  Default target repo loaded from env var: $defaultTargetRepo" -ForegroundColor Gray
-    }
-}
+# Default target repo from GH_REPO env var
+$defaultTargetRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
