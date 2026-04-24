@@ -261,10 +261,10 @@ stages:
                             $secretVal = $entry.SecretValue
                             $keyName = $entry.KeyName
                             $secretName = $entry.SecretName
-                            $placeholder = "`${{ secrets.$secretName }}"
+                            $placeholder = '$' + '{{ secrets.' + $secretName + ' }}'
                             $line = "${secretVal}==>${placeholder}"
                             $lines += $line
-                            Write-Host "    Key: $keyName → `${{ secrets.$secretName }} | File: $($entry.SourceFile):$($entry.SourceLine)" -ForegroundColor Yellow
+                            Write-Host "    Key: $keyName -> $placeholder | File: $($entry.SourceFile):$($entry.SourceLine)" -ForegroundColor Yellow
                         }
                         # Write without BOM, with LF line endings
                         $content = ($lines -join "`n") + "`n"
