@@ -74,7 +74,19 @@ foreach ($reportFile in $reportFiles) {
     $findings = Get-Content $reportFile.FullName -Raw | ConvertFrom-Json
     if ($findings.Count -eq 0) { continue }
 
-    Write-Host "    $($findings.Count) secrets found" -ForegroundColor Red
+    # Deduplicate: multiple rules can match the same secret on the same line
+    $uniqueFindings = @()
+    $seenKeys = @{}
+    foreach ($f in $findings) {
+        $key = "$($f.File):$($f.StartLine):$($f.Secret)"
+        if (-not $seenKeys.ContainsKey($key)) {
+            $seenKeys[$key] = $true
+            $uniqueFindings += $f
+        }
+    }
+    $findings = $uniqueFindings
+
+    Write-Host "    $($findings.Count) unique secrets found (deduplicated)" -ForegroundColor Red
 
     # Determine names
     $parts = $repoIdentifier -split "_", 2

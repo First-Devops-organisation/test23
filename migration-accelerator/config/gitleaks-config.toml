@@ -1,59 +1,11 @@
 # Custom gitleaks config for migration secret scanning
-# Extends default rules with additional patterns for common secrets
+# Non-overlapping rules — each secret matches only ONE rule
 
 title = "Migration Secret Scanner"
 
 # ============================================================================
-# Generic key=value patterns (catches ENV_KEY=xyz, DB_PASSWORD=xxx, etc.)
+# Specific patterns first (these take priority)
 # ============================================================================
-
-[[rules]]
-id = "generic-password"
-description = "Generic password in key=value format"
-regex = '''(?i)(password|passwd|pwd)\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
-keywords = ["password", "passwd", "pwd"]
-
-[[rules]]
-id = "generic-secret-key"
-description = "Generic secret/key in key=value format"
-regex = '''(?i)(secret|secret_key|secret[-_]?access[-_]?key)\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
-keywords = ["secret"]
-
-[[rules]]
-id = "generic-api-key"
-description = "Generic API key/token in key=value format"
-regex = '''(?i)(api[-_]?key|api[-_]?token|api[-_]?secret|access[-_]?key|auth[-_]?token)\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
-keywords = ["api", "token", "key", "auth"]
-
-[[rules]]
-id = "env-key-value"
-description = "Environment variable with secret-like name"
-regex = '''(?i)(env[-_]?key|app[-_]?key|app[-_]?secret|client[-_]?secret|client[-_]?id)\s*[=:]\s*['"]?([^\s'"]{4,})['"]?'''
-keywords = ["env_key", "app_key", "client_secret", "client_id"]
-
-[[rules]]
-id = "connection-string"
-description = "Database connection string with password"
-regex = '''(?i)(connection[-_]?string|connstr)\s*[=:]\s*['"]?([^\s'"]*password[^\s'"]+)['"]?'''
-keywords = ["connection", "connstr"]
-
-[[rules]]
-id = "private-key"
-description = "Private key block"
-regex = '''-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----'''
-keywords = ["private key", "BEGIN"]
-
-[[rules]]
-id = "aws-access-key"
-description = "AWS Access Key ID"
-regex = '''(?i)aws[-_]?access[-_]?key[-_]?id\s*[=:]\s*['"]?(AKIA[0-9A-Z]{12,})['"]?'''
-keywords = ["AKIA", "aws"]
-
-[[rules]]
-id = "aws-secret-key"
-description = "AWS Secret Access Key"
-regex = '''(?i)aws[-_]?secret[-_]?access[-_]?key\s*[=:]\s*['"]?([A-Za-z0-9/+=]{20,})['"]?'''
-keywords = ["aws_secret"]
 
 [[rules]]
 id = "github-pat"
@@ -62,24 +14,46 @@ regex = '''ghp_[0-9a-zA-Z]{36}'''
 keywords = ["ghp_"]
 
 [[rules]]
-id = "azure-client-secret"
-description = "Azure Client Secret"
-regex = '''(?i)(azure[-_]?client[-_]?secret|client[-_]?secret)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
-keywords = ["azure", "client_secret"]
+id = "aws-access-key-id"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{12,}'''
+keywords = ["AKIA"]
 
 [[rules]]
-id = "generic-token"
-description = "Generic token assignment"
-regex = '''(?i)(token|bearer)\s*[=:]\s*['"]?([^\s'"]{10,})['"]?'''
-keywords = ["token", "bearer"]
+id = "private-key-block"
+description = "Private key block"
+regex = '''-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----'''
+keywords = ["BEGIN", "PRIVATE KEY"]
 
 [[rules]]
-id = "db-password"
-description = "Database password"
-regex = '''(?i)(db[-_]?password|db[-_]?pass|database[-_]?password|mysql[-_]?password|postgres[-_]?password)\s*[=:]\s*['"]?([^\s'"]{4,})['"]?'''
-keywords = ["db_password", "database"]
+id = "jwt-token"
+description = "JWT Token"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+keywords = ["eyJ"]
 
-# Allow list — ignore test/example files if needed
+[[rules]]
+id = "stripe-key"
+description = "Stripe Secret Key"
+regex = '''sk_(test|live)_[0-9a-zA-Z]{10,}'''
+keywords = ["sk_test", "sk_live"]
+
+[[rules]]
+id = "google-api-key"
+description = "Google API Key"
+regex = '''AIzaSy[0-9A-Za-z_-]{33}'''
+keywords = ["AIzaSy"]
+
+# ============================================================================
+# Generic key=value patterns (catches everything else)
+# ============================================================================
+
+[[rules]]
+id = "secret-assignment"
+description = "Secret value assignment"
+regex = '''(?i)(password|passwd|pwd|secret|api_key|api_token|access_key|auth_token|client_secret|private_key|jwt_secret|stripe|env_key|app_key|db_password|google_api_key)\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
+keywords = ["password", "secret", "api_key", "api_token", "access_key", "auth_token", "client_secret", "private_key", "jwt_secret", "stripe", "env_key", "app_key", "db_password", "google_api_key"]
+
+# Allow list
 [allowlist]
 paths = [
     '''\.gitleaks\.toml$''',
