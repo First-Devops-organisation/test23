@@ -260,9 +260,11 @@ stages:
                         foreach ($entry in $secrets) {
                             $secretVal = $entry.SecretValue
                             $keyName = $entry.KeyName
-                            $line = "${secretVal}==>**secret-detected**"
+                            $secretName = $entry.SecretName
+                            $placeholder = "`${{ secrets.$secretName }}"
+                            $line = "${secretVal}==>${placeholder}"
                             $lines += $line
-                            Write-Host "    Key: $keyName | File: $($entry.SourceFile):$($entry.SourceLine)" -ForegroundColor Yellow
+                            Write-Host "    Key: $keyName → `${{ secrets.$secretName }} | File: $($entry.SourceFile):$($entry.SourceLine)" -ForegroundColor Yellow
                         }
                         # Write without BOM, with LF line endings
                         $content = ($lines -join "`n") + "`n"

@@ -155,7 +155,9 @@ foreach ($reportFile in $reportFiles) {
         }
 
         # --- Build redaction expression ---
-        $expressions += "$secret==>**secret-detected**"
+        # Replace secret value with GitHub Secrets reference
+        $placeholder = "`${{ secrets.$secretName }}"
+        $expressions += "$secret==>$placeholder"
 
         # --- Add to migration report ---
         $migrationReport += [PSCustomObject]@{
