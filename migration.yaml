@@ -97,8 +97,14 @@ stages:
                 }
                 
                 # If config doesn't have it, fallback to env (var group)
-                if (-not $ids -and '$(PIPELINE_IDS)' -ne "`$(PIPELINE_IDS)") { $ids = "$(PIPELINE_IDS)" }
-                if (-not $mode -and '$(MIGRATE_MODE)' -ne "`$(MIGRATE_MODE)") { $mode = "$(MIGRATE_MODE)" }
+                $literalIds = '$' + '(PIPELINE_IDS)'
+                $literalMode = '$' + '(MIGRATE_MODE)'
+                
+                $macroIds = '$(PIPELINE_IDS)'
+                $macroMode = '$(MIGRATE_MODE)'
+                
+                if (-not $ids -and $macroIds -ne $literalIds) { $ids = $macroIds }
+                if (-not $mode -and $macroMode -ne $literalMode) { $mode = $macroMode }
                 if (-not $mode) { $mode = "dry-run" } # Default is dry-run if left totally blank
                 
                 Write-Host "Resolved PIPELINE_IDS: $ids"
