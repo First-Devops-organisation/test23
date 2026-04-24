@@ -129,32 +129,56 @@ else {
 # ============================================================================
 Install-ToolIfMissing -Name "gitleaks" -Command "gitleaks" `
     -LinuxInstall {
-        # Download latest gitleaks release for Linux
-        $releaseUrl = "https://api.github.com/repos/gitleaks/gitleaks/releases/latest"
+        # Download gitleaks release for Linux
         $headers = @{ "User-Agent" = "migration-accelerator" }
-        $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers
-        $version = $release.tag_name -replace "^v", ""
-        $arch = if ((uname -m) -eq "aarch64") { "arm64" } else { "x64" }
-        $assetName = "gitleaks_${version}_linux_${arch}.tar.gz"
-        $asset = $release.assets | Where-Object { $_.name -eq $assetName }
-
-        if (-not $asset) {
-            # Fallback: try x86_64 naming
-            $assetName = "gitleaks_${version}_linux_x86_64.tar.gz"
-            $asset = $release.assets | Where-Object { $_.name -eq $assetName }
+        # Use GH_TOKEN if available to avoid rate limits
+        $ghToken = $env:GH_TOKEN
+        if ($ghToken) {
+            $headers["Authorization"] = "Bearer $ghToken"
         }
 
-        if ($asset) {
-            $downloadUrl = $asset.browser_download_url
-            Write-Host "  Downloading gitleaks $version..." -ForegroundColor Gray
-            $tmpFile = "/tmp/gitleaks.tar.gz"
-            Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
-            sudo tar -xzf $tmpFile -C /usr/local/bin gitleaks
-            sudo chmod +x /usr/local/bin/gitleaks
-            Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue
+        $version = ""
+        try {
+            $releaseUrl = "https://api.github.com/repos/gitleaks/gitleaks/releases/latest"
+            $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers
+            $version = $release.tag_name -replace "^v", ""
         }
-        else {
-            throw "Could not find gitleaks release asset for Linux"
+        catch {
+            Write-Host "  API rate limited, using known version..." -ForegroundColor Yellow
+            $version = "8.21.2"
+        }
+
+        $arch = "x64"
+        try { if ((uname -m) -eq "aarch64") { $arch = "arm64" } } catch {}
+
+        # Try multiple naming conventions
+        $attempts = @(
+            "gitleaks_${version}_linux_${arch}.tar.gz",
+            "gitleaks_${version}_linux_x86_64.tar.gz",
+            "gitleaks_${version}_linux_amd64.tar.gz"
+        )
+
+        $downloaded = $false
+        foreach ($assetName in $attempts) {
+            $downloadUrl = "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${assetName}"
+            Write-Host "  Trying: $downloadUrl" -ForegroundColor Gray
+            try {
+                $tmpFile = "/tmp/gitleaks.tar.gz"
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing -ErrorAction Stop
+                sudo tar -xzf $tmpFile -C /usr/local/bin gitleaks
+                sudo chmod +x /usr/local/bin/gitleaks
+                Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue
+                $downloaded = $true
+                Write-Host "  Downloaded gitleaks $version" -ForegroundColor Green
+                break
+            }
+            catch {
+                Write-Host "  Not found, trying next..." -ForegroundColor Gray
+            }
+        }
+
+        if (-not $downloaded) {
+            throw "Could not download gitleaks for Linux"
         }
     } `
     -WingetId "Gitleaks.Gitleaks" `
