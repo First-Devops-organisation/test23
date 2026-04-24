@@ -106,58 +106,73 @@ foreach ($reportFile in $reportFiles) {
 
     foreach ($finding in $findings) {
         $secret = $finding.Secret
+        $match = $finding.Match
         if ([string]::IsNullOrWhiteSpace($secret)) { continue }
 
         $secretCounter++
         $totalSecrets++
 
+        # --- Extract key name from match (e.g. ENV_KEY from ENV_KEY=xyz123) ---
+        $keyName = ""
+        if ($match -match '(?i)([A-Z_][A-Z0-9_]*)\s*[=:]') {
+            $keyName = $Matches[1]
+        } else {
+            $keyName = $finding.RuleID
+        }
+
         # --- Build descriptive secret name ---
-        # Format: FILE_LINE_RULETYPE  e.g. SECRETS_TEST_TXT_L3_API_KEY
         $fileName = [System.IO.Path]::GetFileNameWithoutExtension($finding.File) -replace "[^a-zA-Z0-9]", "_"
         $fileExt = [System.IO.Path]::GetExtension($finding.File) -replace "\.", ""
         $ruleClean = ($finding.RuleID -replace "[^a-zA-Z0-9]", "_").ToUpper()
         $lineNum = $finding.StartLine
         $secretName = "${fileName}_${fileExt}_L${lineNum}_${ruleClean}".ToUpper()
 
-        # Ensure valid GitHub secret name (alphanumeric + underscore, no leading digit)
+        # Ensure valid GitHub secret name
         $secretName = $secretName -replace "[^A-Z0-9_]", "_"
         if ($secretName -match "^\d") { $secretName = "S_$secretName" }
         if ($secretName.Length -gt 100) { $secretName = $secretName.Substring(0, 100) }
 
-        # --- Determine what the secret looks like (for description) ---
+        # --- Log what was found ---
+        Write-Host "    → KEY: $keyName | File: $($finding.File):$($finding.StartLine) | Rule: $($finding.RuleID)" -ForegroundColor Yellow
+        Write-Host "      Match:  [$match]" -ForegroundColor DarkGray
+        Write-Host "      Secret: [$secret]" -ForegroundColor DarkGray
+        Write-Host "      GitHub Secret Name: $secretName" -ForegroundColor Gray
+
+        # --- Preview (masked) ---
         $secretPreview = if ($secret.Length -le 8) {
-            "***" + ("*" * $secret.Length) + "***"
+            "***"
         } else {
             $secret.Substring(0, 3) + ("*" * ($secret.Length - 6)) + $secret.Substring($secret.Length - 3)
         }
 
-        # --- Save secret value for post-migration ---
+        # --- Save for post-migration (includes Match for replacement) ---
         $secretValues += [PSCustomObject]@{
             GitHubRepo       = $ghFullRepo
             SecretName       = $secretName
             SecretValue      = $secret
+            MatchString      = $match
+            KeyName          = $keyName
             RuleID           = $finding.RuleID
             SourceFile       = $finding.File
             SourceLine       = $finding.StartLine
             Description      = $finding.Description
         }
 
-        # --- Build redaction expression (literal for exact match) ---
-        $placeholder = "**secret-detected**"
-        $expressions += "$secret==>$placeholder"
+        # --- Build redaction expression ---
+        # Replace the full match with key=**secret-detected**
+        $maskedMatch = $match -replace [regex]::Escape($secret), "**secret-detected**"
+        $expressions += "$match==>$maskedMatch"
 
-        Write-Host "    → $($finding.File):$($finding.StartLine) | $($finding.RuleID) → $secretName ($secretPreview)" -ForegroundColor Gray
-
-        # --- Add to migration report (NO secret values — safe to share) ---
+        # --- Add to migration report ---
         $migrationReport += [PSCustomObject]@{
             Repo              = $repoIdentifier
             GitHubRepo        = $ghFullRepo
             File              = $finding.File
             Line              = $finding.StartLine
+            KeyName           = $keyName
             SecretType        = $finding.RuleID
             Description       = $finding.Description
             SecretPreview     = $secretPreview
-            Placeholder       = $placeholder
             GitHubSecretName  = $secretName
             HowToUse          = "`${{ secrets.$secretName }}"
             Action            = "Update code to read from env var"
