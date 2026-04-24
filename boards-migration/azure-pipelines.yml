@@ -199,10 +199,12 @@ stages:
       inputs:
         targetType: inline
         script: |
-          $flags = @('-ConfigPath', '"$(workingDir)/config/boards-migration-config.json"')
-          if ("${{ parameters.dryRun }}" -eq "true")  { $flags += '-DryRun' }
-          if ("${{ parameters.resume }}" -eq "true") { $flags += '-Resume' }
-          & "$(workingDir)/03-migrate/migrate-workitems.ps1" @flags
+          $configPath = "$(workingDir)/config/boards-migration-config.json"
+          $scriptPath = "$(workingDir)/03-migrate/migrate-workitems.ps1"
+          $flags = @('-ConfigPath', $configPath)
+          if ('${{ parameters.dryRun }}' -eq 'true')  { $flags += '-DryRun' }
+          if ('${{ parameters.resume }}' -eq 'true') { $flags += '-Resume' }
+          & $scriptPath @flags
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
