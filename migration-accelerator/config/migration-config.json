@@ -41,9 +41,9 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [1156,15],
+  "PIPELINE_IDS": [],
   "PIPELINE_REPO_MAP": {},
-  "PIPELINE_TYPE": "build",
-  "MODE": "dry-run",
+  "PIPELINE_TYPE": "",
+  "MODE": "",
   "GH_REPO": "Appinsight"
 }
