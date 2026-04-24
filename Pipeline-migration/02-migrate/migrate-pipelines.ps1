@@ -87,21 +87,41 @@ if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir
 $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
+# Override parameters from config if present (fallback is var grp/env vars)
+if ($config) {
+    if ($null -ne $config.PIPELINE_IDS -and (-not $PSBoundParameters.ContainsKey('PipelineId') -or $PipelineId.Count -eq 0)) { 
+        $PipelineId = $config.PIPELINE_IDS 
+    }
+    if ($config.PIPELINE_TYPE -and (-not $PSBoundParameters.ContainsKey('PipelineType') -or $PipelineType -eq "")) { 
+        $PipelineType = $config.PIPELINE_TYPE 
+    }
+    if (-not $PSBoundParameters.ContainsKey('Mode')) {
+        if ($config.MIGRATE_MODE) { $Mode = $config.MIGRATE_MODE }
+        elseif ($config.MODE) { $Mode = $config.MODE }
+    }
+}
+
 # Parse PIPELINE_REPO_MAP (format: "1106=repo1,1135=repo2,717=repo3")
 $pipelineRepoMap = @{}
-$repoMapRaw = if ($env:PIPELINE_REPO_MAP) { $env:PIPELINE_REPO_MAP } else { $null }
+$repoMapRaw = if ($config -and $null -ne $config.PIPELINE_REPO_MAP) { $config.PIPELINE_REPO_MAP } elseif ($env:PIPELINE_REPO_MAP) { $env:PIPELINE_REPO_MAP } else { $null }
 if ($repoMapRaw) {
-    foreach ($entry in $repoMapRaw.Split(',')) {
-        $parts = $entry.Trim().Split('=', 2)
-        if ($parts.Count -eq 2) {
-            $pipelineRepoMap[$parts[0].Trim()] = $parts[1].Trim()
+    if ($repoMapRaw -is [System.Management.Automation.PSCustomObject] -or $repoMapRaw -is [System.Collections.Hashtable]) {
+        foreach ($prop in $repoMapRaw.psobject.properties) {
+            $pipelineRepoMap[$prop.Name] = $prop.Value
+        }
+    } else {
+        foreach ($entry in $repoMapRaw.ToString().Split(',')) {
+            $parts = $entry.Trim().Split('=', 2)
+            if ($parts.Count -eq 2) {
+                $pipelineRepoMap[$parts[0].Trim()] = $parts[1].Trim()
+            }
         }
     }
     Write-Host "  Pipeline-to-Repo map: $($pipelineRepoMap.Count) entries loaded" -ForegroundColor Gray
 }
 
 # Default target repo from GH_REPO env var
-$defaultTargetRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
+$defaultTargetRepo = if ($config -and $config.GH_REPO) { $config.GH_REPO } elseif ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
