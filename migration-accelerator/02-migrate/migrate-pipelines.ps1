@@ -89,10 +89,16 @@ $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
 # Override parameters from config if present (fallback is var grp/env vars)
 if ($config) {
-    if ($null -ne $config.PIPELINE_IDS) { $PipelineId = $config.PIPELINE_IDS }
-    if ($config.PIPELINE_TYPE) { $PipelineType = $config.PIPELINE_TYPE }
-    if ($config.MIGRATE_MODE) { $Mode = $config.MIGRATE_MODE }
-    elseif ($config.MODE) { $Mode = $config.MODE }
+    if ($null -ne $config.PIPELINE_IDS -and (-not $PSBoundParameters.ContainsKey('PipelineId') -or $PipelineId.Count -eq 0)) { 
+        $PipelineId = $config.PIPELINE_IDS 
+    }
+    if ($config.PIPELINE_TYPE -and (-not $PSBoundParameters.ContainsKey('PipelineType') -or $PipelineType -eq "")) { 
+        $PipelineType = $config.PIPELINE_TYPE 
+    }
+    if (-not $PSBoundParameters.ContainsKey('Mode')) {
+        if ($config.MIGRATE_MODE) { $Mode = $config.MIGRATE_MODE }
+        elseif ($config.MODE) { $Mode = $config.MODE }
+    }
 }
 
 # Parse PIPELINE_REPO_MAP (format: "1106=repo1,1135=repo2,717=repo3")
