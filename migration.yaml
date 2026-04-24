@@ -278,14 +278,41 @@ stages:
                     Write-Host "`n[Step 2] No secret-values.json — repo is clean" -ForegroundColor Green
                 }
 
-                # --- Step 3: Create GitHub repo ---
-                Write-Host "`n[Step 3] Creating GitHub repo: $ghOrg/$ghRepo..." -ForegroundColor Cyan
+                # --- Step 3: Remove large files (>100MB) from history ---
+                Write-Host "`n[Step 3] Removing files >100MB from history..." -ForegroundColor Cyan
+                Push-Location $cloneDir
+
+                # Find large blobs in history
+                $largeFiles = git rev-list --objects --all |
+                    git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' |
+                    Where-Object { $_ -match "^blob" } |
+                    ForEach-Object {
+                        $parts = $_ -split "\s+", 4
+                        [PSCustomObject]@{ Size = [long]$parts[2]; Path = $parts[3] }
+                    } |
+                    Where-Object { $_.Size -gt 104857600 } |
+                    Select-Object -ExpandProperty Path -Unique
+
+                if ($largeFiles -and $largeFiles.Count -gt 0) {
+                    Write-Host "  Found $($largeFiles.Count) files >100MB — stripping from history:" -ForegroundColor Yellow
+                    foreach ($lf in $largeFiles) { Write-Host "    - $lf" -ForegroundColor Gray }
+
+                    $pathArgs = $largeFiles | ForEach-Object { "--path", $_ }
+                    git filter-repo --invert-paths @pathArgs --force 2>&1
+                    Write-Host "  ✓ Large files removed" -ForegroundColor Green
+                } else {
+                    Write-Host "  No files >100MB found" -ForegroundColor Green
+                }
+                Pop-Location
+
+                # --- Step 4: Create GitHub repo ---
+                Write-Host "`n[Step 4] Creating GitHub repo: $ghOrg/$ghRepo..." -ForegroundColor Cyan
                 gh repo create "$ghOrg/$ghRepo" --private 2>&1 | Out-Null
                 # Ignore error if repo already exists
                 Write-Host "✓ GitHub repo ready" -ForegroundColor Green
 
-                # --- Step 4: Push to GitHub ---
-                Write-Host "`n[Step 4] Pushing to GitHub..." -ForegroundColor Cyan
+                # --- Step 5: Push to GitHub ---
+                Write-Host "`n[Step 5] Pushing to GitHub..." -ForegroundColor Cyan
                 $ghUrl = "https://x-access-token:$ghPat@github.com/$ghOrg/$ghRepo.git"
 
                 Push-Location $cloneDir
