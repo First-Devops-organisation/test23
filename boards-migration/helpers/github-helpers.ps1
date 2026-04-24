@@ -44,19 +44,26 @@ function Get-GhProjectId {
         [ValidateSet("user","organization")]
         [string]$OwnerType = "organization"
     )
+    Write-Log -Message "Getting project ID: Owner=$Owner, Number=$ProjectNumber, Type=$OwnerType" -Level "INFO"
     if ($OwnerType -eq "user") {
-        $q = "{ user(login: `"$Owner`") { projectV2(number: $ProjectNumber) { id title } } }"
-        $resp = Invoke-GhGraphQL -Query $q -Pat $Pat
-        $id = $resp.data.user.projectV2.id
+        # Try viewer first (most reliable for personal PATs)
+        $q1 = "{ viewer { projectV2(number: $ProjectNumber) { id title } } }"
+        $resp1 = Invoke-GhGraphQL -Query $q1 -Pat $Pat
+        $id = $resp1.data.viewer.projectV2.id
+        Write-Log -Message "viewer query result: $id" -Level "INFO"
         if (-not $id) {
-            Write-Log -Message "user.projectV2 query returned null. Trying viewer query..." -Level "WARN"
-            # Fallback: query via viewer (works when PAT owner = project owner)
-            $q2 = "{ viewer { projectV2(number: $ProjectNumber) { id title } } }"
+            # Fallback to user query
+            $q2 = "{ user(login: `"$Owner`") { projectV2(number: $ProjectNumber) { id title } } }"
             $resp2 = Invoke-GhGraphQL -Query $q2 -Pat $Pat
-            $id = $resp2.data.viewer.projectV2.id
+            $id = $resp2.data.user.projectV2.id
+            Write-Log -Message "user query result: $id" -Level "INFO"
         }
         return $id
     } else {
+        if ([string]::IsNullOrEmpty($Owner)) {
+            Write-Log -Message "Owner is empty - cannot query organization project" -Level "ERROR"
+            return $null
+        }
         $q = "{ organization(login: `"$Owner`") { projectV2(number: $ProjectNumber) { id title } } }"
         $resp = Invoke-GhGraphQL -Query $q -Pat $Pat
         return $resp.data.organization.projectV2.id
