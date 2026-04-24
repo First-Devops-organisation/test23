@@ -16,8 +16,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Ensure output directories exist
-$reportsDir = Join-Path $PSScriptRoot "..
-eports"
+$reportsDir = Join-Path $PSScriptRoot "..\reports"
 $logsDir    = Join-Path $PSScriptRoot "..\logs"
 if (-not (Test-Path $reportsDir)) { New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null }
 if (-not (Test-Path $logsDir))    { New-Item -ItemType Directory -Path $logsDir    -Force | Out-Null }
