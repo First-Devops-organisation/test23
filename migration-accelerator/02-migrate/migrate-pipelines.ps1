@@ -23,8 +23,10 @@ param(
 
     [int[]]$PipelineId,
 
+    [ValidateSet("list", "dry-run", "migrate", "audit")]
     [string]$Mode = "dry-run",
 
+    [ValidateSet("build", "release")]
     [string]$PipelineType = "build",
 
     [string]$CustomTransformersDir,
@@ -35,19 +37,6 @@ param(
 
     [string]$OutputDir = "./output/pipelines"
 )
-$Mode = if ($PSBoundParameters.ContainsKey('Mode')) { $Mode } elseif ($config -and $config.MODE) { $config.MODE } elseif ($env:MODE) { $env:MODE } else { $Mode }
-# Manual validation for Mode
-if ($Mode -notin @("list", "dry-run", "migrate", "audit")) {
-    Write-Host "ERROR: Mode must be one of 'list', 'dry-run', 'migrate', or 'audit'. Value was: '$Mode'" -ForegroundColor Red
-    exit 1
-}
-
-$PipelineType = if ($PSBoundParameters.ContainsKey('PipelineType')) { $PipelineType } elseif ($config -and $config.PIPELINE_TYPE) { $config.PIPELINE_TYPE } elseif ($env:PIPELINE_TYPE) { $env:PIPELINE_TYPE } else { $PipelineType }
-# Manual validation for PipelineType
-if ($PipelineType -notin @("build", "release")) {
-    Write-Host "ERROR: PipelineType must be 'build' or 'release'. Value was: '$PipelineType'" -ForegroundColor Red
-    exit 1
-}
 
 $ErrorActionPreference = "Stop"
 
@@ -98,45 +87,46 @@ if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir
 $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
-# Parse PIPELINE_REPO_MAP (format: "1106=repo1,1135=repo2,717=repo3")
 
-# Read PIPELINE_IDS, PIPELINE_TYPE, MODE, GH_REPO, PIPELINE_REPO_MAP from config if present, else env vars
-$pipelineIds = $null
-$pipelineType = $null
-$mode = $null
-$ghRepo = $null
+# PIPELINE_IDS
+if ($config -and $config.PIPELINE_IDS) {
+    $pipelineIds = $config.PIPELINE_IDS
+} elseif ($env:PIPELINE_IDS) {
+    $pipelineIds = $env:PIPELINE_IDS -split ',' | ForEach-Object { $_.Trim() }
+}
+
+# PIPELINE_TYPE
+if ($config -and $config.PIPELINE_TYPE) {
+    $PipelineType = $config.PIPELINE_TYPE
+} elseif ($env:PIPELINE_TYPE) {
+    $PipelineType = $env:PIPELINE_TYPE
+}
+
+# MODE
+if ($config -and $config.MODE) {
+    $Mode = $config.MODE
+} elseif ($env:MODE) {
+    $Mode = $env:MODE
+}
+
+# GH_REPO
+if ($config -and $config.GH_REPO) {
+    $ghRepo = $config.GH_REPO
+} elseif ($env:GH_REPO) {
+    $ghRepo = $env:GH_REPO
+} elseif ($env:GHRepo) {
+    $ghRepo = $env:GHRepo
+} else {
+    $ghRepo = $null
+}
+
+# PIPELINE_REPO_MAP
 $pipelineRepoMap = @{}
-
-if ($config) {
-    if ($config.PIPELINE_IDS) { $pipelineIds = $config.PIPELINE_IDS }
-    if ($config.PIPELINE_TYPE) { $pipelineType = $config.PIPELINE_TYPE }
-    if ($config.MODE) { $mode = $config.MODE }
-    if ($config.GH_REPO) { $ghRepo = $config.GH_REPO }
-    if ($config.PIPELINE_REPO_MAP) {
-        foreach ($key in $config.PIPELINE_REPO_MAP.PSObject.Properties.Name) {
-            $pipelineRepoMap[$key] = $config.PIPELINE_REPO_MAP[$key]
-        }
+if ($config -and $config.PIPELINE_REPO_MAP) {
+    foreach ($key in $config.PIPELINE_REPO_MAP.PSObject.Properties.Name) {
+        $pipelineRepoMap[$key] = $config.PIPELINE_REPO_MAP[$key]
     }
-}
-
-# Fallback to env vars if not set in config
-if (-not $pipelineIds) {
-    $envIds = $env:PIPELINE_IDS
-    if ($envIds) { $pipelineIds = $envIds -split ',' | ForEach-Object { $_.Trim() } }
-}
-# If not set, fallback to env or default
-if (-not $pipelineType -or [string]::IsNullOrWhiteSpace($pipelineType)) {
-    $pipelineType = "build"
-}
-# Manual validation for PipelineType
-if ($pipelineType -notin @("build", "release")) {
-    Write-Host "ERROR: PipelineType must be 'build' or 'release'. Value was: '$pipelineType'" -ForegroundColor Red
-    exit 1
-}
-$PipelineType = $pipelineType
-if (-not $mode) { $mode = if ($env:MODE) { $env:MODE } else { $Mode } }
-if (-not $ghRepo) { $ghRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null } }
-if (-not $pipelineRepoMap.Count -and $env:PIPELINE_REPO_MAP) {
+} elseif ($env:PIPELINE_REPO_MAP) {
     foreach ($entry in $env:PIPELINE_REPO_MAP.Split(',')) {
         $parts = $entry.Trim().Split('=', 2)
         if ($parts.Count -eq 2) {
@@ -148,24 +138,8 @@ if ($pipelineRepoMap.Count) {
     Write-Host "  Pipeline-to-Repo map: $($pipelineRepoMap.Count) entries loaded" -ForegroundColor Gray
 }
 
-# Default target repo from config or env var
+# Default target repo from GH_REPO
 $defaultTargetRepo = $ghRepo
-
-Write-Host "=== Pipeline Migration ($mode) ===" -ForegroundColor Cyan
-Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
-Write-Host "  Project:      $AdoProject" -ForegroundColor Gray
-
-# --- Mode logic: dry-run or migrate ---
-if ($pipelineIds -and (!$mode -or $mode -eq "dry-run")) {
-    Write-Host "Running in dry-run mode for pipeline(s): $($pipelineIds -join ', ')" -ForegroundColor Yellow
-    $mode = "dry-run"
-}
-elseif ($mode -eq "migrate") {
-    Write-Host "Running in migrate mode for pipeline(s): $($pipelineIds -join ', ')" -ForegroundColor Green
-}
-else {
-    Write-Host "Mode: $mode" -ForegroundColor Gray
-}
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
