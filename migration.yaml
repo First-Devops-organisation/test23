@@ -88,6 +88,7 @@ stages:
               script: |
                 $configPath = "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
                 $ids = ""
+                $mode = ""
                 $type = ""
                 if (Test-Path $configPath) {
                     $config = Get-Content $configPath -Raw | ConvertFrom-Json
@@ -129,9 +130,9 @@ stages:
     dependsOn: Discover
     condition: and(succeeded(), eq(dependencies.Discover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'))
     variables:
-      PIPELINE_IDS: $[ dependencies.Discover.outputs['AuditPipelines.checkConfig.RESOLVED_IDS'] ]
-      MIGRATE_MODE: $[ dependencies.Discover.outputs['AuditPipelines.checkConfig.RESOLVED_MODE'] ]
-      PIPELINE_TYPE: $[ dependencies.Discover.outputs['AuditPipelines.checkConfig.RESOLVED_TYPE'] ]
+      PIPELINE_IDS: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_IDS'] ]
+      MIGRATE_MODE: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'] ]
+      PIPELINE_TYPE: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_TYPE'] ]
     jobs:
       - job: DryRun
         displayName: "2.1 Dry-Run Preview"
@@ -177,13 +178,6 @@ stages:
               targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
               artifact: "pipeline-dry-run"
               publishLocation: pipeline
-
-          # - task: PublishHtmlReport@1
-          #   displayName: "Dry-Run Dashboard on Pipeline Tab"
-          #   condition: always()
-          #   inputs:
-          #     reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
-          #     tabName: "Dry-Run Migration Dashboard"
 
       - job: Migrate
         displayName: "2.2 Migrate to GitHub"
