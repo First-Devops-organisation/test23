@@ -10,7 +10,7 @@
     - dashboard generation
 #>
 
-[CmdletBinding()]
+
 param(
     [string]$ConfigFile,
     [string]$AdoProject,
