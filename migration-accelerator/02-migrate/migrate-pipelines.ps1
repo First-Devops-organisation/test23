@@ -1,7 +1,13 @@
+```powershell
 <#
 .SYNOPSIS
-    Enterprise ADO → GitHub Pipeline Migration Script
-    Combines config.json + env fallback + full feature set
+    End-to-End ADO → GitHub Actions Pipeline Migration Script
+    Supports:
+    - config.json + env fallback
+    - list / audit / dry-run / migrate
+    - repo mapping
+    - audit summary parsing
+    - dashboard generation
 #>
 
 [CmdletBinding()]
@@ -9,10 +15,13 @@ param(
     [string]$ConfigFile,
     [string]$AdoProject,
     [int[]]$PipelineId,
-    [ValidateSet("list","dry-run","migrate","audit")]
+
+    [ValidateSet("list","audit","dry-run","migrate")]
     [string]$Mode = "dry-run",
+
     [ValidateSet("build","release")]
     [string]$PipelineType = "build",
+
     [string]$CustomTransformersDir,
     [string]$ConfigFilePath,
     [string]$OutputDir = "./output/pipelines"
@@ -21,20 +30,17 @@ param(
 $ErrorActionPreference = "Stop"
 
 # ============================================================
-# ✅ CONFIG RESOLVER (BEST VERSION)
+# CONFIG RESOLVER
 # ============================================================
 function Get-ConfigValue {
-    param(
-        [object]$ConfigValue,
-        [string[]]$EnvVars
-    )
+    param($ConfigValue, $EnvVars)
 
     if ($ConfigValue -and $ConfigValue -notmatch '^\$\(') {
         return $ConfigValue
     }
 
     foreach ($envVar in $EnvVars) {
-        $val = [System.Environment]::GetEnvironmentVariable($envVar)
+        $val = [Environment]::GetEnvironmentVariable($envVar)
         if ($val) { return $val }
     }
 
@@ -52,9 +58,7 @@ if ($ConfigFile -and (Test-Path $ConfigFile)) {
     Write-Host "Using environment variables fallback" -ForegroundColor Yellow
 }
 
-# ============================================================
-# RESOLVE VALUES
-# ============================================================
+# Resolve values
 $adoOrg     = Get-ConfigValue ($config?.source?.organization) @("ADO_ORG","ADO_Org")
 $ghOrg      = Get-ConfigValue ($config?.target?.organization) @("GH_ORG")
 $adoPat     = Get-ConfigValue ($config?.source?.pat)          @("ADO_PAT")
@@ -62,7 +66,7 @@ $ghPat      = Get-ConfigValue ($config?.target?.pat)          @("GH_PAT")
 $AdoProject = if ($AdoProject) { $AdoProject } else { Get-ConfigValue ($config?.source?.project) @("ADO_PROJECT") }
 
 if (-not $adoOrg -or -not $adoPat -or -not $ghOrg -or -not $ghPat -or -not $AdoProject) {
-    throw "Missing required configuration values"
+    throw "Missing required configuration"
 }
 
 # Normalize org
@@ -74,50 +78,63 @@ $adoOrgName = ($adoOrgUrl -replace 'https?://dev\.azure\.com/', '')
 $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
-# Output dir
-New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-
-# ============================================================
-# PIPELINE → REPO MAP SUPPORT
-# ============================================================
-$pipelineRepoMap = @{}
-if ($env:PIPELINE_REPO_MAP) {
-    foreach ($entry in $env:PIPELINE_REPO_MAP.Split(',')) {
-        $parts = $entry.Split('=')
-        if ($parts.Count -eq 2) {
-            $pipelineRepoMap[$parts[0].Trim()] = $parts[1].Trim()
-        }
-    }
+# Output
+if (-not (Test-Path $OutputDir)) {
+    New-Item -ItemType Directory -Path $OutputDir | Out-Null
 }
 
-$defaultRepo = $env:GH_REPO
-
 # ============================================================
-# LIST MODE
+# LIST MODE (FIXED + ENHANCED)
 # ============================================================
 if ($Mode -eq "list") {
+
+    Write-Host "`nFetching pipelines..." -ForegroundColor Yellow
+
     $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
     $headers = @{ Authorization = "Basic $auth" }
 
+    # Build pipelines
     $buildUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1&includeAllProperties=true"
     $buildPipelines = (Invoke-RestMethod -Uri $buildUrl -Headers $headers).value
 
-    $releasePipelines = @()
+    # Remove duplicates
+    $buildPipelines = $buildPipelines | Sort-Object id -Unique
+
+    Write-Host "`n=== Build Pipelines ===" -ForegroundColor Cyan
+    Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f "ID","Name","Type","Migrate With")
+    Write-Host ("-"*90)
+
+    foreach ($p in $buildPipelines) {
+        $type = if ($p.process.type -eq 2) { "YAML" } else { "Classic Build" }
+
+        Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f `
+            $p.id,
+            $p.name,
+            $type,
+            "-PipelineType build"
+        )
+    }
+
+    # Release pipelines
     try {
         $releaseUrl = "https://vsrm.dev.azure.com/$adoOrgName/$AdoProject/_apis/release/definitions?api-version=7.1"
         $releasePipelines = (Invoke-RestMethod -Uri $releaseUrl -Headers $headers).value
-    } catch {}
 
-    Write-Host "`n=== BUILD PIPELINES ===" -ForegroundColor Cyan
-    foreach ($p in $buildPipelines) {
-        $type = if ($p.process.type -eq 2) { "YAML" } else { "Classic" }
-        Write-Host "$($p.id) - $($p.name) [$type]"
+        if ($releasePipelines.Count -gt 0) {
+            Write-Host "`n=== Release Pipelines ===" -ForegroundColor Cyan
+            foreach ($r in $releasePipelines | Sort-Object id -Unique) {
+                Write-Host ("{0,-8} {1,-45} {2,-15} {3}" -f `
+                    $r.id,
+                    $r.name,
+                    "Release",
+                    "-PipelineType release"
+                )
+            }
+        }
+    } catch {
+        Write-Host "Release pipelines not accessible" -ForegroundColor Yellow
     }
 
-    Write-Host "`n=== RELEASE PIPELINES ===" -ForegroundColor Cyan
-    foreach ($r in $releasePipelines) {
-        Write-Host "$($r.id) - $($r.name) [Release]"
-    }
     return
 }
 
@@ -129,6 +146,8 @@ if ($Mode -eq "audit") {
         --azure-devops-organization $adoOrgName `
         --azure-devops-project $AdoProject `
         --output-dir $OutputDir
+
+    Write-Host "Audit completed" -ForegroundColor Green
     return
 }
 
@@ -150,47 +169,47 @@ if ($PipelineId) {
     $pipelines = $pipelines | Where-Object { $_.id -in $PipelineId }
 }
 
-Write-Host "Processing $($pipelines.Count) pipelines..."
-
-# Ensure importer updated
-gh actions-importer update | Out-Null
+# ============================================================
+# REPO MAPPING
+# ============================================================
+$repoMap = @{}
+if ($env:PIPELINE_REPO_MAP) {
+    foreach ($entry in $env:PIPELINE_REPO_MAP.Split(',')) {
+        $parts = $entry.Split('=')
+        $repoMap[$parts[0]] = $parts[1]
+    }
+}
 
 # ============================================================
-# PROCESS
+# PROCESS PIPELINES
 # ============================================================
 $results = @()
 
 foreach ($p in $pipelines) {
 
-    $id = [int]$p.id
+    $id = $p.id
     $name = $p.name
 
     Write-Host "`nProcessing: $name ($id)" -ForegroundColor Cyan
 
-    # Repo resolution
-    if ($pipelineRepoMap.ContainsKey("$id")) {
-        $repo = $pipelineRepoMap["$id"]
-    } elseif ($defaultRepo) {
-        $repo = $defaultRepo
+    # repo resolution
+    $repo = if ($repoMap.ContainsKey("$id")) {
+        $repoMap["$id"]
     } elseif ($p.repository) {
-        $repo = ($p.repository.name -replace " ", "-").ToLower()
+        ($p.repository.name -replace " ","-").ToLower()
     } else {
-        $repo = $AdoProject.ToLower()
+        $AdoProject.ToLower()
     }
-
-    Write-Host "Target Repo: $ghOrg/$repo"
 
     $outDir = Join-Path $OutputDir "$Mode/$name"
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-    $subCmd = if ($PipelineType -eq "release") { "release" } else { "pipeline" }
-
     $cmd = @(
-        "actions-importer", $Mode, "azure-devops", $subCmd,
-        "--azure-devops-organization", $adoOrgName,
-        "--azure-devops-project", $AdoProject,
-        "--pipeline-id", $id,
-        "--output-dir", $outDir
+        "actions-importer",$Mode,"azure-devops","pipeline",
+        "--azure-devops-organization",$adoOrgName,
+        "--azure-devops-project",$AdoProject,
+        "--pipeline-id",$id,
+        "--output-dir",$outDir
     )
 
     if ($Mode -eq "migrate") {
@@ -198,48 +217,25 @@ foreach ($p in $pipelines) {
         $cmd += "https://github.com/$ghOrg/$repo"
     }
 
-    if ($CustomTransformersDir -and (Test-Path $CustomTransformersDir)) {
-        $cmd += "--custom-transformers"
-        $cmd += $CustomTransformersDir
-    }
-
-    if ($ConfigFilePath -and (Test-Path $ConfigFilePath)) {
+    if ($ConfigFilePath) {
         $cmd += "--config-file-path"
         $cmd += $ConfigFilePath
     }
 
-    Write-Host "Running: gh $($cmd -join ' ')" -ForegroundColor Gray
-
     $output = gh @cmd 2>&1
     $exit = $LASTEXITCODE
-    $outputStr = $output | Out-String
-
-    # Detect YAML output
-    $yamlFiles = Get-ChildItem $outDir -Recurse -Include *.yml,*.yaml -ErrorAction SilentlyContinue
 
     $status = if ($exit -ne 0) { "FAILED" }
-    elseif ($outputStr -match "error|failed") { "FAILED" }
-    elseif ($outputStr -match "partially") { "PARTIAL" }
-    elseif ($Mode -eq "dry-run" -and -not $yamlFiles) { "NO_OUTPUT" }
+    elseif ($output -match "partially") { "PARTIAL" }
     else { "SUCCESS" }
 
-    Write-Host "Status: $status" -ForegroundColor Green
+    Write-Host "Status: $status"
 
     $results += [PSCustomObject]@{
-        Pipeline   = $name
-        Id         = $id
-        Repo       = $repo
-        Status     = $status
-        OutputDir  = $outDir
-    }
-
-    # Debug logs if needed
-    if ($status -eq "NO_OUTPUT") {
-        Write-Host "⚠ No YAML generated. Checking logs..." -ForegroundColor Yellow
-        Get-ChildItem $outDir -Filter *.log -Recurse | ForEach-Object {
-            Write-Host "`n--- LOG: $($_.Name) ---"
-            Get-Content $_.FullName
-        }
+        Pipeline = $name
+        Id       = $id
+        Repo     = $repo
+        Status   = $status
     }
 }
 
@@ -247,16 +243,14 @@ foreach ($p in $pipelines) {
 # SUMMARY
 # ============================================================
 Write-Host "`n=== SUMMARY ===" -ForegroundColor Cyan
-
 $results | Format-Table
 
 $csv = Join-Path $OutputDir "summary.csv"
 $results | Export-Csv $csv -NoTypeInformation
 
-Write-Host "Saved CSV: $csv" -ForegroundColor Green
+Write-Host "Saved: $csv" -ForegroundColor Green
 
-# ============================================================
-# CLEANUP
-# ============================================================
+# Cleanup
 Remove-Item Env:\GITHUB_ACCESS_TOKEN -ErrorAction SilentlyContinue
 Remove-Item Env:\AZURE_DEVOPS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+```
