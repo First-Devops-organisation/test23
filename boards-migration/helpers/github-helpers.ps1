@@ -35,11 +35,32 @@ function Invoke-GhGraphQL {
 }
 
 # --- Get GitHub ProjectV2 ID from project number ---
+# Supports both user-level and org-level projects
 function Get-GhProjectId {
-    param([string]$Org, [int]$ProjectNumber, [string]$Pat)
-    $q = "{ organization(login: `"$Org`") { projectV2(number: $ProjectNumber) { id } } }"
-    $resp = Invoke-GhGraphQL -Query $q -Pat $Pat
-    return $resp.data.organization.projectV2.id
+    param(
+        [string]$Owner,
+        [int]$ProjectNumber,
+        [string]$Pat,
+        [ValidateSet("user","organization")]
+        [string]$OwnerType = "organization"
+    )
+    if ($OwnerType -eq "user") {
+        $q = "{ user(login: `"$Owner`") { projectV2(number: $ProjectNumber) { id title } } }"
+        $resp = Invoke-GhGraphQL -Query $q -Pat $Pat
+        $id = $resp.data.user.projectV2.id
+        if (-not $id) {
+            Write-Log -Message "user.projectV2 query returned null. Trying viewer query..." -Level "WARN"
+            # Fallback: query via viewer (works when PAT owner = project owner)
+            $q2 = "{ viewer { projectV2(number: $ProjectNumber) { id title } } }"
+            $resp2 = Invoke-GhGraphQL -Query $q2 -Pat $Pat
+            $id = $resp2.data.viewer.projectV2.id
+        }
+        return $id
+    } else {
+        $q = "{ organization(login: `"$Owner`") { projectV2(number: $ProjectNumber) { id title } } }"
+        $resp = Invoke-GhGraphQL -Query $q -Pat $Pat
+        return $resp.data.organization.projectV2.id
+    }
 }
 
 # --- Get all ProjectV2 fields (especially Status single-select) ---
