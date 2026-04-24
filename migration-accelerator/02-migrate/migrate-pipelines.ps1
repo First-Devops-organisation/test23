@@ -91,7 +91,8 @@ $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 if ($config) {
     if ($null -ne $config.PIPELINE_IDS) { $PipelineId = $config.PIPELINE_IDS }
     if ($config.PIPELINE_TYPE) { $PipelineType = $config.PIPELINE_TYPE }
-    if ($config.MODE) { $Mode = $config.MODE }
+    if ($config.MIGRATE_MODE) { $Mode = $config.MIGRATE_MODE }
+    elseif ($config.MODE) { $Mode = $config.MODE }
 }
 
 # Parse PIPELINE_REPO_MAP (format: "1106=repo1,1135=repo2,717=repo3")
