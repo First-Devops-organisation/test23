@@ -88,30 +88,38 @@ stages:
               script: |
                 $configPath = "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
                 $ids = ""
-                $mode = ""
+                $type = ""
                 if (Test-Path $configPath) {
                     $config = Get-Content $configPath -Raw | ConvertFrom-Json
                     if ($null -ne $config.PIPELINE_IDS) { $ids = ($config.PIPELINE_IDS -join ',') }
                     if ($config.MIGRATE_MODE) { $mode = $config.MIGRATE_MODE }
                     elseif ($config.MODE) { $mode = $config.MODE }
+                    if ($config.PIPELINE_TYPE) { $type = $config.PIPELINE_TYPE }
                 }
                 
                 # If config doesn't have it, fallback to env (var group)
                 $literalIds = '$' + '(PIPELINE_IDS)'
                 $literalMode = '$' + '(MIGRATE_MODE)'
+                $literalType = '$' + '(PIPELINE_TYPE)'
                 
                 $macroIds = '$(PIPELINE_IDS)'
                 $macroMode = '$(MIGRATE_MODE)'
+                $macroType = '$(PIPELINE_TYPE)'
                 
                 if (-not $ids -and $macroIds -ne $literalIds) { $ids = $macroIds }
                 if (-not $mode -and $macroMode -ne $literalMode) { $mode = $macroMode }
+                if (-not $type -and $macroType -ne $literalType) { $type = $macroType }
                 if (-not $mode) { $mode = "dry-run" } # Default is dry-run if left totally blank
+                if (-not $type) { $type = "build" }
                 
                 Write-Host "Resolved PIPELINE_IDS: $ids"
                 Write-Host "Resolved MIGRATE_MODE: $mode"
+                Write-Host "Resolved PIPELINE_TYPE: $type"
                 
                 Write-Host "##vso[task.setvariable variable=HAS_IDS;isOutput=true]$(if ($ids) { 'true' } else { 'false' })"
+                Write-Host "##vso[task.setvariable variable=RESOLVED_IDS;isOutput=true]$ids"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_MODE;isOutput=true]$mode"
+                Write-Host "##vso[task.setvariable variable=RESOLVED_TYPE;isOutput=true]$type"
 
   # ===========================================================================
   # STAGE 2 – MIGRATE
@@ -120,6 +128,10 @@ stages:
     displayName: "2. Migrate Pipelines"
     dependsOn: Discover
     condition: and(succeeded(), eq(dependencies.Discover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'))
+    variables:
+      PIPELINE_IDS: $[ dependencies.Discover.outputs['AuditPipelines.checkConfig.RESOLVED_IDS'] ]
+      MIGRATE_MODE: $[ dependencies.Discover.outputs['AuditPipelines.checkConfig.RESOLVED_MODE'] ]
+      PIPELINE_TYPE: $[ dependencies.Discover.outputs['AuditPipelines.checkConfig.RESOLVED_TYPE'] ]
     jobs:
       - job: DryRun
         displayName: "2.1 Dry-Run Preview"
