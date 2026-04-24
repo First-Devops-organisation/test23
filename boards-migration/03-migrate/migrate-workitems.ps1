@@ -14,6 +14,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Ensure output directories exist
+$reportsDir = Join-Path $PSScriptRoot "..
+eports"
+$logsDir    = Join-Path $PSScriptRoot "..\logs"
+if (-not (Test-Path $reportsDir)) { New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null }
+if (-not (Test-Path $logsDir))    { New-Item -ItemType Directory -Path $logsDir    -Force | Out-Null }
 $scriptRoot = Split-Path $PSScriptRoot -Parent
 
 . "$scriptRoot\helpers\logging.ps1"
@@ -134,7 +141,7 @@ foreach ($item in $sortedItems) {
 
     $migrated++
     Write-LogProgress -Current $migrated -Total $total -ItemName "work items"
-    Write-Log -Message "[$adoId] $type: $title" -Level "INFO"
+    Write-Log -Message "[$adoId] ${type}: $title" -Level "INFO"
 
     # --- Skip if already migrated (resume mode) ---
     if ($migrationLog.ContainsKey("$adoId")) {
