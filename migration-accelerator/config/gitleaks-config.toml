@@ -4,7 +4,7 @@
 title = "Migration Secret Scanner"
 
 # ============================================================================
-# Specific patterns first (these take priority)
+# Specific patterns (match the VALUE directly — no secretGroup needed)
 # ============================================================================
 
 [[rules]]
@@ -44,13 +44,14 @@ regex = '''AIzaSy[0-9A-Za-z_-]{33}'''
 keywords = ["AIzaSy"]
 
 # ============================================================================
-# Generic key=value patterns (catches everything else)
+# Generic key=value (secretGroup = 2 → captures the VALUE, not the key name)
 # ============================================================================
 
 [[rules]]
 id = "secret-assignment"
-description = "Secret value assignment"
-regex = '''(?i)(password|passwd|pwd|secret|api_key|api_token|access_key|auth_token|client_secret|private_key|jwt_secret|stripe|env_key|app_key|db_password|google_api_key)\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
+description = "Secret value in key=value assignment"
+regex = '''(?i)(password|passwd|pwd|secret|api_key|api_token|access_key|auth_token|client_secret|private_key|jwt_secret|stripe|env_key|app_key|db_password|google_api_key)[_A-Z]*\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
+secretGroup = 2
 keywords = ["password", "secret", "api_key", "api_token", "access_key", "auth_token", "client_secret", "private_key", "jwt_secret", "stripe", "env_key", "app_key", "db_password", "google_api_key"]
 
 # Allow list
