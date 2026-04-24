@@ -26,7 +26,6 @@ param(
     [ValidateSet("list", "dry-run", "migrate", "audit")]
     [string]$Mode = "dry-run",
 
-    [ValidateSet("build", "release")]
     [string]$PipelineType = "build",
 
     [string]$CustomTransformersDir,
@@ -113,13 +112,16 @@ if (-not $pipelineIds) {
     $envIds = $env:PIPELINE_IDS
     if ($envIds) { $pipelineIds = $envIds -split ',' | ForEach-Object { $_.Trim() } }
 }
-if (-not $pipelineType) { $pipelineType = if ($env:PIPELINE_TYPE) { $env:PIPELINE_TYPE } else { "build" } }
-# Ensure PipelineType param is set and valid
-if ($pipelineType -in @("build", "release")) {
-    $PipelineType = $pipelineType
-} else {
-    $PipelineType = "build"
+# If not set, fallback to env or default
+if (-not $pipelineType -or [string]::IsNullOrWhiteSpace($pipelineType)) {
+    $pipelineType = "build"
 }
+# Manual validation for PipelineType
+if ($pipelineType -notin @("build", "release")) {
+    Write-Host "ERROR: PipelineType must be 'build' or 'release'. Value was: '$pipelineType'" -ForegroundColor Red
+    exit 1
+}
+$PipelineType = $pipelineType
 if (-not $mode) { $mode = if ($env:MODE) { $env:MODE } else { $Mode } }
 if (-not $ghRepo) { $ghRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null } }
 if (-not $pipelineRepoMap.Count -and $env:PIPELINE_REPO_MAP) {
