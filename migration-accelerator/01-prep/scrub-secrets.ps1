@@ -120,15 +120,11 @@ foreach ($reportFile in $reportFiles) {
             $keyName = $finding.RuleID
         }
 
-        # --- Build descriptive secret name ---
-        $fileName = [System.IO.Path]::GetFileNameWithoutExtension($finding.File) -replace "[^a-zA-Z0-9]", "_"
-        $fileExt = [System.IO.Path]::GetExtension($finding.File) -replace "\.", ""
-        $ruleClean = ($finding.RuleID -replace "[^a-zA-Z0-9]", "_").ToUpper()
-        $lineNum = $finding.StartLine
-        $secretName = "${fileName}_${fileExt}_L${lineNum}_${ruleClean}".ToUpper()
-
-        # Ensure valid GitHub secret name
-        $secretName = $secretName -replace "[^A-Z0-9_]", "_"
+        # --- Use actual key name as GitHub Secret name ---
+        $secretName = $keyName.ToUpper() -replace "[^A-Z0-9_]", "_"
+        if ([string]::IsNullOrWhiteSpace($secretName)) {
+            $secretName = ($finding.RuleID -replace "[^a-zA-Z0-9]", "_").ToUpper()
+        }
         if ($secretName -match "^\d") { $secretName = "S_$secretName" }
         if ($secretName.Length -gt 100) { $secretName = $secretName.Substring(0, 100) }
 
