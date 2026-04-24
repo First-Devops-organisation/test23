@@ -31,10 +31,14 @@ $adoOrg       = $config.source.organization
 $adoProject   = $config.source.project
 $areaPath     = $config.source.areaPath
 $adoPat       = if ($config.source.pat -match '^\$\(') { $env:ADO_PAT } else { $config.source.pat }
-$ghOrg        = $config.target.organization
-$ghRepo       = $config.target.repository
-$ghProjNum    = $config.target.projectNumber
-$ghPat        = if ($config.target.pat -match '^\$\(') { $env:GH_PAT } else { $config.target.pat }
+$ghOrg            = $config.target.organization
+$ghRepo           = $config.target.repository
+$ghProjNum        = $config.target.projectNumber
+$ghProjectOwner = [string]$config.target.projectOwner
+$ghProjectOwnerType = [string]$config.target.projectOwnerType
+if ([string]::IsNullOrEmpty($ghProjectOwner)) { $ghProjectOwner = $ghOrg }
+if ([string]::IsNullOrEmpty($ghProjectOwnerType)) { $ghProjectOwnerType = "user" }
+$ghPat            = if ($config.target.pat -match '^\$\(') { $env:GH_PAT } else { $config.target.pat }
 $reportDir    = Join-Path $scriptRoot $config.output.reportDir
 $logDir       = Join-Path $scriptRoot $config.output.logDir
 $tempDir      = Join-Path $scriptRoot "tmp"
@@ -79,7 +83,7 @@ if ($Resume -and (Test-Path $migLogPath)) {
 $ghProjectId = $null; $statusField = $null; $statusOptions = $null
 if ($ghProjNum) {
     Write-Log -Message "Fetching GitHub Project #$ghProjNum..." -Level "INFO"
-    $ghProjectId = Get-GhProjectId -Org $ghOrg -ProjectNumber $ghProjNum -Pat $ghPat
+    $ghProjectId = Get-GhProjectId -Owner $ghProjectOwner -ProjectNumber $ghProjNum -Pat $ghPat -OwnerType $ghProjectOwnerType
     Write-Log -Message "Project ID: $ghProjectId" -Level "INFO"
     $fields = Get-GhProjectFields -ProjectId $ghProjectId -Pat $ghPat
     $statusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Status" }
