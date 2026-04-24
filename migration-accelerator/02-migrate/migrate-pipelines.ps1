@@ -114,6 +114,12 @@ if (-not $pipelineIds) {
     if ($envIds) { $pipelineIds = $envIds -split ',' | ForEach-Object { $_.Trim() } }
 }
 if (-not $pipelineType) { $pipelineType = if ($env:PIPELINE_TYPE) { $env:PIPELINE_TYPE } else { "build" } }
+# Ensure PipelineType param is set and valid
+if ($pipelineType -in @("build", "release")) {
+    $PipelineType = $pipelineType
+} else {
+    $PipelineType = "build"
+}
 if (-not $mode) { $mode = if ($env:MODE) { $env:MODE } else { $Mode } }
 if (-not $ghRepo) { $ghRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null } }
 if (-not $pipelineRepoMap.Count -and $env:PIPELINE_REPO_MAP) {
