@@ -254,19 +254,31 @@ stages:
                     if ($secrets.Count -gt 0) {
                         Write-Host "`n[Step 2] Scrubbing $($secrets.Count) secrets from history..." -ForegroundColor Cyan
 
-                        # Build expressions file
+                        # Build expressions file (no BOM, LF line endings)
                         $expFile = Join-Path $workDir "expressions.txt"
-                        $expressions = @()
+                        $lines = @()
                         foreach ($entry in $secrets) {
-                            $placeholder = "**secret-detected**"
-                            $expressions += "$($entry.SecretValue)==>$placeholder"
+                            $secretVal = $entry.SecretValue
+                            $line = "${secretVal}==>**secret-detected**"
+                            $lines += $line
+                            Write-Host "    Expression: [${line}]" -ForegroundColor Gray
                         }
-                        $expressions | Out-File -FilePath $expFile -Encoding utf8
+                        # Write without BOM, with LF line endings
+                        $content = ($lines -join "`n") + "`n"
+                        [System.IO.File]::WriteAllText($expFile, $content, [System.Text.UTF8Encoding]::new($false))
                         $absExpFile = (Resolve-Path $expFile).Path
+
+                        Write-Host "    Expressions file: $absExpFile" -ForegroundColor Gray
+                        Write-Host "    File contents:" -ForegroundColor Gray
+                        Get-Content $absExpFile | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
 
                         # Run git-filter-repo
                         Push-Location $cloneDir
-                        git filter-repo --replace-text "$absExpFile" --force 2>&1
+                        Write-Host "    Running git-filter-repo in: $(Get-Location)" -ForegroundColor Gray
+                        $filterOutput = git filter-repo --replace-text "$absExpFile" --force 2>&1
+                        $filterExit = $LASTEXITCODE
+                        Write-Host "    git-filter-repo exit code: $filterExit" -ForegroundColor $(if ($filterExit -eq 0) { "Green" } else { "Red" })
+                        if ($filterOutput) { $filterOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
                         Pop-Location
 
                         Write-Host "✓ $($secrets.Count) secrets scrubbed from history" -ForegroundColor Green
