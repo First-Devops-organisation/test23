@@ -1,7 +1,7 @@
 {
   "source": {
     "type": "AzureDevOps",
-    "organization": "https://dev.azure.com/YashTech-DevOps",
+    "organization": "YashTech-DevOps",
     "project": "YASH-DevOps-Serverless",
     "areaPath": "YASH-DevOps-Serverless\\POC-Migration",
     "pat": "$(ADO_PAT)"
