@@ -23,9 +23,9 @@ param(
 
     [int[]]$PipelineId,
 
-    [string]$Mode,
+    [string]$Mode = "dry-run",
 
-    [string]$PipelineType,
+    [string]$PipelineType = "build",
 
     [string]$CustomTransformersDir,
 
@@ -35,14 +35,14 @@ param(
 
     [string]$OutputDir = "./output/pipelines"
 )
-$Mode = if ($Mode) { $Mode } elseif ($config -and $config.MODE) { $config.MODE } elseif ($env:MODE) { $env:MODE } else { "dry-run" }
+$Mode = if ($PSBoundParameters.ContainsKey('Mode')) { $Mode } elseif ($config -and $config.MODE) { $config.MODE } elseif ($env:MODE) { $env:MODE } else { $Mode }
 # Manual validation for Mode
 if ($Mode -notin @("list", "dry-run", "migrate", "audit")) {
     Write-Host "ERROR: Mode must be one of 'list', 'dry-run', 'migrate', or 'audit'. Value was: '$Mode'" -ForegroundColor Red
     exit 1
 }
 
-$PipelineType = if ($PipelineType) { $PipelineType } elseif ($config -and $config.PIPELINE_TYPE) { $config.PIPELINE_TYPE } elseif ($env:PIPELINE_TYPE) { $env:PIPELINE_TYPE } else { "build" }
+$PipelineType = if ($PSBoundParameters.ContainsKey('PipelineType')) { $PipelineType } elseif ($config -and $config.PIPELINE_TYPE) { $config.PIPELINE_TYPE } elseif ($env:PIPELINE_TYPE) { $env:PIPELINE_TYPE } else { $PipelineType }
 # Manual validation for PipelineType
 if ($PipelineType -notin @("build", "release")) {
     Write-Host "ERROR: PipelineType must be 'build' or 'release'. Value was: '$PipelineType'" -ForegroundColor Red
