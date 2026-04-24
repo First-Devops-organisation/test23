@@ -258,9 +258,8 @@ stages:
                         $expFile = Join-Path $workDir "expressions.txt"
                         $expressions = @()
                         foreach ($entry in $secrets) {
-                            $escaped = [regex]::Escape($entry.SecretValue)
-                            $placeholder = "***GITHUB_SECRET:$($entry.SecretName)***"
-                            $expressions += "regex:$escaped==>$placeholder"
+                            $placeholder = "**secret-detected**"
+                            $expressions += "$($entry.SecretValue)==>$placeholder"
                         }
                         $expressions | Out-File -FilePath $expFile -Encoding utf8
                         $absExpFile = (Resolve-Path $expFile).Path

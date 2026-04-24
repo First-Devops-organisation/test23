@@ -142,10 +142,9 @@ foreach ($reportFile in $reportFiles) {
             Description      = $finding.Description
         }
 
-        # --- Build redaction expression ---
-        $escapedSecret = [regex]::Escape($secret)
-        $placeholder = "***GITHUB_SECRET:${secretName}***"
-        $expressions += "regex:$escapedSecret==>$placeholder"
+        # --- Build redaction expression (literal for exact match) ---
+        $placeholder = "**secret-detected**"
+        $expressions += "$secret==>$placeholder"
 
         Write-Host "    → $($finding.File):$($finding.StartLine) | $($finding.RuleID) → $secretName ($secretPreview)" -ForegroundColor Gray
 
