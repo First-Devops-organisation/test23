@@ -8,8 +8,8 @@
   },
   "target": {
     "type": "GitHub",
-    "organization": "First-Devops-organisation",
-    "repository": "migrate",
+    "organization": "Urvashi773",
+    "repository": "ado-migration-poc",
     "projectNumber": 2,
     "projectOwner": "Urvashi773",
     "projectOwnerType": "user",
