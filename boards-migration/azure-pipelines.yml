@@ -17,7 +17,7 @@ pool:
 variables:
   - group: boards-migration  # Contains ADO_PAT and GH_PAT as secrets
   - name: workingDir
-    value: '$(Build.SourcesDirectory)/boards-migration'
+    value: '$(Build.SourcesDirectory)\boards-migration'
 
 parameters:
   - name: phase
@@ -69,8 +69,8 @@ stages:
     - task: PowerShell@2
       displayName: 'Discover Work Items'
       inputs:
-        filePath: '$(workingDir)/01-discover/discover-workitems.ps1'
-        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        filePath: '$(workingDir)\01-discover\discover-workitems.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
@@ -79,8 +79,8 @@ stages:
     - task: PowerShell@2
       displayName: 'Analyze Board Structure'
       inputs:
-        filePath: '$(workingDir)/01-discover/analyze-board-structure.ps1'
-        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        filePath: '$(workingDir)\01-discover\analyze-board-structure.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
@@ -88,7 +88,7 @@ stages:
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Discovery Reports'
       inputs:
-        targetPath: '$(workingDir)/reports'
+        targetPath: '$(workingDir)\reports'
         artifact: 'discovery-reports'
         publishLocation: 'pipeline'
 
@@ -117,8 +117,8 @@ stages:
     - task: PowerShell@2
       displayName: 'Validate Mappings'
       inputs:
-        filePath: '$(workingDir)/02-prep/validate-mappings.ps1'
-        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        filePath: '$(workingDir)\02-prep\validate-mappings.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
@@ -127,8 +127,8 @@ stages:
     - task: PowerShell@2
       displayName: 'Setup GitHub Labels'
       inputs:
-        filePath: '$(workingDir)/02-prep/setup-github-labels.ps1'
-        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        filePath: '$(workingDir)\02-prep\setup-github-labels.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
         pwsh: true
       env:
         GH_PAT: $(GH_PAT)
@@ -136,7 +136,7 @@ stages:
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Prep Logs'
       inputs:
-        targetPath: '$(workingDir)/logs'
+        targetPath: '$(workingDir)\logs'
         artifact: 'prep-logs'
         publishLocation: 'pipeline'
       condition: always()
@@ -190,7 +190,7 @@ stages:
       inputs:
         buildType: 'current'
         artifactName: 'discovery-reports'
-        targetPath: '$(workingDir)/reports'
+        targetPath: '$(workingDir)\reports'
       condition: and(succeeded(), in('${{ parameters.phase }}', 'all'))
       continueOnError: true
 
@@ -199,10 +199,14 @@ stages:
       inputs:
         targetType: inline
         script: |
+          # Build clean Windows paths inside PowerShell to avoid mixed separator issues
+          $base = Join-Path "$(Build.SourcesDirectory)" "boards-migration"
+          $scriptPath = Join-Path $base "03-migrate\migrate-workitems.ps1"
+          $configPath = Join-Path $base "config\boards-migration-config.json"
+          Write-Host "Script: $scriptPath"
+          Write-Host "Config: $configPath"
           $dryRun = '${{ parameters.dryRun }}'
           $resume = '${{ parameters.resume }}'
-          $scriptPath = "$(workingDir)\03-migrate\migrate-workitems.ps1"
-          $configPath = "$(workingDir)\config\boards-migration-config.json"
           $flags = [System.Collections.ArrayList]@()
           [void]$flags.Add('-ConfigPath')
           [void]$flags.Add($configPath)
@@ -217,7 +221,7 @@ stages:
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Migration Log'
       inputs:
-        targetPath: '$(workingDir)/reports'
+        targetPath: '$(workingDir)\reports'
         artifact: 'migration-reports'
         publishLocation: 'pipeline'
       condition: always()
@@ -225,7 +229,7 @@ stages:
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Migration Logs'
       inputs:
-        targetPath: '$(workingDir)/logs'
+        targetPath: '$(workingDir)\logs'
         artifact: 'migration-logs'
         publishLocation: 'pipeline'
       condition: always()
@@ -258,14 +262,14 @@ stages:
       inputs:
         buildType: 'current'
         artifactName: 'migration-reports'
-        targetPath: '$(workingDir)/reports'
+        targetPath: '$(workingDir)\reports'
       continueOnError: true
 
     - task: PowerShell@2
       displayName: 'Validate Migration'
       inputs:
-        filePath: '$(workingDir)/04-validate/validate-migration.ps1'
-        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        filePath: '$(workingDir)\04-validate\validate-migration.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
@@ -275,15 +279,15 @@ stages:
     - task: PowerShell@2
       displayName: 'Generate Summary Report'
       inputs:
-        filePath: '$(workingDir)/04-validate/generate-report.ps1'
-        arguments: '-ConfigPath "$(workingDir)/config/boards-migration-config.json"'
+        filePath: '$(workingDir)\04-validate\generate-report.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
         pwsh: true
       condition: always()
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Final Reports'
       inputs:
-        targetPath: '$(workingDir)/reports'
+        targetPath: '$(workingDir)\reports'
         artifact: 'final-reports'
         publishLocation: 'pipeline'
       condition: always()
@@ -294,7 +298,7 @@ stages:
       inputs:
         targetType: inline
         script: |
-          $reportPath = "$(workingDir)/reports/migration-summary.md"
+          $reportPath = "$(workingDir)\reports\migration-summary.md"
           if (Test-Path $reportPath) {
             $content = Get-Content $reportPath -Raw
             Write-Host "##vso[task.uploadsummary]$reportPath"
