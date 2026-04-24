@@ -8,6 +8,7 @@ parameters:
     values:
       - pipeline
       - repo
+      - both
 
   - name: MigrationMode
     displayName: "Migration Mode"
@@ -58,7 +59,7 @@ stages:
   # ===========================================================================
   - stage: PipelineDiscover
     displayName: "1. Discover & Audit Pipelines"
-    condition: eq('${{ parameters.migrationType }}', 'pipeline')
+    condition: in('${{ parameters.migrationType }}', 'pipeline', 'both')
     pool:
       vmImage: ubuntu-latest
     jobs:
@@ -175,7 +176,7 @@ stages:
   - stage: MigratePipeline
     displayName: "2. Migrate Pipelines"
     dependsOn: PipelineDiscover
-    condition: and(succeeded(), eq(dependencies.PipelineDiscover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'), eq('${{ parameters.migrationType }}', 'pipeline'))
+    condition: and(succeeded(), eq(dependencies.PipelineDiscover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'), in('${{ parameters.migrationType }}', 'pipeline', 'both'))
     pool:
       vmImage: ubuntu-latest
     variables:
@@ -287,7 +288,7 @@ stages:
   # ===========================================================================
   - stage: RepoDiscover
     displayName: "1. Discover & Analyse"
-    condition: eq('${{ parameters.migrationType }}', 'repo')
+    condition: in('${{ parameters.migrationType }}', 'repo', 'both')
     pool:
       vmImage: windows-latest
     jobs:
@@ -301,7 +302,7 @@ stages:
   - stage: ReviewGate
     displayName: "2. Review Gate"
     dependsOn: RepoDiscover
-    condition: and(succeeded(), eq('${{ parameters.migrationType }}', 'repo'))
+    condition: and(succeeded(), in('${{ parameters.migrationType }}', 'repo', 'both'))
     jobs:
       - job: ReviewGateJob
         displayName: "Gate: Review Discovery Findings"
@@ -340,7 +341,7 @@ stages:
   - stage: MigrateSingle
     displayName: "3a. Migrate (Single Repo)"
     dependsOn: ReviewGate
-    condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Single'), eq('${{ parameters.migrationType }}', 'repo'))
+    condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Single'), in('${{ parameters.migrationType }}', 'repo', 'both'))
     pool:
       vmImage: windows-latest
     jobs:
@@ -465,7 +466,7 @@ stages:
   - stage: MigrateBatch
     displayName: "3b. Migrate (Batch)"
     dependsOn: ReviewGate
-    condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'), eq('${{ parameters.migrationType }}', 'repo'))
+    condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'), in('${{ parameters.migrationType }}', 'repo', 'both'))
     pool:
       vmImage: windows-latest
     jobs:
@@ -596,7 +597,7 @@ stages:
       - MigrateBatch
     condition: |
       and(
-        eq('${{ parameters.migrationType }}', 'repo'),
+        in('${{ parameters.migrationType }}', 'repo', 'both'),
         eq('${{ parameters.RunValidation }}', true),
         or(
           eq(dependencies.MigrateSingle.result, 'Succeeded'),
