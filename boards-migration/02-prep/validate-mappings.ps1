@@ -64,6 +64,13 @@ if ($ghPat) {
     $ghOrg  = $config.target.organization
     $ghRepo = $config.target.repository
     $ghProjNum = $config.target.projectNumber
+    # Read with explicit string cast to handle null/empty PSCustomObject properties
+    $ghProjectOwner = [string]$config.target.projectOwner
+    $ghProjectOwnerType = [string]$config.target.projectOwnerType
+    # Fallback defaults
+    if ([string]::IsNullOrEmpty($ghProjectOwner)) { $ghProjectOwner = $ghOrg }
+    if ([string]::IsNullOrEmpty($ghProjectOwnerType)) { $ghProjectOwnerType = "user" }
+    Write-Log -Message "Project owner: $ghProjectOwner | Type: $ghProjectOwnerType | Number: $ghProjNum" -Level "INFO"
 
     # Test repo access
     try {
@@ -76,7 +83,7 @@ if ($ghPat) {
 
     # Test project access
     try {
-        $projectId = Get-GhProjectId -Org $ghOrg -ProjectNumber $ghProjNum -Pat $ghPat
+        $projectId = Get-GhProjectId -Owner $ghProjectOwner -ProjectNumber $ghProjNum -Pat $ghPat -OwnerType $ghProjectOwnerType
         if ($projectId) {
             Write-Log -Message "GitHub Project #$ghProjNum accessible (ID: $projectId)" -Level "SUCCESS"
 
