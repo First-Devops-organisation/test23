@@ -145,17 +145,20 @@ Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
 Write-Host "  Project:      $AdoProject" -ForegroundColor Gray
 
-# --- List mode: show all pipeline IDs and exit ---
-if ($Mode -eq "list") {
+
+# --- Multi-stage logic ---
+# Stage 1: List pipelines if PipelineId is empty or Mode is dry-run/migrate
+$shouldList = -not $PipelineId -or $PipelineId.Count -eq 0 -or $Mode -in @("dry-run", "migrate")
+if ($shouldList) {
     Write-Host "`nFetching pipelines from ADO..." -ForegroundColor Yellow
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
     $adoHeaders = @{ Authorization = "Basic $base64Auth" }
 
-    # Fetch Build pipelines (YAML + Classic Build) — includeAllProperties ensures process.type is returned
+    # Fetch Build pipelines (YAML + Classic Build)
     $buildUrl = "$adoOrgUrl/$AdoProject/_apis/build/definitions?api-version=7.1&includeAllProperties=true"
     $buildPipelines = (Invoke-RestMethod -Uri $buildUrl -Headers $adoHeaders).value
 
-    # Fetch Classic Release pipelines (separate API)
+    # Fetch Classic Release pipelines
     $releasePipelines = @()
     try {
         $releaseUrl = "https://vsrm.dev.azure.com/$adoOrgName/$AdoProject/_apis/release/definitions?api-version=7.1"
@@ -189,10 +192,9 @@ if ($Mode -eq "list") {
     Write-Host "`nTo migrate a build pipeline:   -PipelineId <ID> -PipelineType build -Mode migrate" -ForegroundColor Green
     Write-Host "To migrate a release pipeline: -PipelineId <ID> -PipelineType release -Mode migrate" -ForegroundColor Green
 
-    # --- Show audit status per pipeline if audit_summary.md exists ---
+    # Show audit status per pipeline if audit_summary.md exists
     $auditFile = Join-Path $OutputDir "audit_summary.md"
     if (-not (Test-Path $auditFile)) {
-        # Also check default audit output location
         $auditFile = "./output/pipeline-audit/audit_summary.md"
     }
     if (Test-Path $auditFile) {
@@ -206,7 +208,6 @@ if ($Mode -eq "list") {
             @{ Header = 'Failed';                 Color = 'Red';    Pattern = '(?ms)^### Failed\s*\n(.*?)(?=^### |\z)' }
         )
 
-        # Build lookups: exact name, lowercase name, slug name, ID-based
         $nameToId = @{}
         $idToName = @{}
         $nameToType = @{}
@@ -219,7 +220,6 @@ if ($Mode -eq "list") {
             $bType = if ($bp.process.type -eq 2) { "YAML" } else { "Classic Build" }
             $nameToType[$bp.name] = $bType
             $idToType["$($bp.id)"] = $bType
-            # Slug: lowercase, spaces/special chars to hyphens
             $slug = ($bp.name.ToLower() -replace '[^a-z0-9\-]', '-') -replace '-+', '-' -replace '^-|-$', ''
             $slugToId[$slug] = $bp.id
             $slugToType[$slug] = $bType
@@ -246,12 +246,8 @@ if ($Mode -eq "list") {
                     foreach ($pm in $pipelineEntries) {
                         $fullPath = $pm.Groups[1].Value.Trim()
                         $pipeName = ($fullPath -split '/')[-1]
-
-                        # Try direct name match first (case-sensitive)
                         $pipelineIdVal = $nameToId[$pipeName]
                         $pipeTypeVal = $nameToType[$pipeName]
-
-                        # Fallback: case-insensitive match
                         if (-not $pipelineIdVal) {
                             $ciMatch = $nameToId.Keys | Where-Object { $_ -ieq $pipeName } | Select-Object -First 1
                             if ($ciMatch) {
@@ -260,8 +256,6 @@ if ($Mode -eq "list") {
                                 $pipeName = $ciMatch
                             }
                         }
-
-                        # Fallback: extract ID from _(ID) suffix
                         if (-not $pipelineIdVal -and $pipeName -match '_\((\d+)\)$') {
                             $extractedId = $matches[1]
                             $pipelineIdVal = [int]$extractedId
@@ -269,11 +263,8 @@ if ($Mode -eq "list") {
                             if (-not $pipeName) { $pipeName = ($fullPath -split '/')[-1] -replace '_\(\d+\)$', '' }
                             $pipeTypeVal = $idToType[$extractedId]
                         }
-
-                        # Fallback: slug match (lowercase, special chars normalized)
                         if (-not $pipelineIdVal) {
                             $auditSlug = ($pipeName.ToLower() -replace '[^a-z0-9\-]', '-') -replace '-+', '-' -replace '^-|-$', ''
-                            # Also try without _(ID) suffix
                             $auditSlugClean = ($auditSlug -replace '-+\d+$', '')
                             $matchSlug = $auditSlug
                             if ($slugToId.ContainsKey($auditSlug)) { $matchSlug = $auditSlug }
@@ -285,7 +276,6 @@ if ($Mode -eq "list") {
                                 if (-not $pipeName) { $pipeName = ($fullPath -split '/')[-1] }
                             }
                         }
-
                         if (-not $pipeTypeVal) { $pipeTypeVal = "Unknown" }
                         $migrateWith = if ($pipeTypeVal -eq "Release") { "-PipelineType release" } else { "-PipelineType build" }
                         if ($pipelineIdVal) {
@@ -299,7 +289,10 @@ if ($Mode -eq "list") {
         }
     }
 
-    return
+    # If only listing (no dry-run/migrate), exit after stage 1
+    if (-not $PipelineId -or $PipelineId.Count -eq 0) {
+        return
+    }
 }
 
 if ($Mode -eq "audit") {
