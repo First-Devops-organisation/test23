@@ -88,11 +88,16 @@ $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
 
+
 # PIPELINE_IDS
 if ($config -and $config.PIPELINE_IDS) {
     $pipelineIds = $config.PIPELINE_IDS
 } elseif ($env:PIPELINE_IDS) {
     $pipelineIds = $env:PIPELINE_IDS -split ',' | ForEach-Object { $_.Trim() }
+}
+# Assign to $PipelineId if not set
+if ((-not $PipelineId -or $PipelineId.Count -eq 0) -and $pipelineIds) {
+    $PipelineId = $pipelineIds
 }
 
 # PIPELINE_TYPE
