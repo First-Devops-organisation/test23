@@ -110,7 +110,7 @@ foreach ($type in $statesByType.Keys) {
         $typeOverride = $statusMappings.typeOverrides.$type
         $mapped = if ($typeOverride -and $typeOverride.$state) { $typeOverride.$state } else { $defaultMap.$state }
         if (-not $mapped -and $state -notin $unmappedStates) {
-            $unmappedStates += "$type::$state"
+            $unmappedStates += "${type}::$state"
         }
     }
 }
