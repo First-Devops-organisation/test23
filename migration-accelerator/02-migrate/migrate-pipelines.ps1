@@ -88,20 +88,64 @@ $env:GITHUB_ACCESS_TOKEN = $ghPat
 $env:AZURE_DEVOPS_ACCESS_TOKEN = $adoPat
 
 # Parse PIPELINE_REPO_MAP (format: "1106=repo1,1135=repo2,717=repo3")
+
+# Read PIPELINE_IDS, PIPELINE_TYPE, MODE, GH_REPO, PIPELINE_REPO_MAP from config if present, else env vars
+$pipelineIds = $null
+$pipelineType = $null
+$mode = $null
+$ghRepo = $null
 $pipelineRepoMap = @{}
-$repoMapRaw = if ($env:PIPELINE_REPO_MAP) { $env:PIPELINE_REPO_MAP } else { $null }
-if ($repoMapRaw) {
-    foreach ($entry in $repoMapRaw.Split(',')) {
+
+if ($config) {
+    if ($config.PIPELINE_IDS) { $pipelineIds = $config.PIPELINE_IDS }
+    if ($config.PIPELINE_TYPE) { $pipelineType = $config.PIPELINE_TYPE }
+    if ($config.MODE) { $mode = $config.MODE }
+    if ($config.GH_REPO) { $ghRepo = $config.GH_REPO }
+    if ($config.PIPELINE_REPO_MAP) {
+        foreach ($key in $config.PIPELINE_REPO_MAP.PSObject.Properties.Name) {
+            $pipelineRepoMap[$key] = $config.PIPELINE_REPO_MAP[$key]
+        }
+    }
+}
+
+# Fallback to env vars if not set in config
+if (-not $pipelineIds) {
+    $envIds = $env:PIPELINE_IDS
+    if ($envIds) { $pipelineIds = $envIds -split ',' | ForEach-Object { $_.Trim() } }
+}
+if (-not $pipelineType) { $pipelineType = if ($env:PIPELINE_TYPE) { $env:PIPELINE_TYPE } else { "build" } }
+if (-not $mode) { $mode = if ($env:MODE) { $env:MODE } else { $Mode } }
+if (-not $ghRepo) { $ghRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null } }
+if (-not $pipelineRepoMap.Count -and $env:PIPELINE_REPO_MAP) {
+    foreach ($entry in $env:PIPELINE_REPO_MAP.Split(',')) {
         $parts = $entry.Trim().Split('=', 2)
         if ($parts.Count -eq 2) {
             $pipelineRepoMap[$parts[0].Trim()] = $parts[1].Trim()
         }
     }
+}
+if ($pipelineRepoMap.Count) {
     Write-Host "  Pipeline-to-Repo map: $($pipelineRepoMap.Count) entries loaded" -ForegroundColor Gray
 }
 
-# Default target repo from GH_REPO env var
-$defaultTargetRepo = if ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
+# Default target repo from config or env var
+$defaultTargetRepo = $ghRepo
+
+Write-Host "=== Pipeline Migration ($mode) ===" -ForegroundColor Cyan
+Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
+Write-Host "  Project:      $AdoProject" -ForegroundColor Gray
+
+# --- Mode logic: dry-run or migrate ---
+if ($pipelineIds -and (!$mode -or $mode -eq "dry-run")) {
+    Write-Host "Running in dry-run mode for pipeline(s): $($pipelineIds -join ', ')" -ForegroundColor Yellow
+    $mode = "dry-run"
+}
+elseif ($mode -eq "migrate") {
+    Write-Host "Running in migrate mode for pipeline(s): $($pipelineIds -join ', ')" -ForegroundColor Green
+}
+else {
+    Write-Host "Mode: $mode" -ForegroundColor Gray
+}
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
