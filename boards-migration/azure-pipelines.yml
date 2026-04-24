@@ -199,11 +199,15 @@ stages:
       inputs:
         targetType: inline
         script: |
-          $configPath = "$(workingDir)/config/boards-migration-config.json"
-          $scriptPath = "$(workingDir)/03-migrate/migrate-workitems.ps1"
-          $flags = @('-ConfigPath', $configPath)
-          if ('${{ parameters.dryRun }}' -eq 'true')  { $flags += '-DryRun' }
-          if ('${{ parameters.resume }}' -eq 'true') { $flags += '-Resume' }
+          $dryRun = '${{ parameters.dryRun }}'
+          $resume = '${{ parameters.resume }}'
+          $scriptPath = "$(workingDir)\03-migrate\migrate-workitems.ps1"
+          $configPath = "$(workingDir)\config\boards-migration-config.json"
+          $flags = [System.Collections.ArrayList]@()
+          [void]$flags.Add('-ConfigPath')
+          [void]$flags.Add($configPath)
+          if ($dryRun -eq 'true')  { [void]$flags.Add('-DryRun') }
+          if ($resume -eq 'true') { [void]$flags.Add('-Resume') }
           & $scriptPath @flags
         pwsh: true
       env:
