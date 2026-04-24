@@ -258,21 +258,11 @@ stages:
                         $expFile = Join-Path $workDir "expressions.txt"
                         $lines = @()
                         foreach ($entry in $secrets) {
-                            $matchStr = $entry.MatchString
                             $secretVal = $entry.SecretValue
                             $keyName = $entry.KeyName
-
-                            if ($matchStr) {
-                                # Replace full match, keeping key name
-                                $masked = $matchStr -replace [regex]::Escape($secretVal), "**secret-detected**"
-                                $line = "${matchStr}==>${masked}"
-                            } else {
-                                # Fallback: replace just the secret value
-                                $line = "${secretVal}==>**secret-detected**"
-                            }
+                            $line = "${secretVal}==>**secret-detected**"
                             $lines += $line
                             Write-Host "    Key: $keyName | File: $($entry.SourceFile):$($entry.SourceLine)" -ForegroundColor Yellow
-                            Write-Host "    Replace: [$line]" -ForegroundColor DarkGray
                         }
                         # Write without BOM, with LF line endings
                         $content = ($lines -join "`n") + "`n"

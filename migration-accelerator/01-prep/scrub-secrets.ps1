@@ -155,9 +155,7 @@ foreach ($reportFile in $reportFiles) {
         }
 
         # --- Build redaction expression ---
-        # Replace the full match with key=**secret-detected**
-        $maskedMatch = $match -replace [regex]::Escape($secret), "**secret-detected**"
-        $expressions += "$match==>$maskedMatch"
+        $expressions += "$secret==>**secret-detected**"
 
         # --- Add to migration report ---
         $migrationReport += [PSCustomObject]@{
