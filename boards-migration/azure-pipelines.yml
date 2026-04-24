@@ -199,20 +199,17 @@ stages:
       inputs:
         targetType: inline
         script: |
-          # Build clean Windows paths inside PowerShell to avoid mixed separator issues
-          $base = Join-Path "$(Build.SourcesDirectory)" "boards-migration"
-          $scriptPath = Join-Path $base "03-migrate\migrate-workitems.ps1"
-          $configPath = Join-Path $base "config\boards-migration-config.json"
-          Write-Host "Script: $scriptPath"
-          Write-Host "Config: $configPath"
-          $dryRun = '${{ parameters.dryRun }}'
-          $resume = '${{ parameters.resume }}'
-          $flags = [System.Collections.ArrayList]@()
-          [void]$flags.Add('-ConfigPath')
-          [void]$flags.Add($configPath)
-          if ($dryRun -eq 'true')  { [void]$flags.Add('-DryRun') }
-          if ($resume -eq 'true') { [void]$flags.Add('-Resume') }
-          & $scriptPath @flags
+          # Build clean Windows paths using Join-Path
+          $base       = Join-Path "$(Build.SourcesDirectory)" "boards-migration"
+          $scriptPath = Join-Path $base "03-migrate" "migrate-workitems.ps1"
+          $configPath = Join-Path $base "config" "boards-migration-config.json"
+          Write-Host "Script : $scriptPath"
+          Write-Host "Config : $configPath"
+          # Use hashtable splatting - correctly binds named parameters
+          $params = @{ ConfigPath = $configPath }
+          if ('${{ parameters.dryRun }}' -eq 'true') { $params['DryRun'] = $true }
+          if ('${{ parameters.resume }}' -eq 'true') { $params['Resume'] = $true }
+          & $scriptPath @params
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
