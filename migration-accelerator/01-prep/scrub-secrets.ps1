@@ -74,14 +74,15 @@ foreach ($reportFile in $reportFiles) {
     $findings = Get-Content $reportFile.FullName -Raw | ConvertFrom-Json
     if ($findings.Count -eq 0) { continue }
 
-    # Deduplicate by file:line — one secret per line only
-    # Handles: overlapping rules AND git history duplicates
+    # Deduplicate by secret value — each unique secret = one GitHub Secret
+    # Handles: overlapping rules, history duplicates, same secret in multiple commits
     $uniqueFindings = @()
-    $seenLines = @{}
+    $seenSecrets = @{}
     foreach ($f in $findings) {
-        $key = "$($f.File):$($f.StartLine)"
-        if (-not $seenLines.ContainsKey($key)) {
-            $seenLines[$key] = $true
+        $secretVal = $f.Secret
+        if ([string]::IsNullOrWhiteSpace($secretVal)) { continue }
+        if (-not $seenSecrets.ContainsKey($secretVal)) {
+            $seenSecrets[$secretVal] = $true
             $uniqueFindings += $f
         }
     }
