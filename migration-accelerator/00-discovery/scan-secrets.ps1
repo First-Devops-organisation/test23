@@ -57,9 +57,15 @@ foreach ($project in $inventory.projects) {
             $cloneUrl = $repo.url -replace "://", "://$Pat@"
             git clone $cloneUrl $cloneDir 2>&1 | Out-Null
 
-            # Run gitleaks — scan full history
+            # Run gitleaks with custom config — scan full history
             $exitCode = 0
-            & gitleaks detect --source $cloneDir --report-path $reportFile --report-format json --no-banner 2>&1 | Out-Null
+            $gitleaksConfig = Join-Path $PSScriptRoot "../config/gitleaks-config.toml"
+            if (Test-Path $gitleaksConfig) {
+                $absConfig = (Resolve-Path $gitleaksConfig).Path
+                & gitleaks detect --source $cloneDir --report-path $reportFile --report-format json --no-banner --config "$absConfig" 2>&1 | Out-Null
+            } else {
+                & gitleaks detect --source $cloneDir --report-path $reportFile --report-format json --no-banner 2>&1 | Out-Null
+            }
             $exitCode = $LASTEXITCODE
 
             $findingCount = 0

@@ -4,17 +4,8 @@
 .DESCRIPTION
     Reads gitleaks scan reports, redacts secrets from Git history using git-filter-repo,
     and saves the original secret values to a protected JSON file.
-    After migration, a separate step creates GitHub repository secrets from this file.
 
     SAFETY: Works on a FRESH CLONE. The original ADO repo is NEVER modified.
-
-    Flow:
-      1. Read gitleaks findings
-      2. Redact secrets from Git history with a placeholder
-      3. Save secret values to secret-values.json (pipeline artifact, used post-migration)
-      4. Generate secret-migration-report.csv (mapping for teams)
-      5. Save the scrubbed clone as a pipeline artifact
-
 .PARAMETER SecretScanDir
     Directory containing gitleaks JSON reports from scan-secrets.ps1
 .PARAMETER Pat
@@ -64,7 +55,6 @@ $reportFiles = Get-ChildItem -Path $SecretScanDir -Filter "*_secrets.json" | Whe
 
 if ($reportFiles.Count -eq 0) {
     Write-Host "`nNo secret reports with findings found. All repos are clean." -ForegroundColor Green
-    # Create empty report so publish step doesn't fail
     @() | ConvertTo-Json | Out-File -FilePath (Join-Path $OutputDir "secret-values.json") -Encoding utf8
     exit 0
 }
@@ -107,16 +97,27 @@ foreach ($reportFile in $reportFiles) {
         $secretCounter++
         $totalSecrets++
 
-        # Generate a descriptive GitHub Secret name
+        # --- Build descriptive secret name ---
+        # Format: FILE_LINE_RULETYPE  e.g. SECRETS_TEST_TXT_L3_API_KEY
+        $fileName = [System.IO.Path]::GetFileNameWithoutExtension($finding.File) -replace "[^a-zA-Z0-9]", "_"
+        $fileExt = [System.IO.Path]::GetExtension($finding.File) -replace "\.", ""
         $ruleClean = ($finding.RuleID -replace "[^a-zA-Z0-9]", "_").ToUpper()
-        $secretName = "MIGRATED_${ruleClean}_$secretCounter"
+        $lineNum = $finding.StartLine
+        $secretName = "${fileName}_${fileExt}_L${lineNum}_${ruleClean}".ToUpper()
 
-        # Truncate if too long (GitHub secret names max 100 chars)
-        if ($secretName.Length -gt 100) {
-            $secretName = $secretName.Substring(0, 100)
+        # Ensure valid GitHub secret name (alphanumeric + underscore, no leading digit)
+        $secretName = $secretName -replace "[^A-Z0-9_]", "_"
+        if ($secretName -match "^\d") { $secretName = "S_$secretName" }
+        if ($secretName.Length -gt 100) { $secretName = $secretName.Substring(0, 100) }
+
+        # --- Determine what the secret looks like (for description) ---
+        $secretPreview = if ($secret.Length -le 8) {
+            "***" + ("*" * $secret.Length) + "***"
+        } else {
+            $secret.Substring(0, 3) + ("*" * ($secret.Length - 6)) + $secret.Substring($secret.Length - 3)
         }
 
-        # --- Save secret value for post-migration GitHub Secret creation ---
+        # --- Save secret value for post-migration ---
         $secretValues += [PSCustomObject]@{
             GitHubRepo       = $ghFullRepo
             SecretName       = $secretName
@@ -124,16 +125,17 @@ foreach ($reportFile in $reportFiles) {
             RuleID           = $finding.RuleID
             SourceFile       = $finding.File
             SourceLine       = $finding.StartLine
+            Description      = $finding.Description
         }
 
         # --- Build redaction expression ---
         $escapedSecret = [regex]::Escape($secret)
-        $placeholder = "***MIGRATED_TO_GITHUB_SECRET:${secretName}***"
+        $placeholder = "***GITHUB_SECRET:${secretName}***"
         $expressions += "regex:$escapedSecret==>$placeholder"
 
-        Write-Host "    → $($finding.RuleID) in $($finding.File):$($finding.StartLine) → $secretName" -ForegroundColor Gray
+        Write-Host "    → $($finding.File):$($finding.StartLine) | $($finding.RuleID) → $secretName ($secretPreview)" -ForegroundColor Gray
 
-        # --- Add to migration report (NO secret values here — safe to share) ---
+        # --- Add to migration report (NO secret values — safe to share) ---
         $migrationReport += [PSCustomObject]@{
             Repo              = $repoIdentifier
             GitHubRepo        = $ghFullRepo
@@ -141,19 +143,19 @@ foreach ($reportFile in $reportFiles) {
             Line              = $finding.StartLine
             SecretType        = $finding.RuleID
             Description       = $finding.Description
+            SecretPreview     = $secretPreview
             Placeholder       = $placeholder
             GitHubSecretName  = $secretName
-            SecretUsage       = "`${{ secrets.$secretName }}"
-            Action            = "Update code to use env var / GitHub Secret"
+            HowToUse          = "`${{ secrets.$secretName }}"
+            Action            = "Update code to read from env var"
         }
     }
 
     # Write expressions file
     $expressions | Out-File -FilePath $expressionsFile -Encoding utf8 -NoNewline:$false
-    Write-Host "    Expressions file: $expressionsFile" -ForegroundColor Gray
 
     if ($DryRun) {
-        Write-Host "    [DRY RUN] Would redact $($expressions.Count) secrets from history" -ForegroundColor Gray
+        Write-Host "    [DRY RUN] Would redact $($expressions.Count) secrets" -ForegroundColor Gray
         continue
     }
 
@@ -198,47 +200,172 @@ foreach ($reportFile in $reportFiles) {
     Move-Item -Path $cloneDir -Destination $outputRepoDir
 }
 
-# --- Save secret values JSON (used by post-migration step to create GitHub Secrets) ---
+# --- Save secret values JSON ---
 $secretValuesFile = Join-Path $OutputDir "secret-values.json"
 $secretValues | ConvertTo-Json -Depth 10 | Out-File -FilePath $secretValuesFile -Encoding utf8
-Write-Host "`n=== Secret values saved to: $secretValuesFile ===" -ForegroundColor Green
-Write-Host "This file will be used after migration to create GitHub Secrets." -ForegroundColor Gray
-Write-Host "WARNING: This file contains PLAINTEXT secret values. Handle with care." -ForegroundColor Red
 
-# --- Save Migration Report CSV (safe to share — NO secret values) ---
+# --- Save Migration Report CSV ---
+$reportCsvFile = Join-Path $OutputDir "secret-migration-report.csv"
 if ($migrationReport.Count -gt 0) {
-    $reportCsvFile = Join-Path $OutputDir "secret-migration-report.csv"
     $migrationReport | Export-Csv -Path $reportCsvFile -NoTypeInformation
-    Write-Host "`n=== SECRET MIGRATION REPORT ===" -ForegroundColor Cyan
-    Write-Host "Report saved to: $reportCsvFile" -ForegroundColor Green
-
-    # Print summary table
-    Write-Host ""
-    Write-Host "  ┌──────────────────────┬──────────────────────────┬───────────────────────────────────┐" -ForegroundColor White
-    Write-Host "  │ Repo                 │ File:Line                │ GitHub Secret Name                │" -ForegroundColor White
-    Write-Host "  ├──────────────────────┼──────────────────────────┼───────────────────────────────────┤" -ForegroundColor White
-    foreach ($entry in $migrationReport) {
-        $repoCol = $entry.Repo.PadRight(20).Substring(0, 20)
-        $fileCol = "$($entry.File):$($entry.Line)".PadRight(24).Substring(0, 24)
-        $secretCol = $entry.GitHubSecretName.PadRight(33).Substring(0, 33)
-        Write-Host "  │ $repoCol │ $fileCol │ $secretCol │" -ForegroundColor White
-    }
-    Write-Host "  └──────────────────────┴──────────────────────────┴───────────────────────────────────┘" -ForegroundColor White
 }
+
+# --- Generate HTML Dashboard ---
+$dashboardDir = Join-Path $OutputDir "dashboard"
+if (-not (Test-Path $dashboardDir)) { New-Item -ItemType Directory -Path $dashboardDir -Force | Out-Null }
+
+$htmlFile = Join-Path $dashboardDir "index.html"
+$repoGroups = $migrationReport | Group-Object -Property GitHubRepo
+
+$tableRows = ""
+foreach ($entry in $migrationReport) {
+    $typeColor = switch -Wildcard ($entry.SecretType) {
+        "*password*" { "#e74c3c" }
+        "*api*"      { "#e67e22" }
+        "*token*"    { "#f39c12" }
+        "*aws*"      { "#ff6b6b" }
+        "*key*"      { "#e74c3c" }
+        "*private*"  { "#c0392b" }
+        default      { "#e67e22" }
+    }
+    $tableRows += @"
+        <tr>
+            <td><span class="repo-badge">$($entry.GitHubRepo)</span></td>
+            <td><code>$($entry.File)</code></td>
+            <td class="center">$($entry.Line)</td>
+            <td><span class="type-badge" style="background:$typeColor">$($entry.SecretType)</span></td>
+            <td>$($entry.Description)</td>
+            <td><code>$($entry.SecretPreview)</code></td>
+            <td><code>$($entry.GitHubSecretName)</code></td>
+            <td><code>$($entry.HowToUse)</code></td>
+        </tr>
+
+"@
+}
+
+$html = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Migration Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; }
+        .header { background: linear-gradient(135deg, #161b22, #1f2937); padding: 32px; border-bottom: 1px solid #30363d; }
+        .header h1 { font-size: 24px; color: #58a6ff; }
+        .header p { color: #8b949e; margin-top: 8px; }
+        .stats { display: flex; gap: 16px; padding: 24px 32px; flex-wrap: wrap; }
+        .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 24px; min-width: 180px; }
+        .stat-card .number { font-size: 32px; font-weight: bold; color: #58a6ff; }
+        .stat-card .label { color: #8b949e; font-size: 14px; margin-top: 4px; }
+        .stat-card.warning .number { color: #f85149; }
+        .content { padding: 0 32px 32px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; background: #161b22; border-radius: 8px; overflow: hidden; }
+        th { background: #1f2937; color: #58a6ff; text-align: left; padding: 12px 16px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #30363d; }
+        td { padding: 10px 16px; border-bottom: 1px solid #21262d; font-size: 14px; }
+        tr:hover { background: #1c2128; }
+        code { background: #1f2937; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #79c0ff; }
+        .repo-badge { background: #1f6feb; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
+        .type-badge { color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+        .center { text-align: center; }
+        .legend { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 24px; margin-top: 24px; }
+        .legend h3 { color: #58a6ff; margin-bottom: 8px; }
+        .legend p { color: #8b949e; font-size: 14px; line-height: 1.8; }
+        .footer { text-align: center; padding: 24px; color: #484f58; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔒 Secret Migration Dashboard</h1>
+        <p>Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')</p>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card warning">
+            <div class="number">$totalSecrets</div>
+            <div class="label">Secrets Found</div>
+        </div>
+        <div class="stat-card">
+            <div class="number">$($reportFiles.Count)</div>
+            <div class="label">Repos Scanned</div>
+        </div>
+        <div class="stat-card">
+            <div class="number">$($repoGroups.Count)</div>
+            <div class="label">Repos with Secrets</div>
+        </div>
+        <div class="stat-card">
+            <div class="number">$($migrationReport | Select-Object -ExpandProperty File -Unique | Measure-Object | Select-Object -ExpandProperty Count)</div>
+            <div class="label">Files Affected</div>
+        </div>
+    </div>
+
+    <div class="content">
+        <h2 style="color:#c9d1d9; margin-bottom:8px;">Secret Details</h2>
+        <p style="color:#8b949e; margin-bottom:16px;">Each secret has been redacted from Git history and stored as a GitHub Secret. Teams must update code to use environment variables.</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>GitHub Repo</th>
+                    <th>File</th>
+                    <th>Line</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Preview</th>
+                    <th>GitHub Secret Name</th>
+                    <th>How to Use</th>
+                </tr>
+            </thead>
+            <tbody>
+$tableRows
+            </tbody>
+        </table>
+
+        <div class="legend">
+            <h3>📋 What Teams Need To Do</h3>
+            <p>1. Find the <strong>GitHub Secret Name</strong> for each entry in the table above</p>
+            <p>2. Go to GitHub repo → Settings → Secrets → verify the secret exists</p>
+            <p>3. Update code to read from environment variable instead of hardcoded value</p>
+            <p>4. In GitHub Actions workflows, use <code>`${{ secrets.SECRET_NAME }}</code> to inject the value</p>
+            <p>5. <strong style="color:#f85149;">ROTATE all credentials</strong> — the original values may have been exposed in ADO history</p>
+        </div>
+    </div>
+
+    <div class="footer">
+        Generated by ADO-to-GitHub Migration Accelerator | Secret values are NOT shown in this dashboard
+    </div>
+</body>
+</html>
+"@
+
+$html | Out-File -FilePath $htmlFile -Encoding utf8
+Write-Host "`n=== Dashboard generated: $htmlFile ===" -ForegroundColor Green
+
+# --- Print summary table ---
+Write-Host "`n=== SECRET MIGRATION REPORT ===" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  ┌────────────────────┬────────────────────────┬──────────────────────────────────┬─────────────────────────────────┐" -ForegroundColor White
+Write-Host "  │ Repo               │ File:Line              │ Secret Type                      │ GitHub Secret Name              │" -ForegroundColor White
+Write-Host "  ├────────────────────┼────────────────────────┼──────────────────────────────────┼─────────────────────────────────┤" -ForegroundColor White
+foreach ($entry in $migrationReport) {
+    $repoCol = $entry.GitHubRepo.PadRight(18).Substring(0, 18)
+    $fileCol = "$($entry.File):$($entry.Line)".PadRight(22).Substring(0, 22)
+    $typeCol = $entry.SecretType.PadRight(32).Substring(0, 32)
+    $secretCol = $entry.GitHubSecretName.PadRight(31).Substring(0, 31)
+    Write-Host "  │ $repoCol │ $fileCol │ $typeCol │ $secretCol │" -ForegroundColor White
+}
+Write-Host "  └────────────────────┴────────────────────────┴──────────────────────────────────┴─────────────────────────────────┘" -ForegroundColor White
 
 # --- Summary ---
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
-Write-Host "Repos processed:        $($reportFiles.Count)" -ForegroundColor Gray
-Write-Host "Total secrets found:    $totalSecrets" -ForegroundColor Yellow
-Write-Host "Secret values file:     $secretValuesFile (for post-migration)" -ForegroundColor Gray
-Write-Host "Migration report:       $OutputDir/secret-migration-report.csv" -ForegroundColor Gray
-Write-Host "Scrubbed repos:         $OutputDir (published as pipeline artifact)" -ForegroundColor Green
-Write-Host "Original ADO repos:     UNTOUCHED" -ForegroundColor Green
-
-Write-Host "`n=== NEXT STEPS ===" -ForegroundColor Cyan
-Write-Host "1. GEI will migrate the repos to GitHub" -ForegroundColor White
-Write-Host "2. Pipeline will auto-create GitHub Secrets from secret-values.json" -ForegroundColor White
-Write-Host "3. Teams download secret-migration-report.csv to update their code" -ForegroundColor White
-Write-Host "4. Rotate ALL credentials" -ForegroundColor White
+Write-Host "Repos processed:     $($reportFiles.Count)" -ForegroundColor Gray
+Write-Host "Total secrets:       $totalSecrets" -ForegroundColor Yellow
+Write-Host "Secret values file:  $secretValuesFile" -ForegroundColor Gray
+Write-Host "Migration report:    $reportCsvFile" -ForegroundColor Gray
+Write-Host "HTML Dashboard:      $htmlFile" -ForegroundColor Gray
+Write-Host "Scrubbed repos:      $OutputDir" -ForegroundColor Green
+Write-Host "Original ADO repos:  UNTOUCHED" -ForegroundColor Green
 
 exit 0

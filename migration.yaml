@@ -172,16 +172,23 @@ stages:
               artifact: "secret-scrub-results"
               publishLocation: pipeline
 
+          - task: PublishHtmlReport@1
+            displayName: "Secret Scrub Dashboard"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed/dashboard'
+              tabName: "Secret Migration Dashboard"
+
   # ===========================================================================
-  # STAGE 2 – MIGRATE REPO (GEI: ADO → GitHub)
+  # STAGE 2 – MIGRATE REPO (GEI + scrub secrets on GitHub)
   # ===========================================================================
   - stage: MigrateRepo
-    displayName: "2. GEI Migrate Repo to GitHub"
+    displayName: "2. GEI Migrate & Scrub on GitHub"
     dependsOn: ScrubSecrets
     condition: succeeded()
     jobs:
-      - job: MigrateWithGEI
-        displayName: "2.1 Migrate repo via GEI"
+      - job: MigrateAndScrub
+        displayName: "2.1 GEI Migrate → Scrub secrets on GitHub"
         timeoutInMinutes: 120
         steps:
           - checkout: self
@@ -198,21 +205,21 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
-            displayName: "Migrate repo: $(ADO_Repo) → $(GitHub_Org)"
+            displayName: "GEI Migrate: $(ADO_Repo) → $(GitHub_Org)"
             inputs:
               targetType: 'inline'
               script: |
                 $ErrorActionPreference = "Stop"
 
-                $adoOrg   = "$(ADO_Org)"
-                $adoProj  = "$(ADO_Project)"
-                $adoRepo  = "$(ADO_Repo)"
-                $ghOrg    = "$(GitHub_Org)"
-                $ghRepo   = $adoRepo.ToLower() -replace " ", "-"
+                $adoOrg  = "$(ADO_Org)"
+                $adoProj = "$(ADO_Project)"
+                $adoRepo = "$(ADO_Repo)"
+                $ghOrg   = "$(GitHub_Org)"
+                $ghRepo  = $adoRepo.ToLower() -replace " ", "-"
 
                 Write-Host "=== GEI Repo Migration ===" -ForegroundColor Cyan
-                Write-Host "Source:  $adoOrg / $adoProj / $adoRepo" -ForegroundColor Yellow
-                Write-Host "Target:  $ghOrg / $ghRepo" -ForegroundColor Yellow
+                Write-Host "Source: $adoOrg / $adoProj / $adoRepo" -ForegroundColor Yellow
+                Write-Host "Target: $ghOrg / $ghRepo" -ForegroundColor Yellow
 
                 # Ensure GEI extension is installed
                 $installed = gh extension list 2>&1
@@ -222,7 +229,7 @@ stages:
                 }
 
                 # Run GEI migration
-                Write-Host "`nStarting migration..." -ForegroundColor Cyan
+                Write-Host "`nStarting GEI migration..." -ForegroundColor Cyan
                 gh ado2gh migrate-repo `
                     --ado-org "$adoOrg" `
                     --ado-team-project "$adoProj" `
@@ -236,11 +243,99 @@ stages:
                     exit 1
                 }
 
-                Write-Host "`n✓ Migration complete: https://github.com/$ghOrg/$ghRepo" -ForegroundColor Green
+                Write-Host "`n✓ GEI migration complete: https://github.com/$ghOrg/$ghRepo" -ForegroundColor Green
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
               ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download scrub data"
+            inputs:
+              artifactName: 'secret-scrub-results'
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed'
+
+          - task: PowerShell@2
+            displayName: "Scrub secrets from GitHub repo"
+            inputs:
+              targetType: 'inline'
+              script: |
+                $ErrorActionPreference = "Stop"
+
+                $adoRepo = "$(ADO_Repo)"
+                $adoProj = "$(ADO_Project)"
+                $ghOrg   = "$(GitHub_Org)"
+                $ghPat   = $env:GH_PAT
+                $ghRepo  = $adoRepo.ToLower() -replace " ", "-"
+                $repoId  = "${adoProj}_${adoRepo}"
+
+                $scrubDir = "$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed"
+                $expressionsFile = "$scrubDir/../tmp/scrub/$repoId-expressions.txt"
+
+                # Check if there are secrets to scrub
+                $secretValuesFile = Join-Path $scrubDir "secret-values.json"
+                if (-not (Test-Path $secretValuesFile)) {
+                    Write-Host "No secrets to scrub — repo is clean." -ForegroundColor Green
+                    exit 0
+                }
+
+                $secrets = Get-Content $secretValuesFile -Raw | ConvertFrom-Json
+                if ($secrets.Count -eq 0) {
+                    Write-Host "No secrets to scrub — repo is clean." -ForegroundColor Green
+                    exit 0
+                }
+
+                Write-Host "=== Scrubbing $($secrets.Count) secrets from GitHub repo ===" -ForegroundColor Cyan
+                Write-Host "Repo: $ghOrg/$ghRepo" -ForegroundColor Yellow
+
+                # Clone the migrated GitHub repo
+                $cloneDir = Join-Path $scrubDir "github-clone"
+                if (Test-Path $cloneDir) { Remove-Item -Recurse -Force $cloneDir }
+
+                $cloneUrl = "https://x-access-token:$ghPat@github.com/$ghOrg/$ghRepo.git"
+                git clone $cloneUrl $cloneDir 2>&1 | Out-Null
+
+                if (-not (Test-Path $cloneDir)) {
+                    Write-Error "Failed to clone GitHub repo"
+                    exit 1
+                }
+
+                # Build expressions file for git-filter-repo
+                $expFile = Join-Path $scrubDir "expressions.txt"
+                $expressions = @()
+                foreach ($entry in $secrets) {
+                    $escaped = [regex]::Escape($entry.SecretValue)
+                    $placeholder = "***GITHUB_SECRET:$($entry.SecretName)***"
+                    $expressions += "regex:$escaped==>$placeholder"
+                }
+                $expressions | Out-File -FilePath $expFile -Encoding utf8
+                $absExpFile = (Resolve-Path $expFile).Path
+
+                # Run git-filter-repo on the GitHub clone
+                Write-Host "Running git-filter-repo..." -ForegroundColor Gray
+                Push-Location $cloneDir
+                git filter-repo --replace-text "$absExpFile" --force 2>&1
+                Pop-Location
+
+                # Push scrubbed history back to GitHub
+                Write-Host "Force pushing clean history to GitHub..." -ForegroundColor Yellow
+                Push-Location $cloneDir
+                git remote add github "$cloneUrl" 2>&1 | Out-Null
+                git push github --mirror --force 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Error "Failed to push scrubbed repo"
+                    Pop-Location
+                    exit 1
+                }
+                Pop-Location
+
+                Write-Host "`n✓ Secrets scrubbed from GitHub repo: $ghOrg/$ghRepo" -ForegroundColor Green
+                Write-Host "  $($secrets.Count) secrets replaced with placeholders" -ForegroundColor Green
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
