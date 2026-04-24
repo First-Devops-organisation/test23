@@ -57,9 +57,9 @@ foreach ($project in $inventory.projects) {
             $cloneUrl = $repo.url -replace "://", "://$Pat@"
             git clone $cloneUrl $cloneDir 2>&1 | Out-Null
 
-            # Run gitleaks — default rules (matches GitHub push protection)
+            # Run gitleaks — scan ALL commits, ALL branches, full history
             $exitCode = 0
-            & gitleaks detect --source $cloneDir --report-path $reportFile --report-format json --no-banner 2>&1 | Out-Null
+            & gitleaks detect --source $cloneDir --report-path $reportFile --report-format json --no-banner --log-opts="--all --full-history" 2>&1 | Out-Null
             $exitCode = $LASTEXITCODE
 
             $findingCount = 0
