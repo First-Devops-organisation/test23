@@ -45,7 +45,7 @@ function Initialize-Log {
 #>
 function Write-Log {
     param(
-        [Parameter(Mandatory)][string]$Message,
+        [string]$Message = "",
         [ValidateSet("DEBUG","INFO","WARN","ERROR","SUCCESS")]
         [string]$Level = "INFO",
         [hashtable]$Data = @{}
@@ -98,10 +98,10 @@ function Write-Log {
 function Write-LogSection {
     param([string]$Title)
     $separator = "=" * 60
-    Write-Log -Message "" -Level "INFO"
-    Write-Log -Message $separator -Level "INFO"
-    Write-Log -Message "  $Title" -Level "INFO"
-    Write-Log -Message $separator -Level "INFO"
+    Write-Host "" 
+    Write-Host $separator -ForegroundColor Cyan
+    Write-Host "  $Title" -ForegroundColor Cyan
+    Write-Host $separator -ForegroundColor Cyan
 }
 
 <#
