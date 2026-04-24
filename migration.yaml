@@ -289,7 +289,10 @@ stages:
                 $ghUrl = "https://x-access-token:$ghPat@github.com/$ghOrg/$ghRepo.git"
 
                 Push-Location $cloneDir
-                git remote set-url origin "$ghUrl" 2>&1 | Out-Null
+                git remote add origin "$ghUrl" 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    git remote set-url origin "$ghUrl" 2>&1 | Out-Null
+                }
                 git push origin --mirror --force 2>&1
                 if ($LASTEXITCODE -ne 0) {
                     Write-Error "Failed to push to GitHub"
