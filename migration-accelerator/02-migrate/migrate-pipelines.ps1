@@ -23,10 +23,9 @@ param(
 
     [int[]]$PipelineId,
 
-    [ValidateSet("list", "dry-run", "migrate", "audit")]
-    [string]$Mode = "dry-run",
+    [string]$Mode,
 
-    [string]$PipelineType = "build",
+    [string]$PipelineType,
 
     [string]$CustomTransformersDir,
 
@@ -36,6 +35,19 @@ param(
 
     [string]$OutputDir = "./output/pipelines"
 )
+$Mode = if ($Mode) { $Mode } elseif ($config -and $config.MODE) { $config.MODE } elseif ($env:MODE) { $env:MODE } else { "dry-run" }
+# Manual validation for Mode
+if ($Mode -notin @("list", "dry-run", "migrate", "audit")) {
+    Write-Host "ERROR: Mode must be one of 'list', 'dry-run', 'migrate', or 'audit'. Value was: '$Mode'" -ForegroundColor Red
+    exit 1
+}
+
+$PipelineType = if ($PipelineType) { $PipelineType } elseif ($config -and $config.PIPELINE_TYPE) { $config.PIPELINE_TYPE } elseif ($env:PIPELINE_TYPE) { $env:PIPELINE_TYPE } else { "build" }
+# Manual validation for PipelineType
+if ($PipelineType -notin @("build", "release")) {
+    Write-Host "ERROR: PipelineType must be 'build' or 'release'. Value was: '$PipelineType'" -ForegroundColor Red
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 
