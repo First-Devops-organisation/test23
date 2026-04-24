@@ -1,5 +1,5 @@
 {
-  "_comment": "Maps ADO user identifiers (email/unique name) to GitHub usernames. Add all team members here before running migration.",
+  "_comment": "Maps ADO user identifiers to GitHub usernames.",
   "mappings": [
     {
       "adoDisplayName": "Vinay Yadav",
@@ -41,9 +41,9 @@
       "adoDisplayName": "Akash Kamble",
       "adoEmail": "akash.kamble@yash.com",
       "adoAlternateEmails": [],
-      "githubUsername": ""
+      "githubUsername": "Urvashi773"
     }
   ],
-  "defaultGithubUser": "",
-  "unmappedUserAction": "skip"
+  "defaultGithubUser": "Urvashi773",
+  "unmappedUserAction": "assign-default"
 }
