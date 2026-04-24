@@ -44,6 +44,6 @@
   "PIPELINE_IDS": [],
   "PIPELINE_REPO_MAP": {},
   "PIPELINE_TYPE": "",
-  "MODE": "",
+  "MODE": "dry-run",
   "GH_REPO": "Appinsight"
 }
