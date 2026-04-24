@@ -1,20 +1,12 @@
 {
   "source": {
     "type": "AzureDevOps",
-    "organization": "YashTech-DevOps",
+    "organization": "https://dev.azure.com/YashTech-DevOps",
     "project": "YASH-DevOps-Serverless",
     "areaPath": "YASH-DevOps-Serverless\\POC-Migration",
     "pat": "$(ADO_PAT)"
   },
-  // "target": {
-  //   "type": "GitHub",
-  //   "organization": "First-Devops-organisation",
-  //   "repository": "migrate",
-  //   "projectNumber": 3,
-  //   "pat": "$(GH_PAT)"
-  // },
-
-    "target": {
+  "target": {
     "type": "GitHub",
     "organization": "First-Devops-organisation",
     "repository": "migrate",
@@ -23,7 +15,6 @@
     "projectOwnerType": "user",
     "pat": "$(GH_PAT)"
   },
-  
   "migration": {
     "migrateClosedWorkItems": true,
     "productionRun": false,
@@ -57,14 +48,15 @@
     "workItemIds": []
   },
   "areaPathMapping": {
-    "YASH-Tdddd-POC": "area:poc-migration",
-    "YASH-Tdddd-POC\\Backend": "area:backend",
-    "YASH-Tdddd-POC\\Frontend": "area:frontend"
+    "YASH-DevOps-Serverless\\POC-Migration": "area:poc-migration",
+    "YASH-DevOps-Serverless\\POC-Migration\\BunzlEcom": "area:bunzlecom",
+    "YASH-DevOps-Serverless\\POC-Migration\\DistEcom": "area:distecom",
+    "YASH-DevOps-Serverless\\POC-Migration\\DistEcomAI": "area:distecomai"
   },
   "iterationPathMapping": {
-    "YASH-ddd-POC\\Sprint 1": "Sprint 1",
-    "YASH-ddd-POC\\Sprint 2": "Sprint 2",
-    "YASH-ddd-POC\\Sprint 3": "Sprint 3"
+    "YASH-DevOps-Serverless\\Sprint 1": "Sprint 1",
+    "YASH-DevOps-Serverless\\Sprint 2": "Sprint 2",
+    "YASH-DevOps-Serverless\\Sprint 3": "Sprint 3"
   },
   "priorityMapping": {
     "1": "priority:critical",
