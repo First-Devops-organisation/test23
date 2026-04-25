@@ -326,5 +326,4 @@ function Ensure-RepoInitialized {
             Write-Log -Message "Failed to initialize repo: $_" -Level "WARN"
         }
     }
-}
-}
+}
