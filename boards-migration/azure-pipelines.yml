@@ -37,9 +37,9 @@ parameters:
     default: true
 
   - name: resume
-    displayName: 'Resume from previous run'
+    displayName: 'Resume from previous run (incremental - skip already migrated)'
     type: boolean
-    default: false
+    default: true
 
 stages:
 
@@ -193,6 +193,21 @@ stages:
         targetPath: '$(workingDir)\reports'
       condition: and(succeeded(), in('${{ parameters.phase }}', 'all'))
       continueOnError: true
+
+    # Download migration log from PREVIOUS run for incremental migration.
+    # This enables the -Resume flag to skip already-migrated items,
+    # so only new ADO work items are migrated on subsequent runs.
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Previous Migration Log (incremental)'
+      inputs:
+        buildType: 'specific'
+        project: '$(System.TeamProjectId)'
+        definition: '$(System.DefinitionId)'
+        buildVersionToDownload: 'latestFromBranch'
+        branchName: '$(Build.SourceBranch)'
+        artifactName: 'migration-reports'
+        targetPath: '$(workingDir)\reports'
+      continueOnError: true  # First run won't have previous artifacts
 
     - task: PowerShell@2
       displayName: 'Migrate Work Items'
