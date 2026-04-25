@@ -113,14 +113,33 @@ function Save-AdoAttachment {
 function Save-AdoInlineImage {
     param([string]$ImageUrl, [string]$TempDir, [string]$Pat)
     if (-not (Test-Path $TempDir)) { New-Item -ItemType Directory -Path $TempDir -Force | Out-Null }
-    $fileName = "img_$(Get-Date -Format 'yyyyMMddHHmmssfff')_$([guid]::NewGuid().ToString('N').Substring(0,8)).png"
+
+    # Determine file extension from URL
+    $ext = ".png"
+    if ($ImageUrl -match '\.(png|jpg|jpeg|gif|bmp|svg|webp)(\?|$)') { $ext = ".$($Matches[1])" }
+
+    $fileName = "img_$(Get-Date -Format 'yyyyMMddHHmmssfff')_$([guid]::NewGuid().ToString('N').Substring(0,8))$ext"
     $outputPath = Join-Path $TempDir $fileName
     $headers = Get-AdoAuthHeaders -Pat $Pat
+
+    Write-Log -Message "    Downloading image from ADO: $ImageUrl" -Level "DEBUG"
+
     try {
-        Invoke-WebRequest -Uri $ImageUrl -Headers $headers -OutFile $outputPath
-        return $outputPath
+        # Use Invoke-WebRequest with explicit options for compatibility
+        $response = Invoke-WebRequest -Uri $ImageUrl -Headers $headers -OutFile $outputPath -PassThru -UseBasicParsing
+        
+        # Verify file was downloaded and has content
+        if ((Test-Path $outputPath) -and (Get-Item $outputPath).Length -gt 0) {
+            $sizeKB = [math]::Round((Get-Item $outputPath).Length / 1024, 1)
+            Write-Log -Message "    Downloaded image: $fileName ($sizeKB KB)" -Level "DEBUG"
+            return $outputPath
+        } else {
+            Write-Log -Message "    Image download produced empty file" -Level "WARN"
+            return $null
+        }
     } catch {
-        Write-Log -Message "Failed to download inline image: $_" -Level "WARN"
+        Write-Log -Message "    Failed to download inline image: $_" -Level "WARN"
+        Write-Log -Message "    URL was: $ImageUrl" -Level "DEBUG"
         return $null
     }
 }
@@ -148,20 +167,30 @@ function Convert-AdoHtmlToMarkdown {
     $md = $Html
 
     # Handle inline images - download from ADO, re-upload to GitHub
-    $imgMatches = [regex]::Matches($md, '<img[^>]+src="([^"]+)"[^>]*/?\x3e')
+    $imgPattern = '<img\s[^>]*src="([^"]+)"[^>]*>'
+    $imgMatches = [regex]::Matches($md, $imgPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+    if ($imgMatches.Count -gt 0) {
+        Write-Log -Message "  Found $($imgMatches.Count) inline image(s) to migrate" -Level "INFO"
+    }
+
     foreach ($m in $imgMatches) {
         $imgTag = $m.Value
         $imgUrl = $m.Groups[1].Value
         $altMatch = [regex]::Match($imgTag, 'alt="([^"]*)"')
         $alt = if ($altMatch.Success) { $altMatch.Groups[1].Value } else { "image" }
 
+        $urlPreview = if ($imgUrl.Length -gt 80) { $imgUrl.Substring(0, 80) + '...' } else { $imgUrl }
+        Write-Log -Message "  Image: alt='$alt' url='$urlPreview'" -Level "DEBUG"
+
         # Try to re-upload any ADO-hosted image
-        if ($Pat -and $GhPat -and $imgUrl -match "dev\.azure\.com|visualstudio\.com|vstfs|_apis/wit|_apis/resources") {
-            Write-Log -Message "  Re-uploading inline image: $alt" -Level "DEBUG"
+        if ($Pat -and $GhPat -and $imgUrl -match 'dev\.azure\.com|visualstudio\.com|vstfs|_apis/wit|_apis/resources') {
+            Write-Log -Message "  Re-uploading ADO image: $alt" -Level "INFO"
             $localPath = Save-AdoInlineImage -ImageUrl $imgUrl -TempDir $TempDir -Pat $Pat
             if ($localPath -and (Test-Path $localPath)) {
                 $ghUrl = Upload-ImageToGitHub -FilePath $localPath -GhOrg $GhOrg -GhRepo $GhRepo -GhPat $GhPat
                 if ($ghUrl) {
+                    Write-Log -Message "  Image migrated: $alt -> $ghUrl" -Level "SUCCESS"
                     $md = $md.Replace($imgTag, "![$alt]($ghUrl)")
                     Remove-Item $localPath -Force -ErrorAction SilentlyContinue
                     continue
@@ -169,7 +198,7 @@ function Convert-AdoHtmlToMarkdown {
                 Remove-Item $localPath -Force -ErrorAction SilentlyContinue
             }
             # Image re-upload failed - add note instead of broken 404 link
-            Write-Log -Message "  Image re-upload failed for: $alt" -Level "WARN"
+            Write-Log -Message "  Image migration FAILED for: $alt" -Level "WARN"
             $md = $md.Replace($imgTag, "_[Image: $alt - could not be migrated from ADO]_")
         } else {
             # External image URL - keep as-is

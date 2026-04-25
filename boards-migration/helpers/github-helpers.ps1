@@ -100,7 +100,8 @@ function New-GhIssue {
     } catch {
         # If assignees caused the failure (user not a collaborator), retry without them
         if ($issueData.assignees -and $issueData.assignees.Count -gt 0) {
-            Write-Log -Message "Issue creation failed with assignees [$($issueData.assignees -join ', ')]. Retrying without assignees..." -Level "WARN"
+            $intendedAssignees = $issueData.assignees -join ', '
+            Write-Log -Message "Assignee(s) [$intendedAssignees] not collaborator(s). Creating issue without assignment. Original assignee preserved in metadata." -Level "WARN"
             $issueData.Remove('assignees')
             $jsonBody = $issueData | ConvertTo-Json -Depth 10
             try {
@@ -278,4 +279,52 @@ function Get-GhIssueCount {
         $issues = $resp.Content | ConvertFrom-Json
         return ($issues | Where-Object { -not $_.pull_request }).Count
     } catch { return 0 }
+}
+
+# --- Invite a GitHub user as a repo collaborator ---
+function Invite-GhCollaborator {
+    param([string]$Org, [string]$Repo, [string]$Username, [string]$Pat, [string]$Permission = "push")
+    $headers = Get-GhRestHeaders -Pat $Pat
+    $uri = "https://api.github.com/repos/$Org/$Repo/collaborators/$Username"
+    $body = @{ permission = $Permission } | ConvertTo-Json
+    try {
+        $resp = Invoke-WebRequest -Uri $uri -Method PUT -Headers $headers -Body $body -UseBasicParsing
+        if ($resp.StatusCode -eq 201) {
+            Write-Log -Message "Invited '$Username' as collaborator ($Permission)" -Level "SUCCESS"
+        } elseif ($resp.StatusCode -eq 204) {
+            Write-Log -Message "'$Username' is already a collaborator" -Level "DEBUG"
+        }
+        return $true
+    } catch {
+        Write-Log -Message "Failed to invite '$Username': $_" -Level "WARN"
+        return $false
+    }
+}
+
+# --- Ensure repo has at least one commit (required for image uploads) ---
+function Ensure-RepoInitialized {
+    param([string]$Org, [string]$Repo, [string]$Pat)
+    $headers = Get-GhRestHeaders -Pat $Pat
+    # Check if repo has any commits
+    try {
+        $uri = "https://api.github.com/repos/$Org/$Repo/commits?per_page=1"
+        Invoke-RestMethod -Uri $uri -Headers $headers | Out-Null
+        return  # repo has commits, nothing to do
+    } catch {
+        # No commits - create initial README
+        Write-Log -Message "Repo is empty. Creating initial commit for image uploads..." -Level "INFO"
+        $content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("# $Repo`n`nRepository for migrated Azure DevOps work items.`n"))
+        $body = @{
+            message = "Initial commit - migration setup"
+            content = $content
+        } | ConvertTo-Json
+        try {
+            Invoke-RestMethod -Uri "https://api.github.com/repos/$Org/$Repo/contents/README.md" `
+                -Method PUT -Headers $headers -Body $body | Out-Null
+            Write-Log -Message "Created initial commit with README.md" -Level "SUCCESS"
+        } catch {
+            Write-Log -Message "Failed to initialize repo: $_" -Level "WARN"
+        }
+    }
+}
 }

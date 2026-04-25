@@ -94,4 +94,26 @@ foreach ($entry in $mainConfig.areaPathMapping.PSObject.Properties) {
     Start-Sleep -Milliseconds 500
 }
 
+# --- Invite Mapped Users as Collaborators (optional - for personal repos/POCs) ---
+# In enterprise GitHub orgs, users are already org members and have repo access.
+# Set "inviteCollaborators": true in config only for personal account POCs.
+if ($config.migration.inviteCollaborators -eq $true) {
+    Write-Log -Message "Inviting mapped users as collaborators (inviteCollaborators=true)..." -Level "INFO"
+    $userMappings = Read-JsonConfig -Path (Join-Path $scriptRoot "config\user-mappings.json")
+    $invited = 0
+    $uniqueUsers = $userMappings.mappings | ForEach-Object { $_.githubUsername } | Sort-Object -Unique | Where-Object { $_ }
+    foreach ($ghUser in $uniqueUsers) {
+        if ($ghUser -eq $ghOrg) {
+            Write-Log -Message "'$ghUser' is repo owner - skipping" -Level "DEBUG"
+            continue
+        }
+        Invite-GhCollaborator -Org $ghOrg -Repo $ghRepo -Username $ghUser -Pat $ghPat -Permission "push"
+        $invited++
+        Start-Sleep -Milliseconds 500
+    }
+    Write-Log -Message "Collaborator invitations sent: $invited users" -Level "SUCCESS"
+} else {
+    Write-Log -Message "Collaborator invitations skipped (inviteCollaborators=false). Users must already have repo access." -Level "INFO"
+}
+
 Write-Log -Message "Label setup complete. Processed $created labels." -Level "SUCCESS"

@@ -99,6 +99,9 @@ if ($ghProjNum) {
     }
 }
 
+# --- Ensure repo has at least one commit (required for image/attachment uploads) ---
+Ensure-RepoInitialized -Org $ghOrg -Repo $ghRepo -Pat $ghPat
+
 # --- Query all work items ---
 Write-Log -Message "Querying ADO work items..." -Level "INFO"
 $allIds = Get-AdoWorkItemIds -Org $adoOrg -Project $adoProject -AreaPath $areaPath -IncludeClosed $includeClosed -Pat $adoPat

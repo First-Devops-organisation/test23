@@ -28,7 +28,8 @@
     "batchSize": 50,
     "rateLimitDelayMs": 1000,
     "retryCount": 3,
-    "retryDelaySeconds": 10
+    "retryDelaySeconds": 10,
+    "inviteCollaborators": false
   },
   "filters": {
     "workItemTypes": [
