@@ -53,7 +53,7 @@ $adoCount = $adoIds.Count
 Write-Log -Message "ADO work items: $adoCount" -Level "INFO"
 
 # --- Count migrated items ---
-$migratedCount = $migLog.PSObject.Properties.Count
+$migratedCount = @($migLog.PSObject.Properties).Count
 Write-Log -Message "Migrated items in log: $migratedCount" -Level "INFO"
 
 # --- Validation checks ---
@@ -98,7 +98,7 @@ $checks += @{
 
 # Check 3: Spot-check comments (sample 5 items)
 Write-Log -Message "Spot-checking comments on sample items..." -Level "INFO"
-$sampleSize = [math]::Min(5, $migLog.PSObject.Properties.Count)
+$sampleSize = [math]::Min(5, @($migLog.PSObject.Properties).Count)
 $sampleProps = $migLog.PSObject.Properties | Select-Object -First $sampleSize
 $commentMismatches = @()
 

@@ -187,23 +187,38 @@ function Ensure-GhLabel {
     }
 }
 
-# --- Upload image to GitHub (via issue comment hack for CDN URL) ---
+# --- Upload image/attachment to GitHub repo contents ---
 function Upload-ImageToGitHub {
     param([string]$FilePath, [string]$GhOrg, [string]$GhRepo, [string]$GhPat)
-    # Upload as repo content to a dedicated attachments branch
+
     $fileName = Split-Path $FilePath -Leaf
-    $uploadPath = "migrated-attachments/$fileName"
-    $content = [Convert]::ToBase64String([IO.File]::ReadAllBytes($FilePath))
+    # Use unique path with timestamp + GUID to avoid collisions on re-runs
+    $uniqueName = "$(Get-Date -Format 'yyyyMMddHHmmss')_$([guid]::NewGuid().ToString('N').Substring(0,6))_$fileName"
+    $uploadPath = "migrated-attachments/$uniqueName"
     $headers = Get-GhRestHeaders -Pat $GhPat
+
+    # Detect default branch
+    $defaultBranch = "main"
+    try {
+        $repoInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$GhOrg/$GhRepo" -Headers $headers
+        $defaultBranch = $repoInfo.default_branch
+    } catch {
+        Write-Log -Message "Could not detect default branch, using 'main'" -Level "WARN"
+    }
+
+    $content = [Convert]::ToBase64String([IO.File]::ReadAllBytes($FilePath))
     $body = @{
         message = "Migration: upload attachment $fileName"
         content = $content
-        branch  = "main"
+        branch  = $defaultBranch
     } | ConvertTo-Json
+
     $uri = "https://api.github.com/repos/$GhOrg/$GhRepo/contents/$uploadPath"
     try {
         $resp = Invoke-RestMethod -Uri $uri -Method PUT -Headers $headers -Body $body
-        return $resp.content.download_url
+        $downloadUrl = $resp.content.download_url
+        Write-Log -Message "Uploaded image: $fileName -> $downloadUrl" -Level "DEBUG"
+        return $downloadUrl
     } catch {
         Write-Log -Message "Failed to upload image $fileName to GitHub: $_" -Level "WARN"
         return $null

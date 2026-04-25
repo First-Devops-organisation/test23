@@ -148,21 +148,33 @@ function Convert-AdoHtmlToMarkdown {
     $md = $Html
 
     # Handle inline images - download from ADO, re-upload to GitHub
-    $imgMatches = [regex]::Matches($md, '<img[^>]+src="([^"]+)"[^>]*>')
+    $imgMatches = [regex]::Matches($md, '<img[^>]+src="([^"]+)"[^>]*/?\x3e')
     foreach ($m in $imgMatches) {
         $imgTag = $m.Value
         $imgUrl = $m.Groups[1].Value
         $altMatch = [regex]::Match($imgTag, 'alt="([^"]*)"')
         $alt = if ($altMatch.Success) { $altMatch.Groups[1].Value } else { "image" }
-        if ($Pat -and $GhPat -and $imgUrl -match "dev\.azure\.com|vstfs|_apis/wit/attachments") {
+
+        # Try to re-upload any ADO-hosted image
+        if ($Pat -and $GhPat -and $imgUrl -match "dev\.azure\.com|visualstudio\.com|vstfs|_apis/wit|_apis/resources") {
+            Write-Log -Message "  Re-uploading inline image: $alt" -Level "DEBUG"
             $localPath = Save-AdoInlineImage -ImageUrl $imgUrl -TempDir $TempDir -Pat $Pat
             if ($localPath -and (Test-Path $localPath)) {
                 $ghUrl = Upload-ImageToGitHub -FilePath $localPath -GhOrg $GhOrg -GhRepo $GhRepo -GhPat $GhPat
-                if ($ghUrl) { $md = $md.Replace($imgTag, "![$alt]($ghUrl)"); Remove-Item $localPath -Force -ErrorAction SilentlyContinue; continue }
+                if ($ghUrl) {
+                    $md = $md.Replace($imgTag, "![$alt]($ghUrl)")
+                    Remove-Item $localPath -Force -ErrorAction SilentlyContinue
+                    continue
+                }
                 Remove-Item $localPath -Force -ErrorAction SilentlyContinue
             }
+            # Image re-upload failed - add note instead of broken 404 link
+            Write-Log -Message "  Image re-upload failed for: $alt" -Level "WARN"
+            $md = $md.Replace($imgTag, "_[Image: $alt - could not be migrated from ADO]_")
+        } else {
+            # External image URL - keep as-is
+            $md = $md.Replace($imgTag, "![$alt]($imgUrl)")
         }
-        $md = $md.Replace($imgTag, "![$alt]($imgUrl)")
     }
 
     # HTML tag conversions

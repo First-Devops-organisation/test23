@@ -33,7 +33,7 @@ $validation = if (Test-Path $validationPath) { Read-JsonConfig -Path $validation
 $inventory  = if (Test-Path $inventoryPath) { Read-JsonConfig -Path $inventoryPath } else { $null }
 
 $date = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$migCount = $migLog.PSObject.Properties.Count
+$migCount = @($migLog.PSObject.Properties).Count
 
 # --- Build Markdown Report ---
 $md = @"

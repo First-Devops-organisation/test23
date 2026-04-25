@@ -17,7 +17,7 @@
   },
   "migration": {
     "migrateClosedWorkItems": true,
-    "productionRun": false,
+    "productionRun": true,
     "updateAssignedTo": true,
     "addAdoComments": true,
     "migrateAttachments": true,
