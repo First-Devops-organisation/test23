@@ -89,8 +89,8 @@ function New-GhIssue {
     $headers = Get-GhRestHeaders -Pat $Pat
     $issueData = @{ title = $Title; body = $Body; labels = $Labels }
     if ($Assignees -and $Assignees.Count -gt 0) {
-        $validAssignees = $Assignees | Where-Object { -not [string]::IsNullOrEmpty($_) }
-        if ($validAssignees.Count -gt 0) { $issueData.assignees = $validAssignees }
+        $validAssignees = @($Assignees | Where-Object { -not [string]::IsNullOrEmpty($_) })
+        if ($validAssignees.Count -gt 0) { $issueData.assignees = @($validAssignees) }
     }
     $jsonBody = $issueData | ConvertTo-Json -Depth 10
     $uri = "https://api.github.com/repos/$Org/$Repo/issues"
