@@ -207,6 +207,8 @@ stages:
         branchName: '$(Build.SourceBranch)'
         artifactName: 'migration-reports'
         targetPath: '$(workingDir)\reports'
+        allowPartiallySucceededBuilds: true
+        allowFailedBuilds: true
       continueOnError: true  # First run won't have previous artifacts
 
     - task: PowerShell@2
