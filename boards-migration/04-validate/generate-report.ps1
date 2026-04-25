@@ -1,5 +1,5 @@
 # ============================================================
-#  Generate Migration Report - Professional summary
+#  Generate Migration Report - Professional Enterprise Report
 #  Phase: 04-validate
 #  Input:  reports/migration-log.json, reports/validation-results.json
 #  Output: reports/migration-summary.md
@@ -34,173 +34,245 @@ $validation = if (Test-Path $validationPath) { Read-JsonConfig -Path $validation
 $inventory  = if (Test-Path $inventoryPath)  { Read-JsonConfig -Path $inventoryPath } else { $null }
 $analysis   = if (Test-Path $analysisPath)   { Read-JsonConfig -Path $analysisPath } else { $null }
 
-$date = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$date     = Get-Date -Format "dd MMM yyyy, hh:mm tt"
 $migCount = @($migLog.PSObject.Properties).Count
+$adoCount = if ($inventory) { $inventory.summary.totalCount } else { $migCount }
 
-# ============================================================
-#  Build Professional Markdown Report
-# ============================================================
-$md = @"
-# :rocket: Azure DevOps to GitHub Migration Report
-
----
-
-## Executive Summary
-
-| | |
-|---|---|
-| **Date** | $date |
-| **Status** | $(if ($validation) { if ($validation.overallResult -eq 'PASS') { ':white_check_mark: **PASSED**' } elseif ($validation.overallResult -eq 'WARN') { ':warning: **PASSED WITH WARNINGS**' } else { ':x: **FAILED**' } } else { ':hourglass: Pending Validation' }) |
-| **Items Migrated** | **$migCount** work items |
-| **Production Run** | $(if ($config.migration.productionRun) { 'Yes - ADO items tagged' } else { 'No - ADO items unchanged' }) |
-
----
-
-## Source & Target
-
-| | Source (Azure DevOps) | Target (GitHub) |
-|---|---|---|
-| **Organization** | ``$($config.source.organization)`` | ``$($config.target.organization)`` |
-| **Project / Repo** | ``$($config.source.project)`` | ``$($config.target.repository)`` |
-| **Scope** | ``$($config.source.areaPath)`` | Project #$($config.target.projectNumber) |
-
----
-
-
-"@
-
-# --- Source Inventory Breakdown ---
-if ($inventory) {
-    $md += "## Source Inventory`n`n"
-
-    # By Type
-    $md += "### Work Items by Type`n`n"
-    $md += "| Type | Count | Migrated |`n|---|:---:|:---:|`n"
-    foreach ($entry in $inventory.summary.byType.PSObject.Properties) {
-        $icon = switch ($entry.Name) {
-            "Epic"       { ":purple_circle:" }
-            "Feature"    { ":large_blue_circle:" }
-            "User Story" { ":green_circle:" }
-            "Task"       { ":yellow_circle:" }
-            "Bug"        { ":red_circle:" }
-            "Issue"      { ":orange_circle:" }
-            default      { ":white_circle:" }
-        }
-        $md += "| $icon $($entry.Name) | $($entry.Value) | :white_check_mark: |`n"
-    }
-    $md += "| | **$($inventory.summary.totalCount)** | **$migCount** |`n`n"
-
-    # By State
-    $md += "### Work Items by State`n`n"
-    $md += "| State | Count |`n|---|:---:|`n"
-    foreach ($entry in $inventory.summary.byState.PSObject.Properties) {
-        $stateIcon = switch ($entry.Name) {
-            "New"      { ":new:" }
-            "Active"   { ":arrow_forward:" }
-            "Resolved" { ":white_check_mark:" }
-            "Closed"   { ":lock:" }
-            "Done"     { ":white_check_mark:" }
-            default    { ":record_button:" }
-        }
-        $md += "| $stateIcon $($entry.Name) | $($entry.Value) |`n"
-    }
-    $md += "`n"
-
-    # By Assignee
-    if ($inventory.summary.byAssignee) {
-        $md += "### Work Items by Assignee`n`n"
-        $md += "| Assignee | Count |`n|---|:---:|`n"
-        foreach ($entry in $inventory.summary.byAssignee.PSObject.Properties) {
-            $md += "| $($entry.Name) | $($entry.Value) |`n"
-        }
-        $md += "`n"
-    }
-
-    $md += "---`n`n"
+# Determine validation status
+$statusText = "Pending"
+if ($validation) {
+    if     ($validation.overallResult -eq 'PASS') { $statusText = "PASSED" }
+    elseif ($validation.overallResult -eq 'WARN') { $statusText = "PASSED WITH WARNINGS" }
+    else   { $statusText = "FAILED" }
 }
 
-# --- Migration Mapping Table ---
-$md += "## Migration Mapping`n`n"
-$md += "| ADO ID | GitHub Issue | Link |`n|:---:|:---:|---|`n"
+$successRate = if ($adoCount -gt 0) { [math]::Round(($migCount / $adoCount) * 100, 1) } else { 0 }
+
+# ============================================================
+# Build Report Lines
+# ============================================================
+$lines = [System.Collections.Generic.List[string]]::new()
+
+function Add($text) { $lines.Add($text) }
+function Blank() { $lines.Add("") }
+
+# ── TITLE ────────────────────────────────────────────────────
+Add "# Azure DevOps to GitHub - Migration Report"
+Blank
+Add "---"
+Blank
+Blank
+
+# ── EXECUTIVE SUMMARY ────────────────────────────────────────
+Add "## 1. Executive Summary"
+Blank
+Add "This report summarizes the migration of work items from **Azure DevOps Boards** to **GitHub Issues and Projects**."
+Add "The migration was executed using an automated pipeline with validation checks."
+Blank
+
+Add "| | |"
+Add "|:--|:--|"
+Add "| **Date** | $date |"
+Add "| **Validation Result** | **$statusText** |"
+Add "| **Success Rate** | **$successRate%** ($migCount of $adoCount items) |"
+Add "| **Production Run** | $(if ($config.migration.productionRun) { 'Yes - ADO items tagged as migrated' } else { 'No - Dry run mode' }) |"
+Blank
+Add "---"
+Blank
+Blank
+
+# ── SOURCE AND TARGET ────────────────────────────────────────
+Add "## 2. Source and Target"
+Blank
+
+Add "### Source - Azure DevOps"
+Blank
+Add "| Field | Value |"
+Add "|:--|:--|"
+Add "| Organization | ``$($config.source.organization)`` |"
+Add "| Project | ``$($config.source.project)`` |"
+Add "| Area Path | ``$($config.source.areaPath)`` |"
+Blank
+
+Add "### Target - GitHub"
+Blank
+Add "| Field | Value |"
+Add "|:--|:--|"
+Add "| Owner | ``$($config.target.organization)`` |"
+Add "| Repository | ``$($config.target.repository)`` |"
+Add "| Project Board | #$($config.target.projectNumber) |"
+Add "| Owner Type | ``$($config.target.projectOwnerType)`` |"
+Blank
+Add "---"
+Blank
+Blank
+
+# ── MIGRATION STATISTICS ─────────────────────────────────────
+if ($inventory) {
+    Add "## 3. Migration Statistics"
+    Blank
+
+    Add "### 3.1 Work Items by Type"
+    Blank
+    Add "| Work Item Type | Count | Migrated |"
+    Add "|:--|:--:|:--:|"
+    foreach ($entry in $inventory.summary.byType.PSObject.Properties) {
+        Add "| $($entry.Name) | $($entry.Value) | Yes |"
+    }
+    Add "| **TOTAL** | **$adoCount** | **$migCount** |"
+    Blank
+    Blank
+
+    Add "### 3.2 Work Items by State"
+    Blank
+    Add "| Current State | Count |"
+    Add "|:--|:--:|"
+    foreach ($entry in $inventory.summary.byState.PSObject.Properties) {
+        Add "| $($entry.Name) | $($entry.Value) |"
+    }
+    Blank
+    Blank
+
+    if ($inventory.summary.byAssignee) {
+        Add "### 3.3 Work Items by Assignee"
+        Blank
+        Add "| ADO Assignee | Items Assigned |"
+        Add "|:--|:--:|"
+        foreach ($entry in $inventory.summary.byAssignee.PSObject.Properties) {
+            Add "| $($entry.Name) | $($entry.Value) |"
+        }
+        Blank
+    }
+
+    Add "---"
+    Blank
+    Blank
+}
+
+# ── MIGRATION DETAILS ────────────────────────────────────────
+$sectionNum = if ($inventory) { "4" } else { "3" }
+Add "## $sectionNum. Migration Details"
+Blank
+Add "Each ADO work item was migrated as a GitHub Issue with labels, comments, attachments, and project status."
+Blank
+
+Add "| # | ADO ID | ADO Link | GitHub Issue | GitHub Link |"
+Add "|:--:|:--:|:--|:--:|:--|"
+$row = 1
 foreach ($prop in $migLog.PSObject.Properties) {
     $adoId = $prop.Name
     $ghData = $prop.Value
     $adoUrl = "https://dev.azure.com/$($config.source.organization)/$($config.source.project)/_workitems/edit/$adoId"
-    $md += "| [$adoId]($adoUrl) | #$($ghData.issueNumber) | [View on GitHub]($($ghData.issueUrl)) |`n"
+    Add "| $row | $adoId | [Open in ADO]($adoUrl) | #$($ghData.issueNumber) | [Open in GitHub]($($ghData.issueUrl)) |"
+    $row++
 }
-$md += "`n---`n`n"
+Blank
+Add "---"
+Blank
+Blank
 
-# --- Status Mapping Reference ---
-$md += "## Status Mapping Applied`n`n"
-$md += "| ADO State | :arrow_right: | GitHub Status |`n|---|:---:|---|`n"
+# ── STATUS MAPPING ───────────────────────────────────────────
+$sectionNum2 = [int]$sectionNum + 1
+Add "## $sectionNum2. Status Mapping Reference"
+Blank
+Add "The following state mapping was applied to set the GitHub Project status field."
+Blank
+
+Add "| ADO State | GitHub Project Status |"
+Add "|:--|:--|"
 $statusMappings = Read-JsonConfig -Path (Join-Path $scriptRoot "config\status-mappings.json")
 foreach ($entry in $statusMappings.defaultMapping.PSObject.Properties) {
-    $md += "| $($entry.Name) | :arrow_right: | **$($entry.Value)** |`n"
+    Add "| $($entry.Name) | $($entry.Value) |"
 }
-$md += "`n---`n`n"
+Blank
+Add "---"
+Blank
+Blank
 
-# --- Validation Results ---
+# ── VALIDATION RESULTS ───────────────────────────────────────
+$sectionNum3 = [int]$sectionNum + 2
 if ($validation) {
-    $md += "## Validation Results`n`n"
+    Add "## $sectionNum3. Validation Results"
+    Blank
 
     $passCount = @($validation.checks | Where-Object { $_.result -eq "PASS" }).Count
     $failCount = @($validation.checks | Where-Object { $_.result -eq "FAIL" }).Count
     $warnCount = @($validation.checks | Where-Object { $_.result -eq "WARN" }).Count
     $totalChecks = @($validation.checks).Count
 
-    $md += "| Passed | Warnings | Failed | Total |`n|:---:|:---:|:---:|:---:|`n"
-    $md += "| :white_check_mark: **$passCount** | :warning: **$warnCount** | :x: **$failCount** | **$totalChecks** |`n`n"
+    Add "**$passCount** of **$totalChecks** checks passed. **$warnCount** warning(s). **$failCount** failure(s)."
+    Blank
 
-    $md += "### Detailed Checks`n`n"
-    $md += "| # | Check | Result | Details |`n|:---:|---|:---:|---|`n"
+    Add "| # | Validation Check | Result | Details |"
+    Add "|:--:|:--|:--:|:--|"
     $i = 1
     foreach ($c in $validation.checks) {
-        $icon = switch ($c.result) { "PASS" { ":white_check_mark:" }; "FAIL" { ":x:" }; "WARN" { ":warning:" }; default { ":grey_question:" } }
-        $md += "| $i | $($c.check) | $icon $($c.result) | $($c.detail) |`n"
+        $result = $c.result
+        Add "| $i | $($c.check) | **$result** | $($c.detail) |"
         $i++
     }
-    $md += "`n"
+    Blank
 
     if ($validation.missingIssues -and @($validation.missingIssues).Count -gt 0) {
-        $md += "### :warning: Missing Issues`n`n"
+        Blank
+        Add "### Missing Issues"
+        Blank
         foreach ($m in $validation.missingIssues) {
-            $md += "- ADO #$($m.adoId) :arrow_right: GitHub #$($m.issueNumber) (NOT FOUND)`n"
+            Add "- ADO #$($m.adoId) was mapped to GitHub #$($m.issueNumber) but the issue was not found."
         }
-        $md += "`n"
+        Blank
     }
 
-    $md += "---`n`n"
+    Add "---"
+    Blank
+    Blank
 }
 
-# --- Configuration Summary ---
-$md += @"
-## Configuration
+# ── CONFIGURATION ────────────────────────────────────────────
+$sectionNum4 = [int]$sectionNum + 3
+Add "## $sectionNum4. Pipeline Configuration"
+Blank
+Add "Settings used for this migration run."
+Blank
 
-| Setting | Value |
-|---|---|
-| Migrate Closed Items | ``$($config.migration.migrateClosedWorkItems)`` |
-| Update Assignees | ``$($config.migration.updateAssignedTo)`` |
-| Migrate Comments | ``$($config.migration.addAdoComments)`` |
-| Migrate Attachments | ``$($config.migration.migrateAttachments)`` |
-| Preserve Hierarchy | ``$($config.migration.preserveParentChild)`` |
-| Production Run | ``$($config.migration.productionRun)`` |
-| Rate Limit | ``$($config.migration.rateLimitDelayMs)ms`` |
+Add "| Parameter | Value |"
+Add "|:--|:--|"
+Add "| Migrate Closed Work Items | $($config.migration.migrateClosedWorkItems) |"
+Add "| Update Assignees | $($config.migration.updateAssignedTo) |"
+Add "| Migrate Comments | $($config.migration.addAdoComments) |"
+Add "| Migrate Attachments | $($config.migration.migrateAttachments) |"
+Add "| Preserve Parent-Child Links | $($config.migration.preserveParentChild) |"
+Add "| Production Run | $($config.migration.productionRun) |"
+Add "| Rate Limit Delay | $($config.migration.rateLimitDelayMs) ms |"
+Add "| Batch Size | $($config.migration.batchSize) |"
+Add "| Retry Count | $($config.migration.retryCount) |"
+Blank
+Blank
 
-### Config Files Used
-- ``config/boards-migration-config.json``
-- ``config/user-mappings.json``
-- ``config/status-mappings.json``
-- ``config/workitem-type-mappings.json``
+Add "### Configuration Files"
+Blank
+Add "| File | Purpose |"
+Add "|:--|:--|"
+Add "| ``boards-migration-config.json`` | Main configuration - source, target, migration settings |"
+Add "| ``user-mappings.json`` | ADO identity to GitHub username mapping |"
+Add "| ``status-mappings.json`` | ADO state to GitHub project status mapping |"
+Add "| ``workitem-type-mappings.json`` | Work item type to GitHub label mapping and migration order |"
+Blank
+Add "---"
+Blank
+Blank
 
----
+# ── FOOTER ───────────────────────────────────────────────────
+Add "*Report generated automatically by the Azure DevOps to GitHub migration pipeline.*"
+Blank
+Add "*Generated on: $date*"
 
-> :memo: _Report generated automatically by the boards-migration pipeline._
-> :clock1: _Generated at: $date_
-"@
-
+# ============================================================
 # Save report
+# ============================================================
+$reportContent = $lines -join "`n"
 $reportPath = Join-Path $reportDir "migration-summary.md"
-$md | Set-Content -Path $reportPath -Encoding UTF8
+$reportContent | Set-Content -Path $reportPath -Encoding UTF8
 
 Write-Log -Message "Report saved: $reportPath" -Level "SUCCESS"
 Write-Log -Message "Migration report generation complete." -Level "SUCCESS"
