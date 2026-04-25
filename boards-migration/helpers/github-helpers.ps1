@@ -98,6 +98,19 @@ function New-GhIssue {
         $resp = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers -Body $jsonBody
         return $resp
     } catch {
+        # If assignees caused the failure (user not a collaborator), retry without them
+        if ($issueData.assignees -and $issueData.assignees.Count -gt 0) {
+            Write-Log -Message "Issue creation failed with assignees [$($issueData.assignees -join ', ')]. Retrying without assignees..." -Level "WARN"
+            $issueData.Remove('assignees')
+            $jsonBody = $issueData | ConvertTo-Json -Depth 10
+            try {
+                $resp = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers -Body $jsonBody
+                return $resp
+            } catch {
+                Write-Log -Message "Failed to create issue '$Title' (even without assignees): $_" -Level "ERROR"
+                throw
+            }
+        }
         Write-Log -Message "Failed to create issue '$Title': $_" -Level "ERROR"
         throw
     }
