@@ -195,8 +195,8 @@ stages:
       continueOnError: true
 
     # Download migration log from PREVIOUS run for incremental migration.
-    # This enables the -Resume flag to skip already-migrated items,
-    # so only new ADO work items are migrated on subsequent runs.
+    # Downloads to a temp dir and copies ONLY migration-log.json to avoid
+    # overwriting current discovery files (like workitem-inventory.json).
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Previous Migration Log (incremental)'
       inputs:
@@ -206,9 +206,28 @@ stages:
         buildVersionToDownload: 'latestFromBranch'
         branchName: '$(Build.SourceBranch)'
         artifactName: 'migration-reports'
-        targetPath: '$(workingDir)\reports'
+        targetPath: '$(workingDir)\prev-migration'
         allowPartiallySucceededBuilds: true
         allowFailedBuilds: true
+      continueOnError: true
+
+    - task: PowerShell@2
+      displayName: 'Copy Previous Migration Log'
+      inputs:
+        targetType: inline
+        script: |
+          $prevDir = Join-Path "$(workingDir)" "prev-migration"
+          $reportsDir = Join-Path "$(workingDir)" "reports"
+          $prevLog = Join-Path $prevDir "migration-log.json"
+          if (Test-Path $prevLog) {
+              if (-not (Test-Path $reportsDir)) { New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null }
+              Copy-Item $prevLog -Destination $reportsDir -Force
+              $count = (@((Get-Content $prevLog -Raw | ConvertFrom-Json).PSObject.Properties)).Count
+              Write-Host "Loaded migration log from previous run: $count items"
+          } else {
+              Write-Host "No previous migration log found. Starting fresh."
+          }
+        pwsh: true
       continueOnError: true  # First run won't have previous artifacts
 
     - task: PowerShell@2
