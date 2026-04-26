@@ -98,6 +98,8 @@ $summary = @{
     byType          = @{}
     byState         = @{}
     byAssignee      = @{}
+    uniqueStates    = @()
+    statesByType    = @{}
     withParent      = ($inventory | Where-Object { $null -ne $_.parentId }).Count
     withChildren    = ($inventory | Where-Object { $_.childCount -gt 0 }).Count
     withAttachments = ($inventory | Where-Object { $_.attachmentCount -gt 0 }).Count
@@ -118,6 +120,13 @@ $inventory | ForEach-Object {
     if (-not $summary.byAssignee[$name]) { $summary.byAssignee[$name] = 0 }
     $summary.byAssignee[$name]++
 }
+
+# Collect unique states (for auto-creating GitHub Project status options)
+$summary.uniqueStates = @($inventory | ForEach-Object { $_.state } | Sort-Object -Unique)
+$inventory | Group-Object -Property workItemType | ForEach-Object {
+    $summary.statesByType[$_.Name] = @($_.Group | ForEach-Object { $_.state } | Sort-Object -Unique)
+}
+Write-Log -Message "Unique states found: $($summary.uniqueStates -join ', ')" -Level "INFO"
 
 $report = @{ summary = $summary; workItems = $inventory }
 

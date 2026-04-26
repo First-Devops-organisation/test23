@@ -116,4 +116,45 @@ if ($config.migration.inviteCollaborators -eq $true) {
     Write-Log -Message "Collaborator invitations skipped (inviteCollaborators=false). Users must already have repo access." -Level "INFO"
 }
 
+# --- Auto-Sync GitHub Project Status Options ---
+$statusMappings = Read-JsonConfig -Path (Join-Path $scriptRoot "config\status-mappings.json")
+if ($statusMappings.autoSyncStatuses -eq $true) {
+    Write-Log -Message "Auto-syncing GitHub Project Status options from ADO states..." -Level "INFO"
+
+    # Load discovery inventory to get unique states
+    $inventoryPath = Join-Path $scriptRoot $config.output.reportDir "workitem-inventory.json"
+    if (Test-Path $inventoryPath) {
+        $inventory = Read-JsonConfig -Path $inventoryPath
+        $uniqueStates = @($inventory.summary.uniqueStates)
+
+        if ($uniqueStates.Count -gt 0) {
+            Write-Log -Message "ADO states to sync: $($uniqueStates -join ', ')" -Level "INFO"
+
+            # Get GitHub Project ID
+            $ghProjNum      = $config.target.projectNumber
+            $ghProjectOwner = $config.target.projectOwner
+            if (-not $ghProjectOwner) { $ghProjectOwner = $ghOrg }
+            $ghProjectOwnerType = $config.target.projectOwnerType
+            if (-not $ghProjectOwnerType) { $ghProjectOwnerType = "organization" }
+
+            $ghProjectId = Get-GhProjectId -Owner $ghProjectOwner -ProjectNumber $ghProjNum -Pat $ghPat -OwnerType $ghProjectOwnerType
+            if ($ghProjectId) {
+                $updatedField = Sync-GhProjectStatusOptions -ProjectId $ghProjectId -Pat $ghPat -RequiredStates $uniqueStates
+                if ($updatedField) {
+                    Write-Log -Message "GitHub Project Status field has $($updatedField.options.Count) options" -Level "SUCCESS"
+                }
+            } else {
+                Write-Log -Message "Could not find GitHub Project #$ghProjNum" -Level "WARN"
+            }
+        } else {
+            Write-Log -Message "No unique states found in discovery inventory" -Level "WARN"
+        }
+    } else {
+        Write-Log -Message "Discovery inventory not found at: $inventoryPath. Run discovery first." -Level "WARN"
+    }
+} else {
+    Write-Log -Message "Auto-sync statuses disabled (autoSyncStatuses=false). Using manual mappings." -Level "INFO"
+}
+
 Write-Log -Message "Label setup complete. Processed $created labels." -Level "SUCCESS"
+

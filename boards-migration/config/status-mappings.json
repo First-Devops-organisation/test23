@@ -1,5 +1,6 @@
 {
-  "_comment": "Maps ADO work item states to GitHub ProjectV2 Status column values. Supports per-type overrides. GitHub status values MUST match your ProjectV2 Status field options exactly (case-sensitive).",
+  "_comment": "Maps ADO work item states to GitHub ProjectV2 Status column values. When autoSyncStatuses is true, ADO states are auto-created in GitHub; defaultMapping acts as fallback only.",
+  "autoSyncStatuses": true,
   "defaultMapping": {
     "New": "Backlog",
     "Active": "In progress",

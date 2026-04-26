@@ -1,7 +1,7 @@
-# ============================================================
+﻿# ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
-#  Migrates ADO work items → GitHub Issues + ProjectV2
+#  Migrates ADO work items â†’ GitHub Issues + ProjectV2
 #  Handles: hierarchy, comments, images, attachments, status,
 #           assignees, labels, tags, parent-child links
 # ============================================================
@@ -125,8 +125,8 @@ $sortedItems = $allItems.Values | Sort-Object {
 
 Write-Log -Message "Items sorted by hierarchy. Migration order ready." -Level "INFO"
 
-# --- ADO ID → GitHub Issue Number tracking ---
-$adoToGhMap = @{}  # adoId → @{ issueNumber; issueNodeId; issueUrl }
+# --- ADO ID â†’ GitHub Issue Number tracking ---
+$adoToGhMap = @{}  # adoId â†’ @{ issueNumber; issueNodeId; issueUrl }
 
 # ============================================================
 #  MAIN MIGRATION LOOP
@@ -147,7 +147,7 @@ foreach ($item in $sortedItems) {
 
     # --- Skip if already migrated (resume mode) ---
     if ($migrationLog.ContainsKey("$adoId")) {
-        Write-Log -Message "  Already migrated → skipping" -Level "DEBUG"
+        Write-Log -Message "  Already migrated â†’ skipping" -Level "DEBUG"
         $adoToGhMap[$adoId] = $migrationLog["$adoId"]
         $skipped++
         continue
@@ -163,7 +163,7 @@ foreach ($item in $sortedItems) {
     $typeConfig = $typeMappings.types.$type
     if ($typeConfig) { $labels += $typeConfig.githubLabel }
 
-    # Tags → labels
+    # Tags â†’ labels
     if ($item.fields.'System.Tags') {
         $tags = $item.fields.'System.Tags' -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne "copied-to-github" }
         foreach ($tag in $tags) { $labels += "tag:$tag" }
@@ -223,7 +223,7 @@ foreach ($item in $sortedItems) {
     $adoUrl = "https://dev.azure.com/$adoOrg/$adoProject/_workitems/edit/$adoId"
     $body += "`n---`n"
     $body += "> **Migrated from Azure DevOps** | [Original Work Item #$adoId]($adoUrl)`n`n"
-    $body += "<details><summary>📋 Original Work Item Metadata</summary>`n`n"
+    $body += "**Original Work Item Metadata**`n`n"
     $body += "| Field | Value |`n|---|---|`n"
     $body += "| ADO ID | $adoId |`n"
     $body += "| Type | $type |`n"
@@ -234,7 +234,6 @@ foreach ($item in $sortedItems) {
     $body += "| Assigned To | $($assignee.displayName) |`n"
     $body += "| Area Path | $areaPathValue |`n"
     $body += "| Iteration | $($item.fields.'System.IterationPath') |`n"
-    $body += "`n</details>"
 
     # --- Resolve GitHub assignee ---
     $ghAssignees = @()
@@ -273,22 +272,36 @@ foreach ($item in $sortedItems) {
             Write-Log -Message "  Added to Project (item: $projectItemId)" -Level "DEBUG"
 
             if ($statusField) {
-                $adoStateLower = $state
-                $typeOverride = $statusMappings.typeOverrides.$type
-                $mappedStatus = if ($typeOverride -and $typeOverride.$adoStateLower) {
-                    $typeOverride.$adoStateLower
-                } else {
-                    $statusMappings.defaultMapping.$adoStateLower
-                }
-                if (-not $mappedStatus) { $mappedStatus = $statusMappings.defaultMapping.$state }
+                $adoState = $state
+                $targetStatus = $null
+                $option = $null
 
-                if ($mappedStatus) {
-                    $option = $statusOptions | Where-Object { $_.name -eq $mappedStatus }
-                    if ($option) {
-                        Set-GhProjectItemField -ProjectId $ghProjectId -ItemId $projectItemId `
-                            -FieldId $statusField.id -OptionId $option.id -Pat $ghPat
-                        Write-Log -Message "  Status → '$mappedStatus'" -Level "DEBUG"
+                # Strategy 1: Exact match â€” ADO state exists as a GitHub status option
+                $option = $statusOptions | Where-Object { $_.name -eq $adoState }
+                if ($option) {
+                    $targetStatus = $adoState
+                }
+
+                # Strategy 2: Fallback to status-mappings.json
+                if (-not $option) {
+                    $typeOverride = $statusMappings.typeOverrides.$type
+                    $mappedStatus = if ($typeOverride -and $typeOverride.$adoState) {
+                        $typeOverride.$adoState
+                    } else {
+                        $statusMappings.defaultMapping.$adoState
                     }
+                    if ($mappedStatus) {
+                        $option = $statusOptions | Where-Object { $_.name -eq $mappedStatus }
+                        $targetStatus = $mappedStatus
+                    }
+                }
+
+                if ($option) {
+                    Set-GhProjectItemField -ProjectId $ghProjectId -ItemId $projectItemId `
+                        -FieldId $statusField.id -OptionId $option.id -Pat $ghPat
+                    Write-Log -Message "  Status: '$adoState' â†’ '$targetStatus'" -Level "DEBUG"
+                } else {
+                    Write-Log -Message "  No status match for ADO state: '$adoState'" -Level "WARN"
                 }
             }
         } catch {
@@ -320,7 +333,7 @@ foreach ($item in $sortedItems) {
                 if ($localFile) {
                     $ghUrl = Upload-ImageToGitHub -FilePath $localFile -GhOrg $ghOrg -GhRepo $ghRepo -GhPat $ghPat
                     if ($ghUrl) {
-                        $attComment = "📎 **Attachment**: [$($att.Name)]($ghUrl)"
+                        $attComment = "**Attachment**: [$($att.Name)]($ghUrl)"
                         if ($att.Comment) { $attComment += "`n> $($att.Comment)" }
                         Add-GhIssueComment -Org $ghOrg -Repo $ghRepo -IssueNumber $issueNum -Body $attComment -Pat $ghPat | Out-Null
                     }
@@ -369,12 +382,12 @@ if ($preserveHierarchy -and -not $DryRun) {
             # Try GitHub sub-issues API first
             $success = Add-GhSubIssue -ParentIssueNodeId $parentNodeId -ChildIssueNodeId $childNodeId -Pat $ghPat
             if ($success) {
-                Write-Log -Message "  Linked #$($adoToGhMap[$adoId].issueNumber) → parent #$parentIssueNum" -Level "DEBUG"
+                Write-Log -Message "  Linked #$($adoToGhMap[$adoId].issueNumber) to parent #$parentIssueNum" -Level "DEBUG"
                 $linkedCount++
             } else {
                 # Fallback: add cross-reference comment
                 $childUrl = $adoToGhMap[$adoId].issueUrl
-                $commentBody = "🔗 **Child issue**: $childUrl"
+                $commentBody = "**Child issue**: $childUrl"
                 Add-GhIssueComment -Org $ghOrg -Repo $ghRepo -IssueNumber $parentIssueNum -Body $commentBody -Pat $ghPat | Out-Null
                 $linkedCount++
             }

@@ -83,6 +83,91 @@ function Get-GhProjectFields {
     return $resp.data.node.fields.nodes
 }
 
+# --- Sync GitHub Project Status options to match ADO states ---
+# Creates any missing ADO states as Status field options, keeps existing ones.
+function Sync-GhProjectStatusOptions {
+    param(
+        [string]$ProjectId,
+        [string]$Pat,
+        [string[]]$RequiredStates
+    )
+
+    # Color palette for status options (GitHub ProjectV2 supported colors)
+    $colors = @("GRAY", "BLUE", "GREEN", "YELLOW", "ORANGE", "RED", "PINK", "PURPLE")
+
+    # Get the current Status field
+    $fields = Get-GhProjectFields -ProjectId $ProjectId -Pat $Pat
+    $statusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Status" }
+
+    if (-not $statusField) {
+        Write-Log -Message "No Status field found in GitHub Project" -Level "ERROR"
+        return $null
+    }
+
+    $existingNames = @($statusField.options | ForEach-Object { $_.name })
+    $missingStates = @($RequiredStates | Where-Object { $_ -notin $existingNames })
+
+    if ($missingStates.Count -eq 0) {
+        Write-Log -Message "All $($RequiredStates.Count) ADO states already exist in GitHub Project Status field" -Level "SUCCESS"
+        return $statusField
+    }
+
+    Write-Log -Message "Adding $($missingStates.Count) missing status options: $($missingStates -join ', ')" -Level "INFO"
+
+    # Build the full options list: existing + missing
+    $allOptions = [System.Collections.Generic.List[object]]::new()
+
+    # Keep existing options with their IDs
+    foreach ($opt in $statusField.options) {
+        $allOptions.Add(@{ id = $opt.id; name = $opt.name })
+    }
+
+    # Add missing options with colors
+    $colorIdx = 0
+    foreach ($state in $missingStates) {
+        $color = $colors[$colorIdx % $colors.Count]
+        $allOptions.Add(@{ name = $state; color = $color })
+        $colorIdx++
+    }
+
+    # Build the options JSON for the mutation
+    $optionEntries = @()
+    foreach ($opt in $allOptions) {
+        if ($opt.id) {
+            $optionEntries += "{ id: \`"$($opt.id)\`", name: \`"$($opt.name)\`" }"
+        } else {
+            $optionEntries += "{ name: \`"$($opt.name)\`", color: $($opt.color) }"
+        }
+    }
+    $optionsStr = $optionEntries -join ", "
+
+    $mutation = @"
+mutation {
+  updateProjectV2Field(input: {
+    fieldId: "$($statusField.id)"
+    singleSelectOptions: [$optionsStr]
+  }) {
+    projectV2Field {
+      ... on ProjectV2SingleSelectField { id name options { id name } }
+    }
+  }
+}
+"@
+
+    $resp = Invoke-GhGraphQL -Query $mutation -Pat $Pat
+    if ($resp.data.updateProjectV2Field) {
+        $updated = $resp.data.updateProjectV2Field.projectV2Field
+        Write-Log -Message "Status field updated: $($updated.options.Count) options total" -Level "SUCCESS"
+        foreach ($opt in $updated.options) {
+            Write-Log -Message "  - $($opt.name)" -Level "DEBUG"
+        }
+        return $updated
+    } else {
+        Write-Log -Message "Failed to update Status field options" -Level "ERROR"
+        return $statusField
+    }
+}
+
 # --- Create a GitHub Issue via REST API ---
 function New-GhIssue {
     param([string]$Org, [string]$Repo, [string]$Title, [string]$Body, [string[]]$Labels, [string[]]$Assignees, [string]$Pat)
