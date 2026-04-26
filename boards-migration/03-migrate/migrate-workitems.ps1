@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
 #  Migrates ADO work items â†’ GitHub Issues + ProjectV2
@@ -97,6 +97,19 @@ if ($ghProjNum) {
         $statusOptions = $statusField.options
         Write-Log -Message "Status options: $(($statusOptions | ForEach-Object { $_.name }) -join ', ')" -Level "INFO"
     }
+
+    # Load custom fields for enterprise migration
+    $adoStatusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "ADO Status" }
+    $priorityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Priority" }
+    $severityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Severity" }
+    $storyPtsField  = $fields | Where-Object { $_.name -eq "Story Points" }
+    $adoIdField     = $fields | Where-Object { $_.name -eq "ADO ID" }
+
+    if ($adoStatusField) { Write-Log -Message "Custom field 'ADO Status': $($adoStatusField.options.Count) options" -Level "INFO" }
+    if ($priorityField)  { Write-Log -Message "Custom field 'Priority': ready" -Level "INFO" }
+    if ($severityField)  { Write-Log -Message "Custom field 'Severity': ready" -Level "INFO" }
+    if ($storyPtsField)  { Write-Log -Message "Custom field 'Story Points': ready" -Level "INFO" }
+    if ($adoIdField)     { Write-Log -Message "Custom field 'ADO ID': ready" -Level "INFO" }
 }
 
 # --- Ensure repo has at least one commit (required for image/attachment uploads) ---
@@ -259,54 +272,121 @@ foreach ($item in $sortedItems) {
             issueNodeId = $issueNodeId
             issueUrl    = $issueUrl
         }
+        
+        # --- Add to GitHub Project + set Status + custom fields ---
+        if ($ghProjectId) {
+            try {
+                $projectItemId = Add-GhIssueToProject -IssueNodeId $issueNodeId -ProjectId $ghProjectId -Pat $ghPat
+                Write-Log -Message "  Added to Project (item: $projectItemId)" -Level "DEBUG"
+
+                # --- Built-in Status (board columns) ---
+                if ($statusField) {
+                    $adoState = $state
+                    $targetStatus = $null
+                    $option = $null
+
+                    # Strategy 1: Exact match - ADO state exists as a GitHub status option
+                    $option = $statusOptions | Where-Object { $_.name -eq $adoState }
+                    if ($option) {
+                        $targetStatus = $adoState
+                    }
+
+                    # Strategy 2: Fallback to status-mappings.json
+                    if (-not $option) {
+                        $typeOverride = $statusMappings.typeOverrides.$type
+                        $mappedStatus = if ($typeOverride -and $typeOverride.$adoState) {
+                            $typeOverride.$adoState
+                        } else {
+                            $statusMappings.defaultMapping.$adoState
+                        }
+                        if ($mappedStatus) {
+                            $option = $statusOptions | Where-Object { $_.name -eq $mappedStatus }
+                            $targetStatus = $mappedStatus
+                        }
+                    }
+
+                    if ($option) {
+                        Set-GhProjectItemField -ProjectId $ghProjectId -ItemId $projectItemId `
+                            -FieldId $statusField.id -OptionId $option.id -Pat $ghPat
+                        Write-Log -Message "  Status: '$adoState' -> '$targetStatus'" -Level "DEBUG"
+                    } else {
+                        Write-Log -Message "  No status match for ADO state: '$adoState'" -Level "WARN"
+                    }
+                }
+
+                # --- Custom Field: ADO Status (exact ADO state) ---
+                if ($adoStatusField -and $state) {
+                    $adoOpt = $adoStatusField.options | Where-Object { $_.name -eq $state }
+                    if ($adoOpt) {
+                        Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
+                            -FieldId $adoStatusField.id -OptionId $adoOpt.id -Pat $ghPat
+                        Write-Log -Message "  ADO Status: '$state'" -Level "DEBUG"
+                    }
+                }
+
+                # --- Custom Field: Priority ---
+                if ($priorityField) {
+                    $adoPriority = $item.fields.'Microsoft.VSTS.Common.Priority'
+                    if ($adoPriority) {
+                        $priMap = @{ 1 = "P1 - Critical"; 2 = "P2 - High"; 3 = "P3 - Medium"; 4 = "P4 - Low" }
+                        $priName = $priMap[[int]$adoPriority]
+                        if ($priName) {
+                            $priOpt = $priorityField.options | Where-Object { $_.name -eq $priName }
+                            if ($priOpt) {
+                                Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
+                                    -FieldId $priorityField.id -OptionId $priOpt.id -Pat $ghPat
+                                Write-Log -Message "  Priority: '$priName'" -Level "DEBUG"
+                            }
+                        }
+                    }
+                }
+
+                # --- Custom Field: Severity (Bugs) ---
+                if ($severityField) {
+                    $adoSeverity = $item.fields.'Microsoft.VSTS.Common.Severity'
+                    if ($adoSeverity) {
+                        $sevMap = @{
+                            "1 - Critical" = "1 - Critical"; "2 - High" = "2 - High"
+                            "3 - Medium" = "3 - Medium"; "4 - Low" = "4 - Low"
+                        }
+                        $sevName = $sevMap[$adoSeverity]
+                        if ($sevName) {
+                            $sevOpt = $severityField.options | Where-Object { $_.name -eq $sevName }
+                            if ($sevOpt) {
+                                Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
+                                    -FieldId $severityField.id -OptionId $sevOpt.id -Pat $ghPat
+                                Write-Log -Message "  Severity: '$sevName'" -Level "DEBUG"
+                            }
+                        }
+                    }
+                }
+
+                # --- Custom Field: Story Points ---
+                if ($storyPtsField) {
+                    $sp = $item.fields.'Microsoft.VSTS.Scheduling.StoryPoints'
+                    if (-not $sp) { $sp = $item.fields.'Microsoft.VSTS.Scheduling.Effort' }
+                    if ($sp) {
+                        Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
+                            -FieldId $storyPtsField.id -Value ([double]$sp) -Pat $ghPat
+                        Write-Log -Message "  Story Points: $sp" -Level "DEBUG"
+                    }
+                }
+
+                # --- Custom Field: ADO ID ---
+                if ($adoIdField) {
+                    Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
+                        -FieldId $adoIdField.id -Value ([double]$adoId) -Pat $ghPat
+                    Write-Log -Message "  ADO ID: $adoId" -Level "DEBUG"
+                }
+
+            } catch {
+                Write-Log -Message "  Project/Field update failed: $_" -Level "WARN"
+            }
+        }
     } catch {
         Write-Log -Message "  FAILED to create issue: $_" -Level "ERROR"
         $failed++
         continue
-    }
-
-    # --- Add to GitHub Project + set Status ---
-    if ($ghProjectId) {
-        try {
-            $projectItemId = Add-GhIssueToProject -IssueNodeId $issueNodeId -ProjectId $ghProjectId -Pat $ghPat
-            Write-Log -Message "  Added to Project (item: $projectItemId)" -Level "DEBUG"
-
-            if ($statusField) {
-                $adoState = $state
-                $targetStatus = $null
-                $option = $null
-
-                # Strategy 1: Exact match â€” ADO state exists as a GitHub status option
-                $option = $statusOptions | Where-Object { $_.name -eq $adoState }
-                if ($option) {
-                    $targetStatus = $adoState
-                }
-
-                # Strategy 2: Fallback to status-mappings.json
-                if (-not $option) {
-                    $typeOverride = $statusMappings.typeOverrides.$type
-                    $mappedStatus = if ($typeOverride -and $typeOverride.$adoState) {
-                        $typeOverride.$adoState
-                    } else {
-                        $statusMappings.defaultMapping.$adoState
-                    }
-                    if ($mappedStatus) {
-                        $option = $statusOptions | Where-Object { $_.name -eq $mappedStatus }
-                        $targetStatus = $mappedStatus
-                    }
-                }
-
-                if ($option) {
-                    Set-GhProjectItemField -ProjectId $ghProjectId -ItemId $projectItemId `
-                        -FieldId $statusField.id -OptionId $option.id -Pat $ghPat
-                    Write-Log -Message "  Status: '$adoState' â†’ '$targetStatus'" -Level "DEBUG"
-                } else {
-                    Write-Log -Message "  No status match for ADO state: '$adoState'" -Level "WARN"
-                }
-            }
-        } catch {
-            Write-Log -Message "  Project/Status update failed: $_" -Level "WARN"
-        }
     }
 
     # --- Migrate Comments ---

@@ -71,6 +71,14 @@
     "3 - Medium": "severity:medium",
     "4 - Low": "severity:low"
   },
+  "customFields": {
+    "_comment": "Controls which custom fields are created in GitHub ProjectV2. ADO Status preserves exact ADO state, Priority/Severity map ADO values to project fields.",
+    "adoStatus": true,
+    "priority": true,
+    "severity": true,
+    "storyPoints": true,
+    "adoId": true
+  },
   "output": {
     "reportDir": "./reports",
     "logDir": "./logs",

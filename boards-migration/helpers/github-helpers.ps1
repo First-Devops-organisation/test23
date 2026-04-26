@@ -83,90 +83,202 @@ function Get-GhProjectFields {
     return $resp.data.node.fields.nodes
 }
 
-# --- Sync GitHub Project Status options to match ADO states ---
-# Creates any missing ADO states as Status field options, keeps existing ones.
-function Sync-GhProjectStatusOptions {
+# --- Create a custom field in GitHub ProjectV2 ---
+# Supports: SINGLE_SELECT, NUMBER, TEXT
+function New-GhProjectCustomField {
     param(
         [string]$ProjectId,
         [string]$Pat,
-        [string[]]$RequiredStates
+        [string]$FieldName,
+        [ValidateSet("SINGLE_SELECT","NUMBER","TEXT")]
+        [string]$DataType,
+        [hashtable[]]$Options  # For SINGLE_SELECT: @(@{name="X";color="BLUE"}, ...)
     )
 
-    # Color palette for status options (GitHub ProjectV2 supported colors)
-    $colors = @("GRAY", "BLUE", "GREEN", "YELLOW", "ORANGE", "RED", "PINK", "PURPLE")
-
-    # Get the current Status field
-    $fields = Get-GhProjectFields -ProjectId $ProjectId -Pat $Pat
-    $statusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Status" }
-
-    if (-not $statusField) {
-        Write-Log -Message "No Status field found in GitHub Project" -Level "ERROR"
-        return $null
-    }
-
-    $existingNames = @($statusField.options | ForEach-Object { $_.name })
-    $missingStates = @($RequiredStates | Where-Object { $_ -notin $existingNames })
-
-    if ($missingStates.Count -eq 0) {
-        Write-Log -Message "All $($RequiredStates.Count) ADO states already exist in GitHub Project Status field" -Level "SUCCESS"
-        return $statusField
-    }
-
-    Write-Log -Message "Adding $($missingStates.Count) missing status options: $($missingStates -join ', ')" -Level "INFO"
-
-    # Build the full options list: existing + missing
-    $allOptions = [System.Collections.Generic.List[object]]::new()
-
-    # Keep existing options with their IDs
-    foreach ($opt in $statusField.options) {
-        $allOptions.Add(@{ id = $opt.id; name = $opt.name })
-    }
-
-    # Add missing options with colors
-    $colorIdx = 0
-    foreach ($state in $missingStates) {
-        $color = $colors[$colorIdx % $colors.Count]
-        $allOptions.Add(@{ name = $state; color = $color })
-        $colorIdx++
-    }
-
-    # Build the options JSON for the mutation
-    $optionEntries = @()
-    foreach ($opt in $allOptions) {
-        if ($opt.id) {
-            $optionEntries += "{ id: \`"$($opt.id)\`", name: \`"$($opt.name)\`" }"
-        } else {
-            $optionEntries += "{ name: \`"$($opt.name)\`", color: $($opt.color) }"
+    $colors = @("GRAY","BLUE","GREEN","YELLOW","ORANGE","RED","PINK","PURPLE")
+    $optionsBlock = ""
+    if ($DataType -eq "SINGLE_SELECT" -and $Options) {
+        $optEntries = @()
+        $ci = 0
+        foreach ($opt in $Options) {
+            $c = if ($opt.color) { $opt.color } else { $colors[$ci % $colors.Count] }
+            $optEntries += "{ name: \`"$($opt.name)\`", color: $c }"
+            $ci++
         }
+        $optionsBlock = ", singleSelectOptions: [$($optEntries -join ', ')]"
     }
-    $optionsStr = $optionEntries -join ", "
 
     $mutation = @"
 mutation {
-  updateProjectV2Field(input: {
-    fieldId: "$($statusField.id)"
-    singleSelectOptions: [$optionsStr]
+  createProjectV2Field(input: {
+    projectId: "$ProjectId"
+    dataType: $DataType
+    name: "$FieldName"
+    $( if ($optionsBlock) { $optionsBlock.TrimStart(', ') } )
   }) {
     projectV2Field {
       ... on ProjectV2SingleSelectField { id name options { id name } }
+      ... on ProjectV2Field { id name }
     }
   }
 }
 "@
 
     $resp = Invoke-GhGraphQL -Query $mutation -Pat $Pat
-    if ($resp.data.updateProjectV2Field) {
-        $updated = $resp.data.updateProjectV2Field.projectV2Field
-        Write-Log -Message "Status field updated: $($updated.options.Count) options total" -Level "SUCCESS"
-        foreach ($opt in $updated.options) {
-            Write-Log -Message "  - $($opt.name)" -Level "DEBUG"
-        }
-        return $updated
+    if ($resp.data.createProjectV2Field) {
+        $field = $resp.data.createProjectV2Field.projectV2Field
+        Write-Log -Message "Created custom field: $FieldName ($DataType)" -Level "SUCCESS"
+        return $field
     } else {
-        Write-Log -Message "Failed to update Status field options" -Level "ERROR"
-        return $statusField
+        Write-Log -Message "Failed to create field '$FieldName': $($resp.errors | ConvertTo-Json -Compress)" -Level "ERROR"
+        return $null
     }
 }
+
+# --- Set a single-select custom field value by option name ---
+function Set-GhProjectItemSelectField {
+    param(
+        [string]$ProjectId,
+        [string]$ItemId,
+        [string]$FieldId,
+        [string]$OptionId,
+        [string]$Pat
+    )
+
+    $mutation = @"
+mutation {
+  updateProjectV2ItemFieldValue(input: {
+    projectId: "$ProjectId"
+    itemId: "$ItemId"
+    fieldId: "$FieldId"
+    value: { singleSelectOptionId: "$OptionId" }
+  }) { projectV2Item { id } }
+}
+"@
+    Invoke-GhGraphQL -Query $mutation -Pat $Pat | Out-Null
+}
+
+# --- Set a number custom field value ---
+function Set-GhProjectItemNumberField {
+    param(
+        [string]$ProjectId,
+        [string]$ItemId,
+        [string]$FieldId,
+        [double]$Value,
+        [string]$Pat
+    )
+
+    $mutation = @"
+mutation {
+  updateProjectV2ItemFieldValue(input: {
+    projectId: "$ProjectId"
+    itemId: "$ItemId"
+    fieldId: "$FieldId"
+    value: { number: $Value }
+  }) { projectV2Item { id } }
+}
+"@
+    Invoke-GhGraphQL -Query $mutation -Pat $Pat | Out-Null
+}
+
+# --- Ensure all required custom fields exist in the GitHub Project ---
+# Returns a hashtable of field definitions with their IDs and options
+function Ensure-GhProjectCustomFields {
+    param(
+        [string]$ProjectId,
+        [string]$Pat,
+        [string[]]$RequiredStates,
+        [bool]$CreateAdoStatus = $true,
+        [bool]$CreatePriority = $true,
+        [bool]$CreateSeverity = $true,
+        [bool]$CreateStoryPoints = $true,
+        [bool]$CreateAdoId = $true
+    )
+
+    $fields = Get-GhProjectFields -ProjectId $ProjectId -Pat $Pat
+    $result = @{}
+
+    # Helper: check if field exists by name
+    function Find-Field($name) {
+        return $fields | Where-Object { $_.name -eq $name }
+    }
+
+    # --- ADO Status (exact state from ADO) ---
+    if ($CreateAdoStatus -and $RequiredStates.Count -gt 0) {
+        $existing = Find-Field "ADO Status"
+        if ($existing) {
+            Write-Log -Message "Field 'ADO Status' already exists" -Level "INFO"
+            $result["adoStatus"] = $existing
+        } else {
+            $opts = @($RequiredStates | ForEach-Object { @{ name = $_ } })
+            $result["adoStatus"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
+                -FieldName "ADO Status" -DataType "SINGLE_SELECT" -Options $opts
+        }
+    }
+
+    # --- Priority (P1-P4) ---
+    if ($CreatePriority) {
+        $existing = Find-Field "Priority"
+        if ($existing) {
+            Write-Log -Message "Field 'Priority' already exists" -Level "INFO"
+            $result["priority"] = $existing
+        } else {
+            $opts = @(
+                @{ name = "P1 - Critical"; color = "RED" },
+                @{ name = "P2 - High"; color = "ORANGE" },
+                @{ name = "P3 - Medium"; color = "YELLOW" },
+                @{ name = "P4 - Low"; color = "GREEN" }
+            )
+            $result["priority"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
+                -FieldName "Priority" -DataType "SINGLE_SELECT" -Options $opts
+        }
+    }
+
+    # --- Severity (for Bugs) ---
+    if ($CreateSeverity) {
+        $existing = Find-Field "Severity"
+        if ($existing) {
+            Write-Log -Message "Field 'Severity' already exists" -Level "INFO"
+            $result["severity"] = $existing
+        } else {
+            $opts = @(
+                @{ name = "1 - Critical"; color = "RED" },
+                @{ name = "2 - High"; color = "ORANGE" },
+                @{ name = "3 - Medium"; color = "YELLOW" },
+                @{ name = "4 - Low"; color = "GREEN" }
+            )
+            $result["severity"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
+                -FieldName "Severity" -DataType "SINGLE_SELECT" -Options $opts
+        }
+    }
+
+    # --- Story Points ---
+    if ($CreateStoryPoints) {
+        $existing = Find-Field "Story Points"
+        if ($existing) {
+            Write-Log -Message "Field 'Story Points' already exists" -Level "INFO"
+            $result["storyPoints"] = $existing
+        } else {
+            $result["storyPoints"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
+                -FieldName "Story Points" -DataType "NUMBER"
+        }
+    }
+
+    # --- ADO ID ---
+    if ($CreateAdoId) {
+        $existing = Find-Field "ADO ID"
+        if ($existing) {
+            Write-Log -Message "Field 'ADO ID' already exists" -Level "INFO"
+            $result["adoId"] = $existing
+        } else {
+            $result["adoId"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
+                -FieldName "ADO ID" -DataType "NUMBER"
+        }
+    }
+
+    return $result
+}
+
 
 # --- Create a GitHub Issue via REST API ---
 function New-GhIssue {

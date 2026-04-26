@@ -115,46 +115,42 @@ if ($config.migration.inviteCollaborators -eq $true) {
 } else {
     Write-Log -Message "Collaborator invitations skipped (inviteCollaborators=false). Users must already have repo access." -Level "INFO"
 }
+# --- Create Custom Fields in GitHub Project ---
+Write-Log -Message "Setting up GitHub Project custom fields..." -Level "INFO"
 
-# --- Auto-Sync GitHub Project Status Options ---
-$statusMappings = Read-JsonConfig -Path (Join-Path $scriptRoot "config\status-mappings.json")
-if ($statusMappings.autoSyncStatuses -eq $true) {
-    Write-Log -Message "Auto-syncing GitHub Project Status options from ADO states..." -Level "INFO"
+$inventoryPath = Join-Path $scriptRoot $config.output.reportDir "workitem-inventory.json"
+if (Test-Path $inventoryPath) {
+    $inventory = Read-JsonConfig -Path $inventoryPath
+    $uniqueStates = @($inventory.summary.uniqueStates)
+    Write-Log -Message "ADO states found: $($uniqueStates -join ', ')" -Level "INFO"
 
-    # Load discovery inventory to get unique states
-    $inventoryPath = Join-Path $scriptRoot $config.output.reportDir "workitem-inventory.json"
-    if (Test-Path $inventoryPath) {
-        $inventory = Read-JsonConfig -Path $inventoryPath
-        $uniqueStates = @($inventory.summary.uniqueStates)
+    # Get GitHub Project ID
+    $ghProjNum      = $config.target.projectNumber
+    $ghProjectOwner = $config.target.projectOwner
+    if (-not $ghProjectOwner) { $ghProjectOwner = $ghOrg }
+    $ghProjectOwnerType = $config.target.projectOwnerType
+    if (-not $ghProjectOwnerType) { $ghProjectOwnerType = "organization" }
 
-        if ($uniqueStates.Count -gt 0) {
-            Write-Log -Message "ADO states to sync: $($uniqueStates -join ', ')" -Level "INFO"
+    $ghProjectId = Get-GhProjectId -Owner $ghProjectOwner -ProjectNumber $ghProjNum -Pat $ghPat -OwnerType $ghProjectOwnerType
 
-            # Get GitHub Project ID
-            $ghProjNum      = $config.target.projectNumber
-            $ghProjectOwner = $config.target.projectOwner
-            if (-not $ghProjectOwner) { $ghProjectOwner = $ghOrg }
-            $ghProjectOwnerType = $config.target.projectOwnerType
-            if (-not $ghProjectOwnerType) { $ghProjectOwnerType = "organization" }
+    if ($ghProjectId) {
+        $cfConfig = $config.customFields
+        $customFields = Ensure-GhProjectCustomFields -ProjectId $ghProjectId -Pat $ghPat `
+            -RequiredStates $uniqueStates `
+            -CreateAdoStatus $(if ($cfConfig.adoStatus -eq $false) { $false } else { $true }) `
+            -CreatePriority $(if ($cfConfig.priority -eq $false) { $false } else { $true }) `
+            -CreateSeverity $(if ($cfConfig.severity -eq $false) { $false } else { $true }) `
+            -CreateStoryPoints $(if ($cfConfig.storyPoints -eq $false) { $false } else { $true }) `
+            -CreateAdoId $(if ($cfConfig.adoId -eq $false) { $false } else { $true })
 
-            $ghProjectId = Get-GhProjectId -Owner $ghProjectOwner -ProjectNumber $ghProjNum -Pat $ghPat -OwnerType $ghProjectOwnerType
-            if ($ghProjectId) {
-                $updatedField = Sync-GhProjectStatusOptions -ProjectId $ghProjectId -Pat $ghPat -RequiredStates $uniqueStates
-                if ($updatedField) {
-                    Write-Log -Message "GitHub Project Status field has $($updatedField.options.Count) options" -Level "SUCCESS"
-                }
-            } else {
-                Write-Log -Message "Could not find GitHub Project #$ghProjNum" -Level "WARN"
-            }
-        } else {
-            Write-Log -Message "No unique states found in discovery inventory" -Level "WARN"
-        }
+        $fieldCount = @($customFields.Keys).Count
+        Write-Log -Message "Custom fields ready: $fieldCount fields configured" -Level "SUCCESS"
     } else {
-        Write-Log -Message "Discovery inventory not found at: $inventoryPath. Run discovery first." -Level "WARN"
+        Write-Log -Message "Could not find GitHub Project #$ghProjNum" -Level "WARN"
     }
 } else {
-    Write-Log -Message "Auto-sync statuses disabled (autoSyncStatuses=false). Using manual mappings." -Level "INFO"
+    Write-Log -Message "Discovery inventory not found. Skipping custom field setup." -Level "WARN"
 }
 
-Write-Log -Message "Label setup complete. Processed $created labels." -Level "SUCCESS"
+Write-Log -Message "Label and field setup complete. Processed $created labels." -Level "SUCCESS"
 
