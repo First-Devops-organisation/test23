@@ -1,25 +1,32 @@
 # ============================================================
 #  Generate GitHub Project Setup Guide
 #  Reads discovery inventory and generates:
-#    1. github-project-setup.json  — machine-readable config for prep phase
-#    2. github-project-setup-guide.md — human-readable setup instructions
+#    1. github-project-setup.json  - machine-readable config for prep phase
+#    2. github-project-setup-guide.md - human-readable setup instructions
 #
 #  This tells you EXACTLY what to set up manually and what the pipeline auto-creates.
 # ============================================================
 
-param([string]$configPath)
+[CmdletBinding()]
+param(
+    [string]$ConfigPath = "$PSScriptRoot\..\config\boards-migration-config.json"
+)
 
 $ErrorActionPreference = "Stop"
-$scriptRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$scriptRoot = Split-Path $PSScriptRoot -Parent
 
-# Load helpers and config
-. "$scriptRoot\helpers\logging-helpers.ps1"
-. "$scriptRoot\helpers\config-helpers.ps1"
+# Load helpers
+. "$scriptRoot\helpers\logging.ps1"
+. "$scriptRoot\helpers\github-helpers.ps1"
 
-if (-not $configPath) { $configPath = Join-Path $scriptRoot "config\boards-migration-config.json" }
-$config = Read-JsonConfig -Path $configPath
-
+# Load config
+$config = Read-JsonConfig -Path $ConfigPath
 $reportDir = Join-Path $scriptRoot $config.output.reportDir
+$logDir    = Join-Path $scriptRoot $config.output.logDir
+
+# Initialize logging
+Initialize-Log -LogPath (Join-Path $logDir "generate-setup-guide-$(Get-Date -Format 'yyyyMMdd-HHmmss').log")
+
 $inventoryPath = Join-Path $reportDir "workitem-inventory.json"
 
 if (-not (Test-Path $inventoryPath)) {
