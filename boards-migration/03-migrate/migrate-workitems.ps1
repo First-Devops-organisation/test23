@@ -85,6 +85,15 @@ if ($Resume -and (Test-Path $migLogPath)) {
     Write-Log -Message "Resuming: $($migrationLog.Count) items already migrated" -Level "INFO"
 }
 
+# --- Load closed states (for auto-closing issues) ---
+$closedStates = @("Closed", "Done", "Resolved", "Removed", "Completed", "Inactive")
+$closedStatesPath = Join-Path $scriptRoot $config.output.reportDir "closed-states.json"
+if (Test-Path $closedStatesPath) {
+    $csData = Read-JsonConfig -Path $closedStatesPath
+    if ($csData.closedStates) { $closedStates = @($csData.closedStates) }
+}
+Write-Log -Message "Closed states: $($closedStates -join ', ')" -Level "INFO"
+
 # --- Get GitHub Project info ---
 $ghProjectId = $null; $statusField = $null; $statusOptions = $null
 if ($ghProjNum) {
@@ -425,7 +434,6 @@ foreach ($item in $sortedItems) {
     }
 
     # --- Close issue if ADO state is terminal ---
-    $closedStates = $statusMappings.closedStates
     if ($closedStates -contains $state) {
         Close-GhIssue -Org $ghOrg -Repo $ghRepo -IssueNumber $issueNum -Pat $ghPat
         Write-Log -Message "  Closed (ADO state: $state)" -Level "DEBUG"

@@ -85,6 +85,13 @@ stages:
       env:
         ADO_PAT: $(ADO_PAT)
 
+    - task: PowerShell@2
+      displayName: 'Generate GitHub Project Setup Guide'
+      inputs:
+        filePath: '$(workingDir)\01-discover\generate-setup-guide.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
+        pwsh: true
+
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Discovery Reports'
       inputs:

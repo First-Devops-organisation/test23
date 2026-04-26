@@ -118,11 +118,29 @@ if ($config.migration.inviteCollaborators -eq $true) {
 # --- Create Custom Fields in GitHub Project ---
 Write-Log -Message "Setting up GitHub Project custom fields..." -Level "INFO"
 
+# Prefer setup config from discovery, fallback to inventory
+$setupConfigPath = Join-Path $scriptRoot $config.output.reportDir "github-project-setup.json"
 $inventoryPath = Join-Path $scriptRoot $config.output.reportDir "workitem-inventory.json"
-if (Test-Path $inventoryPath) {
+
+$uniqueStates = @()
+$closedStates = @()
+
+if (Test-Path $setupConfigPath) {
+    $setupConfig = Read-JsonConfig -Path $setupConfigPath
+    $uniqueStates = @($setupConfig.statusOptions.required)
+    $closedStates = @($setupConfig.closedStates)
+    Write-Log -Message "Loaded setup config: $($uniqueStates.Count) states, $($setupConfig.totalWorkItems) items" -Level "INFO"
+} elseif (Test-Path $inventoryPath) {
     $inventory = Read-JsonConfig -Path $inventoryPath
     $uniqueStates = @($inventory.summary.uniqueStates)
-    Write-Log -Message "ADO states found: $($uniqueStates -join ', ')" -Level "INFO"
+    $closedStates = @("Closed", "Done", "Resolved", "Removed", "Completed")
+    Write-Log -Message "Loaded inventory: $($uniqueStates.Count) states" -Level "INFO"
+} else {
+    Write-Log -Message "No discovery data found. Skipping custom field setup." -Level "WARN"
+}
+
+if ($uniqueStates.Count -gt 0) {
+    Write-Log -Message "ADO states: $($uniqueStates -join ', ')" -Level "INFO"
 
     # Get GitHub Project ID
     $ghProjNum      = $config.target.projectNumber
@@ -134,6 +152,7 @@ if (Test-Path $inventoryPath) {
     $ghProjectId = Get-GhProjectId -Owner $ghProjectOwner -ProjectNumber $ghProjNum -Pat $ghPat -OwnerType $ghProjectOwnerType
 
     if ($ghProjectId) {
+        # --- Create custom fields ---
         $cfConfig = $config.customFields
         $customFields = Ensure-GhProjectCustomFields -ProjectId $ghProjectId -Pat $ghPat `
             -RequiredStates $uniqueStates `
@@ -145,11 +164,32 @@ if (Test-Path $inventoryPath) {
 
         $fieldCount = @($customFields.Keys).Count
         Write-Log -Message "Custom fields ready: $fieldCount fields configured" -Level "SUCCESS"
+
+        # --- Validation Gate: Check built-in Status options ---
+        Write-Log -Message "Validating built-in Status field options..." -Level "INFO"
+        $fields = Get-GhProjectFields -ProjectId $ghProjectId -Pat $ghPat
+        $statusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Status" }
+        if ($statusField) {
+            $existingNames = @($statusField.options | ForEach-Object { $_.name })
+            $missingForExact = @($uniqueStates | Where-Object { $_ -notin $existingNames })
+            if ($missingForExact.Count -gt 0) {
+                Write-Log -Message "VALIDATION: Built-in Status field is missing these ADO states: $($missingForExact -join ', ')" -Level "WARN"
+                Write-Log -Message "  Items with these states will use fallback mapping (status-mappings.json)" -Level "WARN"
+                Write-Log -Message "  To get exact board columns, add them via GitHub UI: Settings > Status > Add option" -Level "WARN"
+                Write-Log -Message "  The custom 'ADO Status' field will always show the exact ADO state regardless." -Level "INFO"
+            } else {
+                Write-Log -Message "All ADO states exist in built-in Status field - exact column matching enabled!" -Level "SUCCESS"
+            }
+        }
+
+        # --- Save closed states for migration phase ---
+        $closedStatesPath = Join-Path $scriptRoot $config.output.reportDir "closed-states.json"
+        @{ closedStates = $closedStates } | ConvertTo-Json | Set-Content -Path $closedStatesPath -Encoding UTF8
+        Write-Log -Message "Closed states saved: $($closedStates -join ', ')" -Level "INFO"
+
     } else {
         Write-Log -Message "Could not find GitHub Project #$ghProjNum" -Level "WARN"
     }
-} else {
-    Write-Log -Message "Discovery inventory not found. Skipping custom field setup." -Level "WARN"
 }
 
 Write-Log -Message "Label and field setup complete. Processed $created labels." -Level "SUCCESS"
