@@ -1,5 +1,5 @@
 # ============================================================
-#  Bunzl Migration POC - Full Work Item Creator
+#  Migration POC - Full Work Item Creator
 #  Project : YASH-DevOps-Serverless
 #  Area    : POC-Migration
 #  Run     : .\create_poc_items.ps1
@@ -75,7 +75,7 @@ New-WorkItem `
     -Type "Epic" `
     -Title "[POC] Epic - eCommerce Platform Modernization" `
     -Comment1 "Starting this epic to track the full platform migration. All teams please review scope before Sprint 1." `
-    -Comment2 "Confirmed with leadership. This is P0 for Q2. Ankit please align the DistEcom stories under this epic."
+    -Comment2 "Confirmed with leadership. This is P0 for Q2. Please align the project stories under this epic."
 
 # ============================================================
 # FEATURE

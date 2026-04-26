@@ -50,9 +50,9 @@
   },
   "areaPathMapping": {
     "YASH-DevOps-Serverless\\POC-Migration": "area:poc-migration",
-    "YASH-DevOps-Serverless\\POC-Migration\\BunzlEcom": "area:bunzlecom",
-    "YASH-DevOps-Serverless\\POC-Migration\\DistEcom": "area:distecom",
-    "YASH-DevOps-Serverless\\POC-Migration\\DistEcomAI": "area:distecomai"
+    "YASH-DevOps-Serverless\\POC-Migration\\ProjectAlpha": "area:project-alpha",
+    "YASH-DevOps-Serverless\\POC-Migration\\ProjectBeta": "area:project-beta",
+    "YASH-DevOps-Serverless\\POC-Migration\\ProjectGamma": "area:project-gamma"
   },
   "iterationPathMapping": {
     "YASH-DevOps-Serverless\\Sprint 1": "Sprint 1",

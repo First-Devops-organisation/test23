@@ -1,5 +1,5 @@
 # ============================================================
-#  Create Status Test Items - One per state from DistEcom
+#  Create Status Test Items - One per state
 #  Tests auto-sync of ADO states to GitHub Project statuses
 #  Project : YASH-DevOps-Serverless
 #  Area    : POC-Migration
@@ -15,7 +15,7 @@ az devops configure --defaults organization=$ORG project=$PROJECT
 Write-Host ""
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host " Status Test Items - Testing Auto-Sync" -ForegroundColor Cyan
-Write-Host " One item per state from DistEcom spreadsheet" -ForegroundColor Cyan
+Write-Host " One item per state" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
 
