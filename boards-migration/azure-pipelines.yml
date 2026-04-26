@@ -41,6 +41,11 @@ parameters:
     type: boolean
     default: true
 
+  - name: configFile
+    displayName: 'Config File (for multi-project support)'
+    type: string
+    default: 'boards-migration-config.json'
+
 stages:
 
 # ============================================================
@@ -70,7 +75,7 @@ stages:
       displayName: 'Discover Work Items'
       inputs:
         filePath: '$(workingDir)\01-discover\discover-workitems.ps1'
-        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
@@ -80,7 +85,7 @@ stages:
       displayName: 'Analyze Board Structure'
       inputs:
         filePath: '$(workingDir)\01-discover\analyze-board-structure.ps1'
-        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
@@ -89,7 +94,7 @@ stages:
       displayName: 'Generate GitHub Project Setup Guide'
       inputs:
         filePath: '$(workingDir)\01-discover\generate-setup-guide.ps1'
-        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
 
     - task: PublishPipelineArtifact@1
@@ -125,7 +130,7 @@ stages:
       displayName: 'Validate Mappings'
       inputs:
         filePath: '$(workingDir)\02-prep\validate-mappings.ps1'
-        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
@@ -135,7 +140,7 @@ stages:
       displayName: 'Setup GitHub Labels'
       inputs:
         filePath: '$(workingDir)\02-prep\setup-github-labels.ps1'
-        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
       env:
         GH_PAT: $(GH_PAT)
@@ -245,7 +250,7 @@ stages:
           # Build clean Windows paths using Join-Path
           $base       = Join-Path "$(Build.SourcesDirectory)" "boards-migration"
           $scriptPath = Join-Path $base "03-migrate" "migrate-workitems.ps1"
-          $configPath = Join-Path $base "config" "boards-migration-config.json"
+          $configPath = Join-Path $base "config" "${{ parameters.configFile }}"
           Write-Host "Script : $scriptPath"
           Write-Host "Config : $configPath"
           # Use hashtable splatting - correctly binds named parameters
@@ -309,7 +314,7 @@ stages:
       displayName: 'Validate Migration'
       inputs:
         filePath: '$(workingDir)\04-validate\validate-migration.ps1'
-        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
       env:
         ADO_PAT: $(ADO_PAT)
@@ -320,7 +325,7 @@ stages:
       displayName: 'Generate Summary Report'
       inputs:
         filePath: '$(workingDir)\04-validate\generate-report.ps1'
-        arguments: '-ConfigPath "$(workingDir)\config\boards-migration-config.json"'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
       condition: always()
 
