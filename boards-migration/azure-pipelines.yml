@@ -97,6 +97,15 @@ stages:
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
 
+    - task: PowerShell@2
+      displayName: 'Discover ADO Workflow Rules'
+      inputs:
+        filePath: '$(workingDir)\01-discover\discover-ado-workflows.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Discovery Reports'
       inputs:
