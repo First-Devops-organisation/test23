@@ -155,78 +155,135 @@ $workflowYaml = @"
 #  Enforce ADO Workflow Rules on GitHub Project
 #  Auto-generated from ADO workflow discovery
 #  
-#  This validates that status changes match the original
+#  Validates that project item statuses match the original
 #  ADO workflow rules per work item type.
+#
+#  Triggers:
+#    - Manual run (workflow_dispatch)
+#    - Daily schedule (catches violations)
+#    - On issue label changes
+#
+#  For org repos: add projects_v2_item trigger for real-time
 # ============================================================
 name: Enforce ADO Workflow Rules
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6 AM UTC
   issues:
-    types: [labeled, unlabeled]
-  projects_v2_item:
-    types: [edited]
+    types: [labeled]
 
 permissions:
   issues: write
-  repository-projects: write
+  repository-projects: read
+
+env:
+  PROJECT_NUMBER: 2
+  PROJECT_OWNER: Urvashi773
 
 jobs:
-  validate-status:
+  validate-workflow-rules:
     runs-on: ubuntu-latest
-    if: github.event_name == 'projects_v2_item' && github.event.changes.field_value.field_name == 'Status'
     steps:
-      - name: Validate Status Change
+      - name: Validate All Project Items
         uses: actions/github-script@v7
         with:
           github-token: `${{ secrets.GITHUB_TOKEN }}
           script: |
             // ADO workflow rules - valid states per work item type
             const validStates = $validationJsonStr;
-            
-            const itemId = context.payload.projects_v2_item.content_node_id;
-            const newStatus = context.payload.changes.field_value.to?.name;
-            const oldStatus = context.payload.changes.field_value.from?.name;
-            
-            if (!newStatus) return;
-            
-            // Get the issue to check its type label
-            try {
-              const { data: issue } = await github.rest.issues.get({
+
+            const projectNumber = parseInt(process.env.PROJECT_NUMBER);
+            const projectOwner = process.env.PROJECT_OWNER;
+
+            // Query project items with their status and linked issue
+            const query = ``
+              query(`$projectOwner: String!, `$projectNumber: Int!, `$cursor: String) {
+                user(login: `$projectOwner) {
+                  projectV2(number: `$projectNumber) {
+                    items(first: 100, after: `$cursor) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes {
+                        fieldValueByName(name: "Status") {
+                          ... on ProjectV2ItemFieldSingleSelectValue { name }
+                        }
+                        content {
+                          ... on Issue {
+                            number
+                            title
+                            labels(first: 20) {
+                              nodes { name }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ``;
+
+            let violations = [];
+            let cursor = null;
+            let totalChecked = 0;
+
+            do {
+              const result = await github.graphql(query, {
+                projectOwner,
+                projectNumber,
+                cursor
+              });
+
+              const items = result.user.projectV2.items;
+
+              for (const item of items.nodes) {
+                if (!item.content || !item.content.number) continue;
+
+                const status = item.fieldValueByName?.name;
+                if (!status) continue;
+
+                const labels = item.content.labels.nodes.map(l => l.name);
+                const typeLabel = labels.find(l => l.startsWith('type:'));
+                if (!typeLabel) continue;
+
+                const allowed = validStates[typeLabel];
+                if (!allowed || allowed.length === 0) continue;
+
+                totalChecked++;
+
+                if (!allowed.includes(status)) {
+                  violations.push({
+                    issue: item.content.number,
+                    title: item.content.title,
+                    type: typeLabel,
+                    status: status,
+                    allowed: allowed
+                  });
+                }
+              }
+
+              cursor = items.pageInfo.hasNextPage ? items.pageInfo.endCursor : null;
+            } while (cursor);
+
+            console.log('Checked ' + totalChecked + ' items, found ' + violations.length + ' violations');
+
+            // Post comments on violations
+            for (const v of violations) {
+              console.log('VIOLATION: #' + v.issue + ' (' + v.type + ') has status "' + v.status + '" but valid states are: ' + v.allowed.join(', '));
+
+              await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.payload.projects_v2_item.content_number
+                issue_number: v.issue,
+                body: ':warning: **Workflow Violation**: Status "' + v.status + '" is not valid for **' + v.type.replace('type:', '') + '** items.\n\n' +
+                      '**Valid states:** ' + v.allowed.join(', ') + '\n\n' +
+                      '_This rule is enforced based on the original Azure DevOps workflow._'
               });
-              
-              const typeLabel = issue.labels.find(l => l.name.startsWith('type:'));
-              if (!typeLabel) {
-                console.log('No type label found, skipping validation');
-                return;
-              }
-              
-              const allowed = validStates[typeLabel.name];
-              if (!allowed) {
-                console.log('No rules defined for ' + typeLabel.name);
-                return;
-              }
-              
-              if (!allowed.includes(newStatus)) {
-                console.log('INVALID: ' + typeLabel.name + ' cannot be in state: ' + newStatus);
-                console.log('Valid states: ' + allowed.join(', '));
-                
-                // Post a comment warning
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issue.number,
-                  body: '⚠️ **Workflow Violation**: Status "' + newStatus + '" is not valid for ' + typeLabel.name.replace('type:', '') + ' items.\n\n' +
-                        'Valid states: ' + allowed.join(', ') + '\n\n' +
-                        '_This rule is enforced based on the original ADO workflow._'
-                });
-              } else {
-                console.log('VALID: ' + typeLabel.name + ' -> ' + newStatus);
-              }
-            } catch (e) {
-              console.log('Could not validate: ' + e.message);
+            }
+
+            if (violations.length === 0) {
+              console.log('All items comply with ADO workflow rules!');
             }
 "@
 
