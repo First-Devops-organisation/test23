@@ -111,12 +111,12 @@ stages:
                     $login = $login.Trim()
                     $mId   = if ($mId) { $mId.Trim() } else { "" }
 
-                    # Flexible matching logic
+                    # Flexible matching logic (with null checks)
                     $match = $mappings | Where-Object {
-                        $_.ADOEmail.Trim() -eq $login -or
-                        $_.ADOUsername.Trim() -eq $login -or
-                        $_.ADODisplayName.Trim() -eq $login -or
-                        ($_.ADOEmail.Split('@')[0]).Trim() -eq $login  # Match prefix of email
+                        ([string]::IsNullOrEmpty($_.ADOEmail) ? $false : ($_.ADOEmail.Trim() -eq $login)) -or
+                        ([string]::IsNullOrEmpty($_.ADOUsername) ? $false : ($_.ADOUsername.Trim() -eq $login)) -or
+                        ([string]::IsNullOrEmpty($_.ADODisplayName) ? $false : ($_.ADODisplayName.Trim() -eq $login)) -or
+                        ([string]::IsNullOrEmpty($_.ADOEmail) ? $false : ($_.ADOEmail.Split('@')[0].Trim() -eq $login))
                     } | Select-Object -First 1
 
                     if (-not $match) {
