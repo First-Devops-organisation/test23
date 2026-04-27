@@ -104,10 +104,12 @@ stages:
                 # ── 3. Preview mapping matches ──
                 $preview = @()
                 foreach ($m in $mannequins) {
-                    $login = (if ($m.'mannequin-user') { $m.'mannequin-user' } else { $m.login }).Trim()
-                    $mId   = (if ($m.'mannequin-id') { $m.'mannequin-id' } else { $m.id }).Trim()
+                    $login = if ($m.'mannequin-user') { $m.'mannequin-user' } else { $m.login }
+                    $mId   = if ($m.'mannequin-id') { $m.'mannequin-id' } else { $m.id }
                     
                     if ([string]::IsNullOrWhiteSpace($login)) { continue }
+                    $login = $login.Trim()
+                    $mId   = if ($mId) { $mId.Trim() } else { "" }
 
                     # Flexible matching logic
                     $match = $mappings | Where-Object {
