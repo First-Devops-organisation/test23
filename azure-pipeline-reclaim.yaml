@@ -77,8 +77,17 @@ stages:
 
                 # ── 1. Generate mannequin CSV from GitHub org ──
                 Write-Host "=== Fetching Mannequins from $ghOrg ===" -ForegroundColor Cyan
-                Write-Host "=== Raw Mannequin CSV Check ==="
-                Get-Content $mannequinCsv -TotalCount 3 | Write-Host
+                $mannequinCsv = "$reportDir\mannequins.csv"
+                
+                # Generate the file
+                gh ado2gh generate-mannequin-csv --github-org $ghOrg --output $mannequinCsv 2>&1 | ForEach-Object { Write-Host "  $_" }
+
+                Write-Host "`n=== Raw Mannequin CSV Check ==="
+                if (Test-Path $mannequinCsv) {
+                    Get-Content $mannequinCsv -TotalCount 3 | Write-Host
+                } else {
+                    Write-Warning "File not generated: $mannequinCsv"
+                }
                 Write-Host "==============================="
 
                 # Explicitly define headers to avoid "H1, H2" issues
