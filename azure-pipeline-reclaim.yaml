@@ -151,9 +151,9 @@ stages:
                 foreach ($p in $preview) {
                     if ($p.MappedTo -ne "*** NO MAPPING ***") {
                         $reclaimRows += [PSCustomObject]@{
-                            login       = $p.Mannequin
-                            id          = $p.MannequinId
-                            target_user = $p.MappedTo
+                            'mannequin-user' = $p.Mannequin
+                            'mannequin-id'   = $p.MannequinId
+                            'target-user'    = $p.MappedTo
                         }
                     }
                 }
