@@ -77,19 +77,13 @@ stages:
 
                 # ── 1. Generate mannequin CSV from GitHub org ──
                 Write-Host "=== Fetching Mannequins from $ghOrg ===" -ForegroundColor Cyan
-                $mannequinCsv = "$reportDir\mannequins.csv"
-                gh ado2gh generate-mannequin-csv --github-org $ghOrg --output $mannequinCsv 2>&1 | ForEach-Object { Write-Host "  $_" }
+                Write-Host "=== Raw Mannequin CSV Check ==="
+                Get-Content $mannequinCsv -TotalCount 3 | Write-Host
+                Write-Host "==============================="
 
-                if (-not (Test-Path $mannequinCsv)) {
-                    Write-Warning "No mannequin CSV generated — org may have no mannequins."
-                    "login,id,target_user" | Out-File $mannequinCsv -Encoding utf8
-                }
-
-                $mannequins = @(Import-Csv $mannequinCsv)
+                # Explicitly define headers to avoid "H1, H2" issues
+                $mannequins = @(Import-Csv $mannequinCsv -Header "m_user","m_id","m_target" | Select-Object -Skip 1)
                 Write-Host "`n  Total mannequins found: $($mannequins.Count)"
-                if ($mannequins.Count -gt 0) {
-                    Write-Host "  CSV Headers discovered: $(($mannequins[0].PSObject.Properties.Name) -join ', ')"
-                }
 
                 # ── 2. Load user mappings ──
                 $mappingPath = '$(Build.SourcesDirectory)\repo-migration\config\user-mappings.csv'
@@ -104,12 +98,10 @@ stages:
                 # ── 3. Preview mapping matches ──
                 $preview = @()
                 foreach ($m in $mannequins) {
-                    $login = if ($m.'mannequin-user') { $m.'mannequin-user' } else { $m.login }
-                    $mId   = if ($m.'mannequin-id') { $m.'mannequin-id' } else { $m.id }
+                    $login = if ($m.m_user) { $m.m_user.Trim() } else { "" }
+                    $mId   = if ($m.m_id) { $m.m_id.Trim() } else { "" }
                     
                     if ([string]::IsNullOrWhiteSpace($login)) { continue }
-                    $login = $login.Trim()
-                    $mId   = if ($mId) { $mId.Trim() } else { "" }
 
                     # Flexible matching logic (with null checks)
                     $match = $mappings | Where-Object {
