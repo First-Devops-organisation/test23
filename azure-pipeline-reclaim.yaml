@@ -157,8 +157,13 @@ stages:
                         }
                     }
                 }
+                # ── 6. Generate reclaim CSV (for gh ado2gh) ──
                 if ($reclaimRows.Count -gt 0) {
-                    $reclaimRows | Export-Csv "$reportDir\reclaim-input.csv" -NoTypeInformation -Encoding utf8
+                    $csvLines = @("mannequin-user,mannequin-id,target-user")
+                    foreach ($r in $reclaimRows) {
+                        $csvLines += "$($r.'mannequin-user'),$($r.'mannequin-id'),$($r.'target-user')"
+                    }
+                    $csvLines | Out-File "$reportDir\reclaim-input.csv" -Encoding utf8
                     Write-Host "`n  Reclaim CSV saved: reclaim-input.csv ($($reclaimRows.Count) entries)"
                 }
 
@@ -277,6 +282,10 @@ stages:
                     Write-Warning "No reclaim-input.csv found — no mannequins to reclaim."
                     exit 0
                 }
+
+                Write-Host "=== CSV Debug Info ==="
+                Get-Content $reclaimCsv -TotalCount 1 | Write-Host
+                Write-Host "======================"
 
                 Write-Host "=== Bulk Reclaiming Mannequins for $ghOrg ===" -ForegroundColor Cyan
                 
