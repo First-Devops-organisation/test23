@@ -104,26 +104,32 @@ stages:
                 # ── 3. Preview mapping matches ──
                 $preview = @()
                 foreach ($m in $mannequins) {
-                    # Handle both old (login/id) and new (mannequin-user/mannequin-id) headers
-                    $login = if ($m.'mannequin-user') { $m.'mannequin-user' } else { $m.login }
-                    $mId   = if ($m.'mannequin-id') { $m.'mannequin-id' } else { $m.id }
+                    $login = (if ($m.'mannequin-user') { $m.'mannequin-user' } else { $m.login }).Trim()
+                    $mId   = (if ($m.'mannequin-id') { $m.'mannequin-id' } else { $m.id }).Trim()
                     
                     if ([string]::IsNullOrWhiteSpace($login)) { continue }
 
+                    # Flexible matching logic
                     $match = $mappings | Where-Object {
-                        $_.ADOEmail -eq $login -or
-                        $_.ADOUsername -eq $login -or
-                        $_.ADODisplayName -eq $login
+                        $_.ADOEmail.Trim() -eq $login -or
+                        $_.ADOUsername.Trim() -eq $login -or
+                        $_.ADODisplayName.Trim() -eq $login -or
+                        ($_.ADOEmail.Split('@')[0]).Trim() -eq $login  # Match prefix of email
                     } | Select-Object -First 1
+
+                    if (-not $match) {
+                        Write-Host "    [DEBUG] No match found for mannequin: '$login'" -ForegroundColor Gray
+                    }
 
                     $preview += [PSCustomObject]@{
                         Mannequin    = $login
                         MannequinId  = $mId
                         MappedTo     = if ($match) { $match.GitHubUsername } else { "*** NO MAPPING ***" }
                         MatchedBy    = if ($match) {
-                            if ($match.ADOEmail -eq $login) { "ADOEmail" }
-                            elseif ($match.ADOUsername -eq $login) { "ADOUsername" }
-                            else { "ADODisplayName" }
+                            if ($match.ADOEmail.Trim() -eq $login) { "ADOEmail" }
+                            elseif ($match.ADOUsername.Trim() -eq $login) { "ADOUsername" }
+                            elseif ($match.ADODisplayName.Trim() -eq $login) { "ADODisplayName" }
+                            else { "EmailPrefix" }
                         } else { "-" }
                     }
                 }
@@ -289,10 +295,14 @@ stages:
               script: |
                 $ghOrg      = '$(GH_ORG)'
                 $reportDir  = '$(Build.SourcesDirectory)\repo-migration\output\reports'
-                $reclaimCsv = "$reportDir\reclaim-input.csv"
+                
+                Write-Host "=== Searching for Artifacts ==="
+                Get-ChildItem -Path "$(Build.SourcesDirectory)\repo-migration\output" -Recurse | Select-Object FullName
+                
+                $reclaimCsv = Get-ChildItem -Path "$(Build.SourcesDirectory)\repo-migration\output" -Recurse -Filter "reclaim-input.csv" | Select-Object -ExpandProperty FullName -First 1
 
-                if (-not (Test-Path $reclaimCsv)) {
-                    Write-Warning "No reclaim-input.csv found — no mannequins to reclaim."
+                if (-not $reclaimCsv -or -not (Test-Path $reclaimCsv)) {
+                    Write-Warning "No reclaim-input.csv found in $(Build.SourcesDirectory)\repo-migration\output — no mannequins to reclaim."
                     exit 0
                 }
 
