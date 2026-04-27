@@ -104,7 +104,12 @@ stages:
                 # ── 3. Preview mapping matches ──
                 $preview = @()
                 foreach ($m in $mannequins) {
-                    $login = $m.login
+                    # Handle both old (login/id) and new (mannequin-user/mannequin-id) headers
+                    $login = if ($m.'mannequin-user') { $m.'mannequin-user' } else { $m.login }
+                    $mId   = if ($m.'mannequin-id') { $m.'mannequin-id' } else { $m.id }
+                    
+                    if ([string]::IsNullOrWhiteSpace($login)) { continue }
+
                     $match = $mappings | Where-Object {
                         $_.ADOEmail -eq $login -or
                         $_.ADOUsername -eq $login -or
@@ -113,7 +118,7 @@ stages:
 
                     $preview += [PSCustomObject]@{
                         Mannequin    = $login
-                        MannequinId  = $m.id
+                        MannequinId  = $mId
                         MappedTo     = if ($match) { $match.GitHubUsername } else { "*** NO MAPPING ***" }
                         MatchedBy    = if ($match) {
                             if ($match.ADOEmail -eq $login) { "ADOEmail" }
