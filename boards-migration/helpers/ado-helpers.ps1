@@ -184,7 +184,7 @@ function Convert-AdoHtmlToMarkdown {
         Write-Log -Message "  Image: alt='$alt' url='$urlPreview'" -Level "DEBUG"
 
         # Try to re-upload any ADO-hosted image
-        if ($Pat -and $GhPat -and $imgUrl -match 'dev\.azure\.com|visualstudio\.com|vstfs|_apis/wit|_apis/resources') {
+        if ($Pat -and $GhPat -and $imgUrl -match 'dev\.azure\.com|visualstudio\.com|vstfs|_apis/wit|_apis/resources|tfs\.dev|WorkItemTracking|_attachment') {
             Write-Log -Message "  Re-uploading ADO image: $alt" -Level "INFO"
             $localPath = Save-AdoInlineImage -ImageUrl $imgUrl -TempDir $TempDir -Pat $Pat
             if ($localPath -and (Test-Path $localPath)) {

@@ -109,14 +109,14 @@ if ($ghProjNum) {
 
     # Load custom fields for enterprise migration
     $adoStatusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "ADO Status" }
-    $priorityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Priority" }
-    $severityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Severity" }
+    $priorityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Priority" -and $_.options }
+    $severityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Severity" -and $_.options }
     $storyPtsField  = $fields | Where-Object { $_.name -eq "Story Points" }
     $adoIdField     = $fields | Where-Object { $_.name -eq "ADO ID" }
 
-    if ($adoStatusField) { Write-Log -Message "Custom field 'ADO Status': $($adoStatusField.options.Count) options" -Level "INFO" }
-    if ($priorityField)  { Write-Log -Message "Custom field 'Priority': ready" -Level "INFO" }
-    if ($severityField)  { Write-Log -Message "Custom field 'Severity': ready" -Level "INFO" }
+    if ($adoStatusField) { Write-Log -Message "Custom field 'ADO Status': $($adoStatusField.options.Count) options - $(($adoStatusField.options | ForEach-Object { $_.name }) -join ', ')" -Level "INFO" }
+    if ($priorityField)  { Write-Log -Message "Custom field 'Priority': $($priorityField.options.Count) options - $(($priorityField.options | ForEach-Object { $_.name }) -join ', ')" -Level "INFO" }
+    if ($severityField)  { Write-Log -Message "Custom field 'Severity': $($severityField.options.Count) options" -Level "INFO" }
     if ($storyPtsField)  { Write-Log -Message "Custom field 'Story Points': ready" -Level "INFO" }
     if ($adoIdField)     { Write-Log -Message "Custom field 'ADO ID': ready" -Level "INFO" }
 }
@@ -259,10 +259,27 @@ foreach ($item in $sortedItems) {
 
     # --- Resolve GitHub assignee ---
     $ghAssignees = @()
+    $unmappedAssignee = $null
     if ($updateAssignees -and $assignee.uniqueName) {
         $ghUser = $userLookup[$assignee.uniqueName.ToLower()]
         if ($ghUser) { $ghAssignees = @($ghUser) }
-        else { Write-Log -Message "  No GitHub mapping for: $($assignee.uniqueName)" -Level "WARN" }
+        else {
+            $unmappedAssignee = @{
+                name  = $assignee.displayName
+                email = $assignee.uniqueName
+                adoId = $adoId
+                title = $title
+            }
+            # Track for notification report
+            if (-not $script:unmappedUsers) { $script:unmappedUsers = @() }
+            $script:unmappedUsers += $unmappedAssignee
+            Write-Log -Message "  No GitHub mapping for: $($assignee.displayName) ($($assignee.uniqueName)) - will notify" -Level "WARN"
+        }
+    }
+
+    # Add note if assignee couldn't be mapped
+    if ($unmappedAssignee) {
+        $body += "`n> :warning: **Unmapped Assignee**: $($unmappedAssignee.name) ($($unmappedAssignee.email)) does not have a GitHub mapping. Please invite them or update user-mappings.json.`n"
     }
 
     # --- Create GitHub Issue ---
@@ -345,9 +362,13 @@ foreach ($item in $sortedItems) {
                                 Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
                                     -FieldId $priorityField.id -OptionId $priOpt.id -Pat $ghPat
                                 Write-Log -Message "  Priority: '$priName'" -Level "DEBUG"
+                            } else {
+                                Write-Log -Message "  Priority option '$priName' NOT FOUND in field options: $(($priorityField.options | ForEach-Object { $_.name }) -join ', ')" -Level "WARN"
                             }
                         }
                     }
+                } else {
+                    Write-Log -Message "  Priority field not found in project - skipping" -Level "WARN"
                 }
 
                 # --- Custom Field: Severity (Bugs) ---
@@ -492,6 +513,56 @@ Write-Log -Message "Migrated: $($total - $skipped - $failed)" -Level "SUCCESS"
 Write-Log -Message "Skipped (resume): $skipped" -Level "INFO"
 Write-Log -Message "Failed: $failed" -Level $(if ($failed -gt 0) { "ERROR" } else { "INFO" })
 Write-Log -Message "Migration log: $migLogPath" -Level "INFO"
+
+# --- Generate unmapped user notification report ---
+if ($script:unmappedUsers -and $script:unmappedUsers.Count -gt 0) {
+    Write-LogSection "Unmapped Assignee Notification Report"
+
+    # Deduplicate by email
+    $uniqueUnmapped = @{}
+    foreach ($u in $script:unmappedUsers) {
+        if (-not $uniqueUnmapped.ContainsKey($u.email)) {
+            $uniqueUnmapped[$u.email] = @{
+                name       = $u.name
+                email      = $u.email
+                workItems  = @()
+            }
+        }
+        $uniqueUnmapped[$u.email].workItems += @{ adoId = $u.adoId; title = $u.title }
+    }
+
+    Write-Log -Message "Unmapped users: $($uniqueUnmapped.Count)" -Level "WARN"
+    foreach ($email in $uniqueUnmapped.Keys) {
+        $info = $uniqueUnmapped[$email]
+        Write-Log -Message "  $($info.name) ($email) - $($info.workItems.Count) work items" -Level "WARN"
+    }
+
+    # Save notification report
+    $notificationReport = @{
+        generatedAt   = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        unmappedUsers = @($uniqueUnmapped.Values)
+        message       = "These ADO users do not have GitHub account mappings. Send them an invitation to join GitHub and update user-mappings.json."
+    }
+    $notifPath = Join-Path $reportDir "unmapped-users-notification.json"
+    $notificationReport | ConvertTo-Json -Depth 10 | Set-Content -Path $notifPath -Encoding UTF8
+    Write-Log -Message "Notification report saved: $notifPath" -Level "INFO"
+
+    # Also generate a simple CSV for email tool import
+    $csvData = @()
+    foreach ($email in $uniqueUnmapped.Keys) {
+        $info = $uniqueUnmapped[$email]
+        $csvData += [PSCustomObject]@{
+            Name          = $info.name
+            Email         = $email
+            WorkItemCount = $info.workItems.Count
+            Action        = "Invite to GitHub and map in user-mappings.json"
+        }
+    }
+    $csvPath = Join-Path $reportDir "unmapped-users-email-list.csv"
+    $csvData | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
+    Write-Log -Message "Email list CSV saved: $csvPath" -Level "INFO"
+    Write-Log -Message "Import this CSV into your email system to notify unmapped users." -Level "INFO"
+}
 
 # Cleanup temp
 if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
