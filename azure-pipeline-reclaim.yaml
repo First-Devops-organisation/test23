@@ -151,9 +151,9 @@ stages:
                 foreach ($p in $preview) {
                     if ($p.MappedTo -ne "*** NO MAPPING ***") {
                         $reclaimRows += [PSCustomObject]@{
-                            mannequin_user = $p.Mannequin
-                            mannequin_id   = $p.MannequinId
-                            target_user    = $p.MappedTo
+                            login       = $p.Mannequin
+                            id          = $p.MannequinId
+                            target_user = $p.MappedTo
                         }
                     }
                 }
@@ -269,8 +269,8 @@ stages:
             inputs:
               targetType: inline
               script: |
-                $ghOrg     = '$(GH_ORG)'
-                $reportDir = '$(Build.SourcesDirectory)\repo-migration\output\reports'
+                $ghOrg      = '$(GH_ORG)'
+                $reportDir  = '$(Build.SourcesDirectory)\repo-migration\output\reports'
                 $reclaimCsv = "$reportDir\reclaim-input.csv"
 
                 if (-not (Test-Path $reclaimCsv)) {
@@ -278,60 +278,18 @@ stages:
                     exit 0
                 }
 
-                $entries = @(Import-Csv $reclaimCsv)
-                Write-Host "=== Reclaiming $($entries.Count) Mannequins ===" -ForegroundColor Cyan
+                Write-Host "=== Bulk Reclaiming Mannequins for $ghOrg ===" -ForegroundColor Cyan
+                
+                # Use the --csv flag for bulk reclaim instead of looping
+                gh ado2gh reclaim-mannequin `
+                    --github-org $ghOrg `
+                    --csv $reclaimCsv `
+                    --force 2>&1 | ForEach-Object { Write-Host "  $_" }
 
-                $results = @()
-                foreach ($e in $entries) {
-                    Write-Host "  $($e.mannequin_user) → $($e.target_user)" -ForegroundColor Yellow
-                    try {
-                        $output = gh ado2gh reclaim-mannequin `
-                            --github-org $ghOrg `
-                            --mannequin-user $e.mannequin_user `
-                            --target-user $e.target_user `
-                            --force 2>&1
-                        $output | ForEach-Object { Write-Host "    $_" }
-
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Host "    ✅ Reclaim sent" -ForegroundColor Green
-                            $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target_user; Status="SENT" }
-                        } else {
-                            Write-Warning "    Reclaim returned exit code $LASTEXITCODE"
-                            $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target_user; Status="FAILED" }
-                        }
-                    }
-                    catch {
-                        Write-Warning "    Error: $_"
-                        $results += [PSCustomObject]@{ Mannequin=$e.mannequin_user; Target=$e.target_user; Status="ERROR" }
-                    }
-                }
-
-                # ── Summary ──
-                $sent   = @($results | Where-Object Status -eq 'SENT').Count
-                $failed = @($results | Where-Object Status -ne 'SENT').Count
-
-                Write-Host "`n=== Reclaim Summary ===" -ForegroundColor Green
-                Write-Host "  Total:  $($results.Count)"
-                Write-Host "  Sent:   $sent"
-                Write-Host "  Failed: $failed"
-
-                $results | ConvertTo-Json -Depth 3 | Out-File "$reportDir\reclaim-results.json" -Encoding utf8
-                $results | Export-Csv "$reportDir\reclaim-results.csv" -NoTypeInformation -Encoding utf8
-
-                # ── Markdown summary ──
-                $md  = "# Mannequin Reclaim Results`n`n"
-                $md += "| Mannequin | Target User | Status |`n|---|---|---|`n"
-                foreach ($r in $results) {
-                    $icon = if ($r.Status -eq 'SENT') { '✅' } else { '❌' }
-                    $md += "| $($r.Mannequin) | $($r.Target) | $icon $($r.Status) |`n"
-                }
-                $md += "`n**Sent:** $sent | **Failed:** $failed`n"
-                $md += "`n> Target users must **accept** the reclaim invitation in GitHub.`n"
-                $md | Out-File "$reportDir\reclaim-summary.md" -Encoding utf8
-                Write-Host "##vso[task.uploadsummary]$reportDir\reclaim-summary.md"
-
-                if ($failed -gt 0) {
-                    Write-Warning "$failed reclaim(s) failed — check detailed logs above."
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "`n✅ Bulk reclaim command completed successfully." -ForegroundColor Green
+                } else {
+                    Write-Error "Bulk reclaim command failed with exit code $LASTEXITCODE"
                 }
               pwsh: true
             env:
