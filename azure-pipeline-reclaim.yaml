@@ -3,7 +3,7 @@ trigger: none
 pool:
   vmImage: windows-latest
 
-# =============================================================================
+# ================a=============================================================
 # PARAMETERS
 # =============================================================================
 parameters:
@@ -100,8 +100,20 @@ stages:
                     Write-Warning "user-mappings.csv not found at $mappingPath"
                     $mappings = @()
                 } else {
-                    $mappings = @(Import-Csv $mappingPath)
+                    # Skip empty lines at the top to find real headers
+                    $rawMappings = Get-Content $mappingPath
+                    $firstDataLine = 0
+                    for ($i=0; $i -lt $rawMappings.Count; $i++) {
+                        if (-not [string]::IsNullOrWhiteSpace($rawMappings[$i])) {
+                            $firstDataLine = $i
+                            break
+                        }
+                    }
+                    $mappings = $rawMappings | Select-Object -Skip $firstDataLine | ConvertFrom-Csv
                     Write-Host "  User mappings loaded: $($mappings.Count)"
+                    if ($mappings.Count -gt 0) {
+                        Write-Host "  Mapping Headers: $(($mappings[0].PSObject.Properties.Name) -join ', ')"
+                    }
                 }
 
                 # ── 3. Preview mapping matches ──
