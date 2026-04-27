@@ -377,7 +377,7 @@ stages:
             inputs:
               targetType: 'inline'
               script: |
-                $ErrorActionPreference = "Stop"
+                $ErrorActionPreference = "Continue"
 
                 $secretsFile = "$(Build.SourcesDirectory)/migration-accelerator/output/scrubbed/secret-values.json"
 
@@ -397,36 +397,99 @@ stages:
 
                 $created = 0
                 $failed = 0
+                $failedSecrets = @()
+                $maxRetries = 3
 
                 foreach ($entry in $secrets) {
                     Write-Host "`n  Repo: $($entry.GitHubRepo)" -ForegroundColor Yellow
                     Write-Host "    Secret: $($entry.SecretName) ($($entry.RuleID))" -ForegroundColor Gray
 
-                    try {
-                        $entry.SecretValue | gh secret set $entry.SecretName --repo $entry.GitHubRepo 2>&1
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Host "    ✓ Created: $($entry.SecretName)" -ForegroundColor Green
-                            $created++
-                        } else {
-                            Write-Host "    ✗ Failed: $($entry.SecretName)" -ForegroundColor Red
-                            $failed++
+                    # Validate secret name (GitHub requires alphanumeric + underscore, no leading digit)
+                    if ($entry.SecretName -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+                        Write-Host "    ✗ Skipped: Invalid secret name '$($entry.SecretName)' (must be alphanumeric + underscore, no leading digit)" -ForegroundColor Red
+                        $failedSecrets += [PSCustomObject]@{
+                            SecretName = $entry.SecretName
+                            Repo       = $entry.GitHubRepo
+                            Error      = "Invalid secret name format"
+                        }
+                        $failed++
+                        continue
+                    }
+
+                    # Validate secret value is not empty
+                    if ([string]::IsNullOrWhiteSpace($entry.SecretValue)) {
+                        Write-Host "    ✗ Skipped: Empty secret value for '$($entry.SecretName)'" -ForegroundColor Red
+                        $failedSecrets += [PSCustomObject]@{
+                            SecretName = $entry.SecretName
+                            Repo       = $entry.GitHubRepo
+                            Error      = "Empty secret value"
+                        }
+                        $failed++
+                        continue
+                    }
+
+                    $success = $false
+                    for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+                        try {
+                            $entry.SecretValue | gh secret set $entry.SecretName --repo $entry.GitHubRepo 2>&1
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-Host "    ✓ Created: $($entry.SecretName)" -ForegroundColor Green
+                                $created++
+                                $success = $true
+                                break
+                            } else {
+                                Write-Host "    ⚠ Attempt $attempt/$maxRetries failed (exit code: $LASTEXITCODE)" -ForegroundColor Yellow
+                            }
+                        }
+                        catch {
+                            Write-Host "    ⚠ Attempt $attempt/$maxRetries error: $_" -ForegroundColor Yellow
+                        }
+
+                        if ($attempt -lt $maxRetries) {
+                            $delay = [math]::Pow(2, $attempt)
+                            Write-Host "    Retrying in ${delay}s..." -ForegroundColor Gray
+                            Start-Sleep -Seconds $delay
                         }
                     }
-                    catch {
-                        Write-Host "    ✗ Error: $_" -ForegroundColor Red
+
+                    if (-not $success) {
+                        Write-Host "    ✗ Failed after $maxRetries attempts: $($entry.SecretName)" -ForegroundColor Red
+                        $failedSecrets += [PSCustomObject]@{
+                            SecretName = $entry.SecretName
+                            Repo       = $entry.GitHubRepo
+                            Error      = "Failed after $maxRetries retries"
+                        }
                         $failed++
                     }
+
+                    # Small delay between API calls to avoid rate limiting
+                    Start-Sleep -Milliseconds 500
                 }
 
                 Write-Host "`n=== GitHub Secrets Summary ===" -ForegroundColor Cyan
                 Write-Host "Created: $created" -ForegroundColor Green
-                Write-Host "Failed:  $failed" -ForegroundColor $(if ($failed -gt 0) { "Red" } else { "Green" })
+                Write-Host "Failed:  $failed" -ForegroundColor $(if ($failed -gt 0) { "Yellow" } else { "Green" })
+
+                if ($failedSecrets.Count -gt 0) {
+                    Write-Host "`n=== Failed Secrets Detail ===" -ForegroundColor Yellow
+                    foreach ($fs in $failedSecrets) {
+                        Write-Host "  ✗ $($fs.SecretName) @ $($fs.Repo) — $($fs.Error)" -ForegroundColor Red
+                    }
+                    Write-Host ""
+                }
 
                 # Delete the secret-values.json for security
                 Remove-Item $secretsFile -Force
-                Write-Host "`nDeleted secret-values.json for security." -ForegroundColor Gray
+                Write-Host "Deleted secret-values.json for security." -ForegroundColor Gray
 
-                if ($failed -gt 0) { exit 1 }
+                # Only hard-fail if ALL secrets failed; partial success = warning
+                if ($created -eq 0 -and $failed -gt 0) {
+                    Write-Error "All $failed secrets failed to create. Pipeline cannot continue."
+                    exit 1
+                } elseif ($failed -gt 0) {
+                    Write-Host "`n##vso[task.logissue type=warning]$failed out of $($created + $failed) secrets failed to create. Review the failed secrets above." -ForegroundColor Yellow
+                    Write-Host "##vso[task.complete result=SucceededWithIssues;]$failed secrets failed" 
+                }
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
