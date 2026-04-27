@@ -33,13 +33,24 @@ if (-not $gitleaks) {
     exit 1
 }
 
+# --- Resolve custom gitleaks config ---
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$gitleaksConfig = Join-Path (Split-Path -Parent $scriptDir) "config" "gitleaks-config.toml"
+if (Test-Path $gitleaksConfig) {
+    $gitleaksConfigPath = (Resolve-Path $gitleaksConfig).Path
+    Write-Host "Using custom gitleaks config: $gitleaksConfigPath" -ForegroundColor Gray
+} else {
+    Write-Host "WARNING: Custom config not found at $gitleaksConfig — using gitleaks defaults (may miss secrets)" -ForegroundColor Yellow
+    $gitleaksConfigPath = $null
+}
+
 # --- Load Inventory ---
 $inventory = Get-Content $InventoryFile -Raw | ConvertFrom-Json
 
 if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
 if (-not (Test-Path $TempDir)) { New-Item -ItemType Directory -Path $TempDir -Force | Out-Null }
 
-Write-Host "=== Secret Scan: $($inventory.organization) ===" -ForegroundColor Cyan
+Write-Host "=== Secret Scan: $($inventory.organization) ===`n" -ForegroundColor Cyan
 
 $summary = @()
 $totalFindings = 0
@@ -57,9 +68,22 @@ foreach ($project in $inventory.projects) {
             $cloneUrl = $repo.url -replace "://", "://$Pat@"
             git clone $cloneUrl $cloneDir 2>&1 | Out-Null
 
-            # Run gitleaks — scan ALL commits, ALL branches, full history
+            # Run gitleaks — deep scan: ALL commits, ALL branches, full history
+            # Uses custom config with comprehensive rules for passwords, tokens, keys, etc.
             $exitCode = 0
-            & gitleaks detect --source $cloneDir --report-path $reportFile --report-format json --no-banner --log-opts="--all --full-history" 2>&1 | Out-Null
+            $gitleaksArgs = @(
+                "detect",
+                "--source", $cloneDir,
+                "--report-path", $reportFile,
+                "--report-format", "json",
+                "--no-banner",
+                "--log-opts=--all --full-history"
+            )
+            if ($gitleaksConfigPath) {
+                $gitleaksArgs += "--config"
+                $gitleaksArgs += $gitleaksConfigPath
+            }
+            & gitleaks @gitleaksArgs 2>&1 | Out-Null
             $exitCode = $LASTEXITCODE
 
             $findingCount = 0
