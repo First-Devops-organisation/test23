@@ -87,6 +87,9 @@ stages:
 
                 $mannequins = @(Import-Csv $mannequinCsv)
                 Write-Host "`n  Total mannequins found: $($mannequins.Count)"
+                if ($mannequins.Count -gt 0) {
+                    Write-Host "  CSV Headers discovered: $(($mannequins[0].PSObject.Properties.Name) -join ', ')"
+                }
 
                 # ── 2. Load user mappings ──
                 $mappingPath = '$(Build.SourcesDirectory)\repo-migration\config\user-mappings.csv'
@@ -161,7 +164,12 @@ stages:
                 if ($reclaimRows.Count -gt 0) {
                     $csvLines = @("mannequin-user,mannequin-id,target-user")
                     foreach ($r in $reclaimRows) {
-                        $csvLines += "$($r.'mannequin-user'),$($r.'mannequin-id'),$($r.'target-user')"
+                        # Explicitly extract values to avoid nulls
+                        $mUser   = $r.'mannequin-user'
+                        $mId     = $r.'mannequin-id'
+                        $tUser   = $r.'target-user'
+                        Write-Host "  Adding to CSV: $mUser ($mId) -> $tUser"
+                        $csvLines += "$mUser,$mId,$tUser"
                     }
                     $csvLines | Out-File "$reportDir\reclaim-input.csv" -Encoding utf8
                     Write-Host "`n  Reclaim CSV saved: reclaim-input.csv ($($reclaimRows.Count) entries)"
