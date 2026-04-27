@@ -74,21 +74,19 @@ foreach ($reportFile in $reportFiles) {
     $findings = Get-Content $reportFile.FullName -Raw | ConvertFrom-Json
     if ($findings.Count -eq 0) { continue }
 
-    # Deduplicate by secret value — each unique secret = one GitHub Secret
-    # Handles: overlapping rules, history duplicates, same secret in multiple commits
-    $uniqueFindings = @()
-    $seenSecrets = @{}
+    # Filter out empty secrets but keep ALL findings for reporting
+    $allFindings = @()
     foreach ($f in $findings) {
-        $secretVal = $f.Secret
-        if ([string]::IsNullOrWhiteSpace($secretVal)) { continue }
-        if (-not $seenSecrets.ContainsKey($secretVal)) {
-            $seenSecrets[$secretVal] = $true
-            $uniqueFindings += $f
+        if (-not [string]::IsNullOrWhiteSpace($f.Secret)) {
+            $allFindings += $f
         }
     }
-    $findings = $uniqueFindings
+    $findings = $allFindings
 
-    Write-Host "    $($findings.Count) unique secrets found (deduplicated)" -ForegroundColor Red
+    # Track unique secret values for deduplication (expressions + secret-values.json)
+    $seenSecrets = @{}
+
+    Write-Host "    $($findings.Count) total secret findings" -ForegroundColor Red
 
     # Determine names
     $parts = $repoIdentifier -split "_", 2
@@ -141,25 +139,29 @@ foreach ($reportFile in $reportFiles) {
             $secret.Substring(0, 3) + ("*" * ($secret.Length - 6)) + $secret.Substring($secret.Length - 3)
         }
 
-        # --- Save for post-migration (includes Match for replacement) ---
-        $secretValues += [PSCustomObject]@{
-            GitHubRepo       = $ghFullRepo
-            SecretName       = $secretName
-            SecretValue      = $secret
-            MatchString      = $match
-            KeyName          = $keyName
-            RuleID           = $finding.RuleID
-            SourceFile       = $finding.File
-            SourceLine       = $finding.StartLine
-            Description      = $finding.Description
+        # --- Only add unique secrets to expressions file and secret-values.json ---
+        if (-not $seenSecrets.ContainsKey($secret)) {
+            $seenSecrets[$secret] = $secretName
+
+            # --- Save for post-migration (one entry per unique secret value) ---
+            $secretValues += [PSCustomObject]@{
+                GitHubRepo       = $ghFullRepo
+                SecretName       = $secretName
+                SecretValue      = $secret
+                MatchString      = $match
+                KeyName          = $keyName
+                RuleID           = $finding.RuleID
+                SourceFile       = $finding.File
+                SourceLine       = $finding.StartLine
+                Description      = $finding.Description
+            }
+
+            # --- Build redaction expression (one per unique secret value) ---
+            $placeholder = "`${{ secrets.$secretName }}"
+            $expressions += "$secret==>$placeholder"
         }
 
-        # --- Build redaction expression ---
-        # Replace secret value with GitHub Secrets reference
-        $placeholder = "`${{ secrets.$secretName }}"
-        $expressions += "$secret==>$placeholder"
-
-        # --- Add to migration report ---
+        # --- Add ALL findings to migration report (not deduplicated) ---
         $migrationReport += [PSCustomObject]@{
             Repo              = $repoIdentifier
             GitHubRepo        = $ghFullRepo
@@ -174,6 +176,9 @@ foreach ($reportFile in $reportFiles) {
             Action            = "Update code to read from env var"
         }
     }
+
+    $uniqueCount = $seenSecrets.Count
+    Write-Host "    $uniqueCount unique secrets (deduped for scrubbing), $secretCounter total occurrences reported" -ForegroundColor Cyan
 
     # Write expressions file
     $expressions | Out-File -FilePath $expressionsFile -Encoding utf8 -NoNewline:$false
