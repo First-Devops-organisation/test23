@@ -124,6 +124,11 @@ foreach ($reportFile in $reportFiles) {
             $secretName = ($finding.RuleID -replace "[^a-zA-Z0-9]", "_").ToUpper()
         }
         if ($secretName -match "^\d") { $secretName = "S_$secretName" }
+        # GitHub reserves the GITHUB_ prefix for system secrets — rename to GH_
+        if ($secretName -match "^GITHUB_") {
+            $secretName = $secretName -replace "^GITHUB_", "GH_"
+            Write-Host "      ⚠ Renamed to $secretName (GITHUB_ prefix is reserved by GitHub)" -ForegroundColor Yellow
+        }
         if ($secretName.Length -gt 100) { $secretName = $secretName.Substring(0, 100) }
 
         # --- Log what was found ---
