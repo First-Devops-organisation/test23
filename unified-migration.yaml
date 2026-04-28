@@ -69,7 +69,7 @@ variables:
   - group: repo-migration-migrate    # GH_ORG, GH_PAT
 
 stages:
-  # ============================================ ===============================
+  # ===========================================================================
   # PIPELINE MIGRATION: STAGE 1 – DISCOVER
   # ===========================================================================
   - stage: PipelineDiscover
@@ -457,8 +457,6 @@ stages:
               arguments: >-
                 -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)
-                # -RepoName "${{ parameters.ADORepo }}"
-                # -BatchName "${{ parameters.BatchName }}"         
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
