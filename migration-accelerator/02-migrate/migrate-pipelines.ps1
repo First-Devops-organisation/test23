@@ -48,82 +48,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# ---------------------------------------------------------------------------
-# Per-pipeline template-detection helper.
-#
-# WHY: `gh actions-importer audit azure-devops` is PROJECT-wide -- it doesn't
-# accept --pipeline-id, so it returns the same config.yml for every pipeline
-# in a project. We need a per-pipeline answer ("does THIS pipeline use any
-# reusable templates?") to:
-#   1. Skip no-template pipelines in migrate-reusables (avoids wrong central PRs)
-#   2. Skip template-using pipelines in the main migrate loop (avoids duplicate
-#      central-repo PRs created by the consumer's --config-file-path).
-#
-# HOW: Run `dry-run --pipeline-id N` (which IS per-pipeline) into a probe dir
-# and check whether GEI produced any composite-action files. If it did, the
-# pipeline references reusable templates. Cached so each ID is probed once
-# per script run.
-# ---------------------------------------------------------------------------
-$script:templateProbeCache = @{}
-$script:reusablePipelineIds = @()
-function Test-PipelineHasTemplates {
-    param(
-        [Parameter(Mandatory)] $PipelineIdToProbe,
-        [Parameter(Mandatory)] [string]$AdoOrgNameProbe,
-        [Parameter(Mandatory)] [string]$AdoProjectProbe,
-        [Parameter(Mandatory)] [string]$ProbeRoot,
-        [string]$ProbeTargetUrl = "https://github.com/placeholder/placeholder"
-    )
-    $key = "$PipelineIdToProbe"
-    if ($script:templateProbeCache.ContainsKey($key)) {
-        return $script:templateProbeCache[$key]
-    }
-
-    # Allow-list short-circuit: if user explicitly listed reusable pipeline IDs,
-    # trust that and skip the (slow + sometimes flaky) GEI dry-run probe.
-    if ($script:reusablePipelineIds -and $script:reusablePipelineIds.Count -gt 0) {
-        $isReusable = $script:reusablePipelineIds -contains [int]$PipelineIdToProbe
-        $script:templateProbeCache[$key] = $isReusable
-        Write-Host "  Pipeline $PipelineIdToProbe: allow-list match = $isReusable" -ForegroundColor DarkGray
-        return $isReusable
-    }
-
-    $probeDir = Join-Path $ProbeRoot "template-probe/$PipelineIdToProbe"
-    # Wipe any stale probe output so a previous run's action.yml files can't
-    # produce a false positive (or mask a current-run failure).
-    if (Test-Path $probeDir) {
-        Remove-Item $probeDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    New-Item -ItemType Directory -Path $probeDir -Force | Out-Null
-
-    # GEI requires --target-url even for dry-run. The URL is never written to;
-    # a placeholder is fine. Without it the command silently fails and we get
-    # zero output -> false negative for every pipeline.
-    $probeArgs = @(
-        "actions-importer", "dry-run", "azure-devops", "pipeline",
-        "--output-dir",                $probeDir,
-        "--azure-devops-organization", $AdoOrgNameProbe,
-        "--azure-devops-project",      $AdoProjectProbe,
-        "--pipeline-id",               $PipelineIdToProbe,
-        "--target-url",                $ProbeTargetUrl
-    )
-    Write-Host "  Probing pipeline $PipelineIdToProbe for reusable templates (dry-run)..." -ForegroundColor DarkGray
-    $probeOutput = gh @probeArgs 2>&1
-    $probeExit = $LASTEXITCODE
-    if ($probeExit -ne 0) {
-        Write-Warning "  Probe FAILED for pipeline $PipelineIdToProbe (exit $probeExit). Output:"
-        $probeOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkYellow }
-    }
-
-    $actionFiles = Get-ChildItem -Path $probeDir -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match '[\\/]\.github[\\/]actions[\\/]' -and $_.Name -eq 'action.yml' }
-    $hasTemplates = ($actionFiles -and $actionFiles.Count -gt 0)
-    Write-Host "  Probe found $(@($actionFiles).Count) composite action file(s) for pipeline $PipelineIdToProbe (hasTemplates=$hasTemplates)" -ForegroundColor DarkGray
-
-    $script:templateProbeCache[$key] = $hasTemplates
-    return $hasTemplates
-}
-
 # Load config file if provided, otherwise use env vars from variable group
 $config = $null
 if ($ConfigFile -and (Test-Path $ConfigFile)) {
@@ -206,24 +130,6 @@ if ($repoMapRaw) {
 
 # Default target repo from GH_REPO env var
 $defaultTargetRepo = if ($config -and $config.GH_REPO) { $config.GH_REPO } elseif ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
-
-# Optional explicit allow-list of pipeline IDs that use reusable templates.
-# When set, this short-circuits the dry-run probe in Test-PipelineHasTemplates
-# (faster + immune to GEI probe flakiness). Accepts JSON array in config or
-# comma-separated env var: REUSABLE_PIPELINE_IDS=1156,1158
-$script:reusablePipelineIds = @()
-if ($config -and $config.REUSABLE_PIPELINE_IDS) {
-    $script:reusablePipelineIds = @($config.REUSABLE_PIPELINE_IDS | ForEach-Object { [int]$_ })
-} elseif ($env:REUSABLE_PIPELINE_IDS) {
-    $script:reusablePipelineIds = @(
-        $env:REUSABLE_PIPELINE_IDS -split ',' |
-            Where-Object { $_ -match '\d' } |
-            ForEach-Object { [int]($_.Trim()) }
-    )
-}
-if ($script:reusablePipelineIds.Count -gt 0) {
-    Write-Host "Reusable pipeline allow-list: $($script:reusablePipelineIds -join ', ')" -ForegroundColor Cyan
-}
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
@@ -437,23 +343,14 @@ if ($Mode -eq "audit") {
 # listed in the GEI-produced config.yml (--config-file-path flow).
 # ---------------------------------------------------------------------------
 if ($Mode -eq "migrate-reusables") {
-    # Graceful skip: no templates in this batch == nothing to do (NOT an error).
-    # Supports mixed batches where some pipelines use templates and some don't.
     if (-not $ConfigFilePath -or -not (Test-Path $ConfigFilePath)) {
-        Write-Host "No config.yml found at '$ConfigFilePath' — pipeline(s) have no reusable templates." -ForegroundColor Yellow
-        Write-Host "Skipping migrate-reusables (nothing to do)." -ForegroundColor Yellow
-        exit 0
-    }
-
-    $entryCount = (Select-String -Path $ConfigFilePath -Pattern '^\s*-\s*name:' -ErrorAction SilentlyContinue).Count
-    if ($entryCount -eq 0) {
-        Write-Host "config.yml at '$ConfigFilePath' has 0 reusable entries — nothing to migrate." -ForegroundColor Yellow
-        Write-Host "Skipping migrate-reusables." -ForegroundColor Yellow
-        exit 0
+        Write-Host "ERROR: -ConfigFilePath is required and must point to the config.yml" -ForegroundColor Red
+        Write-Host "       produced by 'audit' (e.g. ./output/pipelines/config.yml)." -ForegroundColor Red
+        exit 1
     }
 
     Write-Host "`n=== Migrating Reusable Workflows / Composite Actions ===" -ForegroundColor Cyan
-    Write-Host "  Config file: $ConfigFilePath ($entryCount entries)" -ForegroundColor Gray
+    Write-Host "  Config file: $ConfigFilePath" -ForegroundColor Gray
 
     # -----------------------------------------------------------------------
     # Optional: rewrite every target_url in config.yml to a single central
@@ -559,25 +456,17 @@ if ($Mode -eq "migrate-reusables") {
 
     $anyFailure = $false
     foreach ($pipelineIdItem in $PipelineId) {
-        Write-Host "`n  --- Checking pipeline ID $pipelineIdItem for reusable templates ---" -ForegroundColor Cyan
+        Write-Host "`n  --- Migrating reusables via consumer pipeline ID: $pipelineIdItem ---" -ForegroundColor Cyan
 
-        # Per-pipeline detection via dry-run. Audit is project-wide and useless
-        # here -- it returns the same config.yml for every pipeline in the project.
-        # Dry-run accepts --pipeline-id and tells us whether THIS pipeline
-        # actually emits any composite-action files (= uses reusable templates).
-        $hasTemplates = Test-PipelineHasTemplates `
-            -PipelineIdToProbe $pipelineIdItem `
-            -AdoOrgNameProbe   $adoOrgName `
-            -AdoProjectProbe   $AdoProject `
-            -ProbeRoot         $OutputDir `
-            -ProbeTargetUrl    $reusableTargetUrl
-
-        if (-not $hasTemplates) {
-            Write-Host "  Pipeline $pipelineIdItem has 0 reusable templates -- SKIPPING (will be handled by Migrate job into its consumer repo)." -ForegroundColor Yellow
+        # Allow-list gate: only pipelines explicitly listed in REUSABLE_PIPELINE_IDS
+        # are processed here. Everything else is left for the main Migrate job
+        # (otherwise a no-template pipeline like 934 would wrongly get a central PR).
+        if ($script:reusablePipelineIds -and $script:reusablePipelineIds.Count -gt 0 `
+                -and ($script:reusablePipelineIds -notcontains [int]$pipelineIdItem)) {
+            Write-Host "  Pipeline $pipelineIdItem not in REUSABLE_PIPELINE_IDS -- SKIPPING (will be handled by Migrate job into its consumer repo)." -ForegroundColor Yellow
             continue
         }
 
-        Write-Host "  Pipeline $pipelineIdItem uses reusable template(s) -- migrating to central repo." -ForegroundColor Green
         $reusableArgs = @(
             "actions-importer", "migrate", "azure-devops", "pipeline",
             "--output-dir",                (Join-Path $OutputDir "reusables/$pipelineIdItem"),
@@ -656,36 +545,22 @@ foreach ($pipeline in $pipelines) {
     $currentId = [int]$pipeline.id
     Write-Host "`n  Processing: $pipelineName (ID: $currentId)" -ForegroundColor Yellow
 
-    # Skip pipelines already fully migrated by the migrate-reusables job.
-    # That job (when run) emits BOTH the composite actions (to central repo)
-    # AND the consumer workflow YAML (to consumer repo) in a single GEI call.
-    # Re-running migrate here would create duplicate central-repo PRs because
-    # --config-file-path routes every template entry to the central target_url.
-    if ($Mode -eq "migrate") {
-        # Resolve a probe target URL (placeholder is fine -- dry-run never writes).
-        $probeTargetForMain = if ($defaultTargetRepo) {
-            "https://github.com/$ghOrg/$defaultTargetRepo"
-        } else {
-            "https://github.com/$ghOrg/placeholder"
+    # Skip pipelines already handled by the migrate-reusables job to avoid
+    # creating duplicate central-repo PRs. The allow-list (REUSABLE_PIPELINE_IDS)
+    # is the source of truth: any pipeline in it is owned by MigrateReusables,
+    # which emits BOTH the composite actions (central repo) AND the consumer
+    # workflow YAML (consumer repo) in a single GEI call.
+    if ($Mode -eq "migrate" -and $script:reusablePipelineIds -and ($script:reusablePipelineIds -contains $currentId)) {
+        Write-Host "    Pipeline $currentId is in REUSABLE_PIPELINE_IDS -- already handled by MigrateReusables job. Skipping to avoid duplicate central-repo PR." -ForegroundColor Yellow
+        $results += [PSCustomObject]@{
+            Pipeline   = $pipelineName
+            Id         = $currentId
+            TargetRepo = if ($pipelineRepoMap.ContainsKey("$currentId")) { $pipelineRepoMap["$currentId"] } else { $defaultTargetRepo }
+            Mode       = $Mode
+            Status     = "SKIPPED"
+            OutputDir  = ""
         }
-        $alreadyHandled = Test-PipelineHasTemplates `
-            -PipelineIdToProbe $currentId `
-            -AdoOrgNameProbe   $adoOrgName `
-            -AdoProjectProbe   $AdoProject `
-            -ProbeRoot         $OutputDir `
-            -ProbeTargetUrl    $probeTargetForMain
-        if ($alreadyHandled) {
-            Write-Host "    Pipeline $currentId uses reusable templates -- already handled by MigrateReusables job. Skipping to avoid duplicate central-repo PR." -ForegroundColor Yellow
-            $results += [PSCustomObject]@{
-                Pipeline   = $pipelineName
-                Id         = $currentId
-                TargetRepo = if ($pipelineRepoMap.ContainsKey("$currentId")) { $pipelineRepoMap["$currentId"] } else { $defaultTargetRepo }
-                Mode       = $Mode
-                Status     = "SKIPPED"
-                OutputDir  = ""
-            }
-            continue
-        }
+        continue
     }
 
     # Determine target repo: PIPELINE_REPO_MAP > GH_REPO > ADO repo name
@@ -873,7 +748,6 @@ foreach ($r in $results | Sort-Object Status, Pipeline) {
         "SUCCESS"   { "<span class='badge-ok'>&#9989; Success</span>" }
         "PARTIAL"   { "<span class='badge-warn'>&#9888;&#65039; Partial</span>" }
         "NO_OUTPUT" { "<span class='badge-warn'>&#128196; No Output</span>" }
-        "SKIPPED"   { "<span class='badge-warn'>&#8987; Handled by Reusables</span>" }
         "FAILED"    { "<span class='badge-fail'>&#10060; Failed</span>" }
         "ERROR"     { "<span class='badge-fail'>&#128683; Error</span>" }
         default     { "<span class='badge-fail'>$($r.Status)</span>" }
