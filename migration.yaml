@@ -259,7 +259,7 @@ stages:
                 -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -Mode "migrate-reusables"
-                -ConfigFilePath "$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/config.yml"
+                -ConfigFilePath "output/pipelines/config.yml"
                 -ReusablesTargetRepo "$(REUSABLES_REPO)"
                 -ReusablesRef "$(REUSABLES_REF)"
                 -OutputDir "output/pipelines"
@@ -315,7 +315,7 @@ stages:
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
-                -ConfigFilePath "$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/config.yml"
+                -ConfigFilePath "output/pipelines/config.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
