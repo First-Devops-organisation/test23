@@ -432,12 +432,6 @@ foreach ($item in $sortedItems) {
                             -FieldId $storyPtsField.id -Value ([double]$sp) -Pat $ghPat
                         Write-Log -Message "  Story Points: $sp" -Level "DEBUG"
                     }
-                    # Also set built-in Estimate field if available
-                    if ($estimateField) {
-                        Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
-                            -FieldId $estimateField.id -Value ([double]$sp) -Pat $ghPat
-                        Write-Log -Message "  Estimate: $sp" -Level "DEBUG"
-                    }
                 }
 
                 # --- Field: ADO ID ---
@@ -523,32 +517,49 @@ foreach ($item in $sortedItems) {
 if ($preserveHierarchy -and -not $DryRun) {
     Write-LogSection "Pass 2: Establishing Parent-Child Links"
     $linkedCount = 0
+    $failedLinks = 0
 
     foreach ($item in $sortedItems) {
         $adoId = $item.id
         $parentAdoId = Get-AdoParentId -WorkItemDetails $item
 
-        if ($parentAdoId -and $adoToGhMap.ContainsKey($adoId) -and $adoToGhMap.ContainsKey($parentAdoId)) {
-            $childNodeId  = $adoToGhMap[$adoId].issueNodeId
-            $parentNodeId = $adoToGhMap[$parentAdoId].issueNodeId
-            $parentIssueNum = $adoToGhMap[$parentAdoId].issueNumber
+        if (-not $parentAdoId) { continue }
 
-            # Try GitHub sub-issues API first
-            $success = Add-GhSubIssue -ParentIssueNodeId $parentNodeId -ChildIssueNodeId $childNodeId -Pat $ghPat
-            if ($success) {
-                Write-Log -Message "  Linked #$($adoToGhMap[$adoId].issueNumber) to parent #$parentIssueNum" -Level "DEBUG"
-                $linkedCount++
-            } else {
-                # Fallback: add cross-reference comment
-                $childUrl = $adoToGhMap[$adoId].issueUrl
-                $commentBody = "**Child issue**: $childUrl"
-                Add-GhIssueComment -Org $ghOrg -Repo $ghRepo -IssueNumber $parentIssueNum -Body $commentBody -Pat $ghPat | Out-Null
-                $linkedCount++
-            }
-            Start-Sleep -Milliseconds 300
+        if (-not $adoToGhMap.ContainsKey($adoId)) {
+            Write-Log -Message "  Child ADO#$adoId not in mapping - skipping" -Level "DEBUG"
+            continue
         }
+        if (-not $adoToGhMap.ContainsKey($parentAdoId)) {
+            Write-Log -Message "  Parent ADO#$parentAdoId not in mapping - skipping" -Level "DEBUG"
+            continue
+        }
+
+        $childNodeId    = $adoToGhMap[$adoId].issueNodeId
+        $childIssueNum  = $adoToGhMap[$adoId].issueNumber
+        $parentNodeId   = $adoToGhMap[$parentAdoId].issueNodeId
+        $parentIssueNum = $adoToGhMap[$parentAdoId].issueNumber
+
+        Write-Log -Message "  Linking: ADO#$adoId (GH#$childIssueNum) -> parent ADO#$parentAdoId (GH#$parentIssueNum)" -Level "INFO"
+        Write-Log -Message "    ChildNodeId=$childNodeId  ParentNodeId=$parentNodeId" -Level "DEBUG"
+
+        # Try GitHub sub-issues API first
+        $success = Add-GhSubIssue -ParentIssueNodeId $parentNodeId -ChildIssueNodeId $childNodeId -Pat $ghPat
+        if ($success) {
+            Write-Log -Message "    Sub-issue linked successfully" -Level "SUCCESS"
+            $linkedCount++
+        } else {
+            # Fallback: add task-list reference comment on parent (GitHub renders these as sub-issues)
+            $childUrl = $adoToGhMap[$adoId].issueUrl
+            $childTitle = $item.fields.'System.Title'
+            $taskListBody = "- [ ] $childUrl"
+            Add-GhIssueComment -Org $ghOrg -Repo $ghRepo -IssueNumber $parentIssueNum -Body $taskListBody -Pat $ghPat | Out-Null
+            Write-Log -Message "    Fallback: added task-list reference on #$parentIssueNum" -Level "INFO"
+            $linkedCount++
+            $failedLinks++
+        }
+        Start-Sleep -Milliseconds 300
     }
-    Write-Log -Message "Established $linkedCount parent-child links" -Level "SUCCESS"
+    Write-Log -Message "Established $linkedCount parent-child links ($failedLinks used fallback)" -Level "SUCCESS"
 }
 
 # --- Final Summary ---

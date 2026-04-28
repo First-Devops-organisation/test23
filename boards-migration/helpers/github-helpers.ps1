@@ -414,9 +414,10 @@ function Upload-ImageToGitHub {
     $uri = "https://api.github.com/repos/$GhOrg/$GhRepo/contents/$uploadPath"
     try {
         $resp = Invoke-RestMethod -Uri $uri -Method PUT -Headers $headers -Body $body
-        $downloadUrl = $resp.content.download_url
-        Write-Log -Message "Uploaded image: $fileName -> $downloadUrl" -Level "DEBUG"
-        return $downloadUrl
+        # Use permanent URL (not download_url which has expiring token)
+        $permanentUrl = "https://github.com/$GhOrg/$GhRepo/raw/$defaultBranch/$uploadPath"
+        Write-Log -Message "Uploaded: $fileName -> $permanentUrl" -Level "DEBUG"
+        return $permanentUrl
     } catch {
         Write-Log -Message "Failed to upload image $fileName to GitHub: $_" -Level "WARN"
         return $null
@@ -451,12 +452,13 @@ function Add-GhSubIssue {
     try {
         $resp = Invoke-GhGraphQL -Query $mutation -Pat $Pat
         if ($resp.errors) {
-            Write-Log -Message "Sub-issue API not available, falling back to task list" -Level "WARN"
+            $errMsg = ($resp.errors | ForEach-Object { $_.message }) -join '; '
+            Write-Log -Message "Sub-issue API error: $errMsg" -Level "WARN"
             return $false
         }
         return $true
     } catch {
-        Write-Log -Message "Failed to add sub-issue relationship: $_" -Level "WARN"
+        Write-Log -Message "Failed to add sub-issue: $_" -Level "WARN"
         return $false
     }
 }
