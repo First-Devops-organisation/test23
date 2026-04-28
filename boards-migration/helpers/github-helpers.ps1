@@ -96,33 +96,43 @@ function New-GhProjectCustomField {
     )
 
     $colors = @("GRAY","BLUE","GREEN","YELLOW","ORANGE","RED","PINK","PURPLE")
-    $optionsBlock = ""
+
+    # Build options JSON for the singleSelectOptions input
     if ($DataType -eq "SINGLE_SELECT" -and $Options) {
         $optEntries = @()
         $ci = 0
         foreach ($opt in $Options) {
             $c = if ($opt.color) { $opt.color } else { $colors[$ci % $colors.Count] }
-            $optEntries += "{ name: \`"$($opt.name)\`", color: $c }"
+            $safeName = $opt.name -replace '"', '\"'
+            $optEntries += "{ name: `"$safeName`", color: $c }"
             $ci++
         }
-        $optionsBlock = ", singleSelectOptions: [$($optEntries -join ', ')]"
+        $optionsLine = "singleSelectOptions: [$($optEntries -join ', ')]"
+    } else {
+        $optionsLine = ""
     }
 
-    $mutation = @"
-mutation {
-  createProjectV2Field(input: {
-    projectId: "$ProjectId"
-    dataType: $DataType
-    name: "$FieldName"
-    $( if ($optionsBlock) { $optionsBlock.TrimStart(', ') } )
-  }) {
-    projectV2Field {
-      ... on ProjectV2SingleSelectField { id name options { id name } }
-      ... on ProjectV2Field { id name }
-    }
-  }
-}
-"@
+    # Build mutation with proper quoting (no backslash escaping)
+    $mutationParts = @(
+        "mutation {"
+        "  createProjectV2Field(input: {"
+        "    projectId: `"$ProjectId`""
+        "    dataType: $DataType"
+        "    name: `"$FieldName`""
+    )
+    if ($optionsLine) { $mutationParts += "    $optionsLine" }
+    $mutationParts += @(
+        "  }) {"
+        "    projectV2Field {"
+        "      ... on ProjectV2SingleSelectField { id name options { id name } }"
+        "      ... on ProjectV2Field { id name }"
+        "    }"
+        "  }"
+        "}"
+    )
+    $mutation = $mutationParts -join "`n"
+
+    Write-Log -Message "Creating field '$FieldName' ($DataType)..." -Level "DEBUG"
 
     $resp = Invoke-GhGraphQL -Query $mutation -Pat $Pat
     if ($resp.data.createProjectV2Field) {

@@ -161,9 +161,10 @@ $workflowYaml = @"
 #  Triggers:
 #    - Manual run (workflow_dispatch)
 #    - Daily schedule (catches violations)
-#    - On issue label changes
 #
-#  For org repos: add projects_v2_item trigger for real-time
+#  NOTE: 'issues: [labeled]' trigger removed to prevent
+#        hundreds of runs during migration. Re-enable after
+#        migration is complete if real-time validation is needed.
 # ============================================================
 name: Enforce ADO Workflow Rules
 
@@ -171,8 +172,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * *'  # Daily at 6 AM UTC
-  issues:
-    types: [labeled]
 
 permissions:
   issues: write
