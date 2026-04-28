@@ -484,7 +484,7 @@ stages:
   - stage: ReviewGate
     displayName: "2. Review Gate"
     dependsOn: RepoDiscover
-    condition: and(succeeded(), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
+    condition: and(not(failed()), not(canceled()), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     jobs:
       - job: ReviewGateJob
         displayName: "Gate: Review Discovery Findings"
