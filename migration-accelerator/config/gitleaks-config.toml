@@ -261,9 +261,9 @@ keywords = ["token"]
 [[rules]]
 id = "generic-key"
 description = "Generic Key Assignment"
-regex = '''(?i)([a-z0-9_.]*(?:api[_-]?key|access[_-]?key|auth[_-]?key|encryption[_-]?key|private[_-]?key|signing[_-]?key)[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
+regex = '''(?i)([a-z0-9_.]*[_.]key[a-z0-9_.]*|[a-z0-9_.]*key[_.]?[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
 secretGroup = 2
-keywords = ["api_key", "apikey", "access_key", "accesskey", "auth_key", "authkey", "encryption_key", "private_key", "signing_key"]
+keywords = ["key"]
 
 # ============================================================================
 # Allowlist — paths to exclude from scanning
