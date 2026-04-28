@@ -1,12 +1,10 @@
-# <#
+<#
 .SYNOPSIS
     Installs all required tools for the ADO-to-GitHub migration accelerator.
 .DESCRIPTION
     Checks for and installs: GitHub CLI, GEI extension, Actions Importer,
     git-sizer, gitleaks, git-filter-repo, and Docker.
 #>
-[CmdletBinding()]
-param()
 
 $ErrorActionPreference = "Continue"
 
