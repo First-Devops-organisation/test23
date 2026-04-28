@@ -436,24 +436,45 @@ if ($Mode -eq "migrate-reusables") {
     }
     Write-Host "  Default target-url: $reusableTargetUrl" -ForegroundColor Gray
 
-    $reusableArgs = @(
-        "actions-importer", "migrate", "azure-devops", "pipeline",
-        "--output-dir", (Join-Path $OutputDir "reusables"),
-        "--azure-devops-organization", $adoOrgName,
-        "--azure-devops-project", $AdoProject,
-        "--config-file-path", $ConfigFilePath,
-        "--target-url", $reusableTargetUrl
-    )
-    if ($CustomTransformersDir -and (Test-Path $CustomTransformersDir)) {
-        $reusableArgs += "--custom-transformers"
-        $reusableArgs += $CustomTransformersDir
+    if (-not $PipelineId -or $PipelineId.Count -eq 0) {
+        Write-Host "ERROR: -PipelineId is required for migrate-reusables (GEI needs --pipeline-id)." -ForegroundColor Red
+        Write-Host "       Pass one or more consumer pipeline IDs that reference the reusable templates." -ForegroundColor Red
+        exit 1
     }
 
-    Write-Host "  Command: gh $($reusableArgs -join ' ')" -ForegroundColor DarkGray
-    gh @reusableArgs 2>&1 | ForEach-Object { Write-Host "    $_" }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Reusable migration FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
-        exit $LASTEXITCODE
+    Write-Host "  Ensuring actions-importer image is up to date..." -ForegroundColor Yellow
+    gh actions-importer update 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+
+    $anyFailure = $false
+    foreach ($pid in $PipelineId) {
+        Write-Host "`n  --- Migrating reusables via consumer pipeline ID: $pid ---" -ForegroundColor Cyan
+        $reusableArgs = @(
+            "actions-importer", "migrate", "azure-devops", "pipeline",
+            "--output-dir",                (Join-Path $OutputDir "reusables/$pid"),
+            "--azure-devops-organization", $adoOrgName,
+            "--azure-devops-project",      $AdoProject,
+            "--pipeline-id",               $pid,
+            "--config-file-path",          $ConfigFilePath,
+            "--target-url",                $reusableTargetUrl
+        )
+        if ($CustomTransformersDir -and (Test-Path $CustomTransformersDir)) {
+            $reusableArgs += "--custom-transformers"
+            $reusableArgs += $CustomTransformersDir
+        }
+
+        Write-Host "  Command: gh $($reusableArgs -join ' ')" -ForegroundColor DarkGray
+        gh @reusableArgs 2>&1 | ForEach-Object { Write-Host "    $_" }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  Pipeline $pid FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
+            $anyFailure = $true
+        } else {
+            Write-Host "  Pipeline $pid OK" -ForegroundColor Green
+        }
+    }
+
+    if ($anyFailure) {
+        Write-Host "`nOne or more reusable migrations failed. See logs above." -ForegroundColor Red
+        exit 1
     }
 
     Write-Host "`nReusable workflow / composite action PRs opened per target_url in config.yml." -ForegroundColor Green
