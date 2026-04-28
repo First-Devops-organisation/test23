@@ -116,6 +116,27 @@ regex = '''-----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+|PGP\s+|ENCRYPTED\s+)?P
 keywords = ["BEGIN", "PRIVATE KEY"]
 
 # ============================================================================
+# SSH Keys (public keys assigned to variables)
+# ============================================================================
+
+[[rules]]
+id = "ssh-public-key"
+description = "SSH Public Key"
+# Matches ssh-rsa, ssh-ed25519, ecdsa-sha2-nistp256/384/521 keys
+# Captures the full key: algorithm + base64 data + optional comment
+regex = '''(?i)(?:ssh[_-]?(?:pub(?:lic)?)?[_-]?key|authorized[_-]?keys?|id[_-]rsa\.pub)\s*[=:]\s*['"]?(ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))\s+([A-Za-z0-9+/=]{20,}(?:\s+\S+@\S+)?)['"]?'''
+secretGroup = 0
+keywords = ["ssh-rsa", "ssh-ed25519", "ssh-dss", "ecdsa-sha2", "ssh_key", "ssh-key", "authorized_key"]
+
+[[rules]]
+id = "ssh-public-key-standalone"
+description = "SSH Public Key (standalone, no variable assignment)"
+# Matches standalone ssh-rsa/ssh-ed25519 keys without a variable name
+# Requires a minimum base64 length to avoid matching short test strings
+regex = '''(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))\s+[A-Za-z0-9+/=]{100,}'''
+keywords = ["ssh-rsa", "ssh-ed25519", "ssh-dss", "ecdsa-sha2"]
+
+# ============================================================================
 # Tokens with known prefixes (no capturing groups needed)
 # ============================================================================
 
