@@ -35,7 +35,7 @@ param(
 
     [string]$ConfigFilePath,  # New parameter for --config-file-path
 
-    # Central GitHub repo (e.g. "my-org/pipeline-templates") that should host
+    # Central GitHub repo (e.g. "my-org/reusable-workflows") that should host
     # every converted reusable workflow + composite action. When set, the script
     # rewrites every target_url in config.yml to this repo before calling GEI.
     [string]$ReusablesTargetRepo,
@@ -319,7 +319,7 @@ if ($Mode -eq "audit") {
         Write-Host "    .\migrate-pipelines.ps1 -Mode migrate-reusables ``" -ForegroundColor Green
         Write-Host "        -ConfigFilePath '$generatedConfig' ``" -ForegroundColor Green
         Write-Host "        -AdoProject '$AdoProject' ``" -ForegroundColor Green
-        Write-Host "        -ReusablesTargetRepo '$ghOrg/pipeline-templates' -ReusablesRef main" -ForegroundColor Green
+        Write-Host "        -ReusablesTargetRepo '$ghOrg/reusable-workflows' -ReusablesRef main" -ForegroundColor Green
         Write-Host "  Option B (manual): edit '$generatedConfig' and set target_url per entry, then:" -ForegroundColor Gray
         Write-Host "    .\migrate-pipelines.ps1 -Mode migrate-reusables -ConfigFilePath '$generatedConfig' -AdoProject '$AdoProject'" -ForegroundColor Green
     } else {
