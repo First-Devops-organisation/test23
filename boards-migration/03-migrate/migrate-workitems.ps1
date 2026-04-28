@@ -572,7 +572,7 @@ if ($preserveHierarchy -and -not $DryRun) {
                 $childItem     = $allItems[$childAdoId]
                 $childTitle    = if ($childItem) { $childItem.fields.'System.Title' } else { "Issue #$childIssueNum" }
                 $childType     = if ($childItem) { $childItem.fields.'System.WorkItemType' } else { "Item" }
-                $taskListLines += "- [ ] [$childType: $childTitle]($childUrl)"
+                $taskListLines += "- [ ] [${childType}: ${childTitle}]($childUrl)"
                 $linkedCount++
                 $failedLinks++
             }
