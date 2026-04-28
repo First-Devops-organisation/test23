@@ -363,20 +363,50 @@ if ($Mode -eq "migrate-reusables") {
         Copy-Item $ConfigFilePath $backup -Force
         Write-Host "  Backup saved: $backup" -ForegroundColor DarkGray
 
-        $rewritten = Get-Content $ConfigFilePath | ForEach-Object {
-            $line = $_
+        # Walk every line: rewrite existing target_url/ref, and INJECT target_url
+        # right after each "- name:" entry when it's missing (GEI sometimes emits
+        # config.yml with only name + ref).
+        $rewritten = New-Object System.Collections.Generic.List[string]
+        $lines = Get-Content $ConfigFilePath
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+
             if ($line -match '^(\s*)target_url:\s*\S+') {
-                "$($matches[1])target_url: $centralUrl"
-            } elseif ($line -match '^(\s*)ref:\s*\S+') {
-                "$($matches[1])ref: $ReusablesRef"
-            } else {
-                $line
+                $rewritten.Add("$($matches[1])target_url: $centralUrl")
+                continue
             }
+            if ($line -match '^(\s*)ref:\s*\S+') {
+                $rewritten.Add("$($matches[1])ref: $ReusablesRef")
+                continue
+            }
+
+            # Match "- name: foo.yml" (entry start). Add the line, then ensure
+            # the next non-name lines for this entry contain target_url.
+            if ($line -match '^(\s*)-\s*name:\s*\S+') {
+                $entryIndent = $matches[1]
+                $propIndent  = "$entryIndent  "   # YAML list-item property indent
+                $rewritten.Add($line)
+
+                # Look ahead within this entry block to see if target_url already exists.
+                $hasTarget = $false
+                for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                    $look = $lines[$j]
+                    if ($look -match '^\s*-\s*name:') { break }                 # next entry
+                    if ($look -match '^\S' -or $look -match '^[A-Za-z_]+:') { break }  # new top-level key
+                    if ($look -match '^\s*target_url:') { $hasTarget = $true; break }
+                }
+                if (-not $hasTarget) {
+                    $rewritten.Add("${propIndent}target_url: $centralUrl")
+                }
+                continue
+            }
+
+            $rewritten.Add($line)
         }
         Set-Content -Path $ConfigFilePath -Value $rewritten -Encoding utf8
 
         $reusableCount = (Select-String -Path $ConfigFilePath -Pattern '^\s*-\s*name:').Count
-        Write-Host "  Rewrote $reusableCount reusable entries to central repo." -ForegroundColor Green
+        Write-Host "  Normalized $reusableCount reusable entries (target_url + ref) -> central repo." -ForegroundColor Green
         $reusableTargetUrl = $centralUrl
     } else {
         # Determine a default --target-url (required by GEI even when config drives routing).
