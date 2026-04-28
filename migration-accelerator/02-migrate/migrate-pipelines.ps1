@@ -446,14 +446,14 @@ if ($Mode -eq "migrate-reusables") {
     gh actions-importer update 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
 
     $anyFailure = $false
-    foreach ($pid in $PipelineId) {
-        Write-Host "`n  --- Migrating reusables via consumer pipeline ID: $pid ---" -ForegroundColor Cyan
+    foreach ($pipelineIdItem in $PipelineId) {
+        Write-Host "`n  --- Migrating reusables via consumer pipeline ID: $pipelineIdItem ---" -ForegroundColor Cyan
         $reusableArgs = @(
             "actions-importer", "migrate", "azure-devops", "pipeline",
-            "--output-dir",                (Join-Path $OutputDir "reusables/$pid"),
+            "--output-dir",                (Join-Path $OutputDir "reusables/$pipelineIdItem"),
             "--azure-devops-organization", $adoOrgName,
             "--azure-devops-project",      $AdoProject,
-            "--pipeline-id",               $pid,
+            "--pipeline-id",               $pipelineIdItem,
             "--config-file-path",          $ConfigFilePath,
             "--target-url",                $reusableTargetUrl
         )
@@ -465,10 +465,10 @@ if ($Mode -eq "migrate-reusables") {
         Write-Host "  Command: gh $($reusableArgs -join ' ')" -ForegroundColor DarkGray
         gh @reusableArgs 2>&1 | ForEach-Object { Write-Host "    $_" }
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "  Pipeline $pid FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
+            Write-Host "  Pipeline $pipelineIdItem FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
             $anyFailure = $true
         } else {
-            Write-Host "  Pipeline $pid OK" -ForegroundColor Green
+            Write-Host "  Pipeline $pipelineIdItem OK" -ForegroundColor Green
         }
     }
 
