@@ -457,12 +457,10 @@ stages:
               arguments: >-
                 -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)
-          ##lines added
-                 ${{ if eq(parameters.MigrationMode, 'Single') }}:
+                ${{ if eq(parameters.MigrationMode, 'Single') }}:
                   -RepoName "${{ parameters.ADORepo }}"
                 ${{ if eq(parameters.MigrationMode, 'Batch') }}:
-                  -BatchName "${{ parameters.BatchName }}"
-###LInes added                  
+                  -BatchName "${{ parameters.BatchName }}"          
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
