@@ -107,18 +107,59 @@ if ($ghProjNum) {
         Write-Log -Message "Status options: $(($statusOptions | ForEach-Object { $_.name }) -join ', ')" -Level "INFO"
     }
 
-    # Load custom fields for enterprise migration
+    # Load ALL project fields for enterprise migration
     $adoStatusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "ADO Status" }
-    $priorityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Priority" -and $_.options }
     $severityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Severity" -and $_.options }
     $storyPtsField  = $fields | Where-Object { $_.name -eq "Story Points" }
     $adoIdField     = $fields | Where-Object { $_.name -eq "ADO ID" }
 
-    if ($adoStatusField) { Write-Log -Message "Custom field 'ADO Status': $($adoStatusField.options.Count) options - $(($adoStatusField.options | ForEach-Object { $_.name }) -join ', ')" -Level "INFO" }
-    if ($priorityField)  { Write-Log -Message "Custom field 'Priority': $($priorityField.options.Count) options - $(($priorityField.options | ForEach-Object { $_.name }) -join ', ')" -Level "INFO" }
-    if ($severityField)  { Write-Log -Message "Custom field 'Severity': $($severityField.options.Count) options" -Level "INFO" }
-    if ($storyPtsField)  { Write-Log -Message "Custom field 'Story Points': ready" -Level "INFO" }
-    if ($adoIdField)     { Write-Log -Message "Custom field 'ADO ID': ready" -Level "INFO" }
+    # Priority field - find it (built-in OR custom) and read its actual options
+    $priorityField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Priority" }
+    $priorityOptionMap = @{}
+    if ($priorityField -and $priorityField.options) {
+        Write-Log -Message "Priority field found with $($priorityField.options.Count) options:" -Level "INFO"
+        foreach ($opt in $priorityField.options) {
+            Write-Log -Message "  Option: '$($opt.name)' (id: $($opt.id))" -Level "INFO"
+        }
+        # Build dynamic mapping: ADO Priority 1-4 → GitHub options by smart matching
+        $opts = @($priorityField.options)
+        foreach ($adoPri in @(1, 2, 3, 4)) {
+            $matched = $null
+            # Try exact name matches first (our custom P1-P4)
+            $matched = $opts | Where-Object { $_.name -eq "P$adoPri - Critical" -or $_.name -eq "P$adoPri - High" -or $_.name -eq "P$adoPri - Medium" -or $_.name -eq "P$adoPri - Low" } | Select-Object -First 1
+            # Try GitHub built-in format: "P0", "P1", etc (GitHub uses 0-indexed)
+            if (-not $matched) { $matched = $opts | Where-Object { $_.name -match "P$($adoPri - 1)\b" } | Select-Object -First 1 }
+            # Try name contains keywords
+            if (-not $matched -and $adoPri -eq 1) { $matched = $opts | Where-Object { $_.name -match "urgent|critical|p0|p1" } | Select-Object -First 1 }
+            if (-not $matched -and $adoPri -eq 2) { $matched = $opts | Where-Object { $_.name -match "high|p1|p2" } | Select-Object -First 1 }
+            if (-not $matched -and $adoPri -eq 3) { $matched = $opts | Where-Object { $_.name -match "medium|p2|p3" } | Select-Object -First 1 }
+            if (-not $matched -and $adoPri -eq 4) { $matched = $opts | Where-Object { $_.name -match "low|p3|p4" } | Select-Object -First 1 }
+            # Fallback: map by position index
+            if (-not $matched -and ($adoPri - 1) -lt $opts.Count) { $matched = $opts[$adoPri - 1] }
+            if ($matched) {
+                $priorityOptionMap[$adoPri] = $matched
+                Write-Log -Message "  ADO Priority $adoPri → '$($matched.name)'" -Level "INFO"
+            }
+        }
+    } else {
+        Write-Log -Message "Priority field NOT found or has no options" -Level "WARN"
+    }
+
+    # Size field (built-in GitHub field)
+    $sizeField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Size" }
+    # Estimate field (built-in number field)
+    $estimateField = $fields | Where-Object { $_.name -eq "Estimate" }
+    # Iteration field (built-in)
+    $iterationField = $fields | Where-Object { $_.__typename -eq "ProjectV2IterationField" -and $_.name -eq "Iteration" }
+
+    # Log all discovered fields
+    if ($adoStatusField) { Write-Log -Message "Field 'ADO Status': $($adoStatusField.options.Count) options" -Level "INFO" }
+    if ($severityField)  { Write-Log -Message "Field 'Severity': $($severityField.options.Count) options" -Level "INFO" }
+    if ($storyPtsField)  { Write-Log -Message "Field 'Story Points': ready (number)" -Level "INFO" }
+    if ($adoIdField)     { Write-Log -Message "Field 'ADO ID': ready (number)" -Level "INFO" }
+    if ($sizeField)      { Write-Log -Message "Field 'Size': $($sizeField.options.Count) options" -Level "INFO" }
+    if ($estimateField)  { Write-Log -Message "Field 'Estimate': ready (number)" -Level "INFO" }
+    if ($iterationField) { Write-Log -Message "Field 'Iteration': ready" -Level "INFO" }
 }
 
 # --- Ensure repo has at least one commit (required for image/attachment uploads) ---
@@ -350,63 +391,75 @@ foreach ($item in $sortedItems) {
                     }
                 }
 
-                # --- Custom Field: Priority ---
-                if ($priorityField) {
+                # --- Field: Priority (dynamic mapping) ---
+                if ($priorityField -and $priorityOptionMap.Count -gt 0) {
                     $adoPriority = $item.fields.'Microsoft.VSTS.Common.Priority'
                     if ($adoPriority) {
-                        $priMap = @{ 1 = "P1 - Critical"; 2 = "P2 - High"; 3 = "P3 - Medium"; 4 = "P4 - Low" }
-                        $priName = $priMap[[int]$adoPriority]
-                        if ($priName) {
-                            $priOpt = $priorityField.options | Where-Object { $_.name -eq $priName }
-                            if ($priOpt) {
-                                Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
-                                    -FieldId $priorityField.id -OptionId $priOpt.id -Pat $ghPat
-                                Write-Log -Message "  Priority: '$priName'" -Level "DEBUG"
-                            } else {
-                                Write-Log -Message "  Priority option '$priName' NOT FOUND in field options: $(($priorityField.options | ForEach-Object { $_.name }) -join ', ')" -Level "WARN"
-                            }
+                        $priOpt = $priorityOptionMap[[int]$adoPriority]
+                        if ($priOpt) {
+                            Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
+                                -FieldId $priorityField.id -OptionId $priOpt.id -Pat $ghPat
+                            Write-Log -Message "  Priority: ADO $adoPriority -> '$($priOpt.name)'" -Level "DEBUG"
+                        } else {
+                            Write-Log -Message "  No priority mapping for ADO value: $adoPriority" -Level "WARN"
                         }
                     }
-                } else {
-                    Write-Log -Message "  Priority field not found in project - skipping" -Level "WARN"
                 }
 
-                # --- Custom Field: Severity (Bugs) ---
+                # --- Field: Severity (Bugs) ---
                 if ($severityField) {
                     $adoSeverity = $item.fields.'Microsoft.VSTS.Common.Severity'
                     if ($adoSeverity) {
-                        $sevMap = @{
-                            "1 - Critical" = "1 - Critical"; "2 - High" = "2 - High"
-                            "3 - Medium" = "3 - Medium"; "4 - Low" = "4 - Low"
+                        # Try exact match first, then partial match
+                        $sevOpt = $severityField.options | Where-Object { $_.name -eq $adoSeverity } | Select-Object -First 1
+                        if (-not $sevOpt) {
+                            $sevOpt = $severityField.options | Where-Object { $_.name -match [regex]::Escape($adoSeverity) } | Select-Object -First 1
                         }
-                        $sevName = $sevMap[$adoSeverity]
-                        if ($sevName) {
-                            $sevOpt = $severityField.options | Where-Object { $_.name -eq $sevName }
-                            if ($sevOpt) {
-                                Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
-                                    -FieldId $severityField.id -OptionId $sevOpt.id -Pat $ghPat
-                                Write-Log -Message "  Severity: '$sevName'" -Level "DEBUG"
-                            }
+                        if ($sevOpt) {
+                            Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
+                                -FieldId $severityField.id -OptionId $sevOpt.id -Pat $ghPat
+                            Write-Log -Message "  Severity: '$adoSeverity'" -Level "DEBUG"
                         }
                     }
                 }
 
-                # --- Custom Field: Story Points ---
-                if ($storyPtsField) {
-                    $sp = $item.fields.'Microsoft.VSTS.Scheduling.StoryPoints'
-                    if (-not $sp) { $sp = $item.fields.'Microsoft.VSTS.Scheduling.Effort' }
-                    if ($sp) {
+                # --- Field: Story Points ---
+                $sp = $item.fields.'Microsoft.VSTS.Scheduling.StoryPoints'
+                if (-not $sp) { $sp = $item.fields.'Microsoft.VSTS.Scheduling.Effort' }
+                if ($sp) {
+                    if ($storyPtsField) {
                         Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
                             -FieldId $storyPtsField.id -Value ([double]$sp) -Pat $ghPat
                         Write-Log -Message "  Story Points: $sp" -Level "DEBUG"
                     }
+                    # Also set built-in Estimate field if available
+                    if ($estimateField) {
+                        Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
+                            -FieldId $estimateField.id -Value ([double]$sp) -Pat $ghPat
+                        Write-Log -Message "  Estimate: $sp" -Level "DEBUG"
+                    }
                 }
 
-                # --- Custom Field: ADO ID ---
+                # --- Field: ADO ID ---
                 if ($adoIdField) {
                     Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
                         -FieldId $adoIdField.id -Value ([double]$adoId) -Pat $ghPat
                     Write-Log -Message "  ADO ID: $adoId" -Level "DEBUG"
+                }
+
+                # --- Field: Size (map from Story Points if available) ---
+                if ($sizeField -and $sp) {
+                    $sizeOpt = $null
+                    if ([double]$sp -le 1)      { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "XS|Extra Small" } | Select-Object -First 1 }
+                    elseif ([double]$sp -le 3)   { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "^S$|Small" } | Select-Object -First 1 }
+                    elseif ([double]$sp -le 5)   { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "^M$|Medium" } | Select-Object -First 1 }
+                    elseif ([double]$sp -le 8)   { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "^L$|Large" } | Select-Object -First 1 }
+                    else                         { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "XL|Extra Large" } | Select-Object -First 1 }
+                    if ($sizeOpt) {
+                        Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
+                            -FieldId $sizeField.id -OptionId $sizeOpt.id -Pat $ghPat
+                        Write-Log -Message "  Size: '$($sizeOpt.name)' (from SP=$sp)" -Level "DEBUG"
+                    }
                 }
 
             } catch {

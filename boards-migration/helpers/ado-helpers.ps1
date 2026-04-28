@@ -167,7 +167,8 @@ function Convert-AdoHtmlToMarkdown {
     $md = $Html
 
     # Handle inline images - download from ADO, re-upload to GitHub
-    $imgPattern = '<img\s[^>]*src="([^"]+)"[^>]*>'
+    # Match both <img src="..."> and <img ... src="..."> patterns (self-closing or not)
+    $imgPattern = '<img\s[^>]*?src=["\u0027]([^"\u0027]+)["\u0027][^>]*?/?>'
     $imgMatches = [regex]::Matches($md, $imgPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
     if ($imgMatches.Count -gt 0) {
@@ -177,16 +178,33 @@ function Convert-AdoHtmlToMarkdown {
     foreach ($m in $imgMatches) {
         $imgTag = $m.Value
         $imgUrl = $m.Groups[1].Value
-        $altMatch = [regex]::Match($imgTag, 'alt="([^"]*)"')
+        $altMatch = [regex]::Match($imgTag, 'alt=["\u0027]([^"\u0027]*)["\u0027]')
         $alt = if ($altMatch.Success) { $altMatch.Groups[1].Value } else { "image" }
+        # Also check data-filename attribute (ADO uses this)
+        $fnMatch = [regex]::Match($imgTag, 'data-filename=["\u0027]([^"\u0027]*)["\u0027]')
+        if ($fnMatch.Success -and $alt -eq "image") { $alt = $fnMatch.Groups[1].Value }
 
         $urlPreview = if ($imgUrl.Length -gt 80) { $imgUrl.Substring(0, 80) + '...' } else { $imgUrl }
         Write-Log -Message "  Image: alt='$alt' url='$urlPreview'" -Level "DEBUG"
 
-        # Try to re-upload any ADO-hosted image
-        if ($Pat -and $GhPat -and $imgUrl -match 'dev\.azure\.com|visualstudio\.com|vstfs|_apis/wit|_apis/resources|tfs\.dev|WorkItemTracking|_attachment') {
-            Write-Log -Message "  Re-uploading ADO image: $alt" -Level "INFO"
-            $localPath = Save-AdoInlineImage -ImageUrl $imgUrl -TempDir $TempDir -Pat $Pat
+        # Skip data URIs - can't re-upload base64 images easily
+        if ($imgUrl -match '^data:') {
+            Write-Log -Message "  Skipping base64 data URI image" -Level "DEBUG"
+            $md = $md.Replace($imgTag, "_[Embedded image: $alt]_")
+            continue
+        }
+
+        # Fix relative URLs - prepend ADO org URL
+        $fullImgUrl = $imgUrl
+        if ($imgUrl -match '^/') {
+            $fullImgUrl = "https://dev.azure.com/$AdoOrg$imgUrl"
+            Write-Log -Message "  Fixed relative URL: $fullImgUrl" -Level "DEBUG"
+        }
+
+        # Try to download and re-upload ALL images (not just matching patterns)
+        if ($Pat -and $GhPat) {
+            Write-Log -Message "  Downloading image: $alt" -Level "INFO"
+            $localPath = Save-AdoInlineImage -ImageUrl $fullImgUrl -TempDir $TempDir -Pat $Pat
             if ($localPath -and (Test-Path $localPath)) {
                 $ghUrl = Upload-ImageToGitHub -FilePath $localPath -GhOrg $GhOrg -GhRepo $GhRepo -GhPat $GhPat
                 if ($ghUrl) {
@@ -197,12 +215,12 @@ function Convert-AdoHtmlToMarkdown {
                 }
                 Remove-Item $localPath -Force -ErrorAction SilentlyContinue
             }
-            # Image re-upload failed - add note instead of broken 404 link
-            Write-Log -Message "  Image migration FAILED for: $alt" -Level "WARN"
+            # Re-upload failed
+            Write-Log -Message "  Image migration FAILED for: $alt (URL: $fullImgUrl)" -Level "WARN"
             $md = $md.Replace($imgTag, "_[Image: $alt - could not be migrated from ADO]_")
         } else {
-            # External image URL - keep as-is
-            $md = $md.Replace($imgTag, "![$alt]($imgUrl)")
+            # No auth - keep original URL
+            $md = $md.Replace($imgTag, "![$alt]($fullImgUrl)")
         }
     }
 
