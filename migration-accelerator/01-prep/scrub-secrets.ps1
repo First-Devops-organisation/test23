@@ -84,7 +84,8 @@ foreach ($reportFile in $reportFiles) {
     $findings = $allFindings
 
     # Track unique secret values for deduplication (expressions + secret-values.json)
-    $seenSecrets = @{}
+    $seenSecrets = @{}        # secret value → resolved secret name
+    $seenSecretNames = @{}    # secret name → secret value (detect name collisions)
 
     Write-Host "    $($findings.Count) total secret findings" -ForegroundColor Red
 
@@ -131,6 +132,23 @@ foreach ($reportFile in $reportFiles) {
         }
         if ($secretName.Length -gt 100) { $secretName = $secretName.Substring(0, 100) }
 
+        # --- Resolve name collisions (same key name, different secret values) ---
+        # e.g. DB_PASSWORD=abc in dev → DB_PASSWORD
+        #      DB_PASSWORD=xyz in prod → DB_PASSWORD_2
+        if ($seenSecrets.ContainsKey($secret)) {
+            # Same secret value seen before — reuse the already-assigned name
+            $secretName = $seenSecrets[$secret]
+        } elseif ($seenSecretNames.ContainsKey($secretName)) {
+            # Different value but same name — append suffix to make unique
+            $baseName = $secretName
+            $suffix = 2
+            while ($seenSecretNames.ContainsKey("${baseName}_${suffix}")) {
+                $suffix++
+            }
+            $secretName = "${baseName}_${suffix}"
+            Write-Host "      ⚠ Name collision: renamed to $secretName (same key, different value)" -ForegroundColor Yellow
+        }
+
         # --- Log what was found ---
         Write-Host "    → KEY: $keyName | File: $($finding.File):$($finding.StartLine) | Rule: $($finding.RuleID)" -ForegroundColor Yellow
         Write-Host "      Match:  [$match]" -ForegroundColor DarkGray
@@ -147,6 +165,7 @@ foreach ($reportFile in $reportFiles) {
         # --- Only add unique secrets to expressions file and secret-values.json ---
         if (-not $seenSecrets.ContainsKey($secret)) {
             $seenSecrets[$secret] = $secretName
+            $seenSecretNames[$secretName] = $secret
 
             # --- Save for post-migration (one entry per unique secret value) ---
             $secretValues += [PSCustomObject]@{

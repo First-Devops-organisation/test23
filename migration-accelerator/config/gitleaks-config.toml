@@ -1,199 +1,272 @@
-# Custom gitleaks config for migration secret scanning
-# Deep scanning: specific patterns + broad generic key=value catch-all
-# Ensures zero secrets survive migration to GitHub
+# Gitleaks config: Hybrid scanning approach
+# 1. Provider-specific patterns (AWS, Azure, GCP, GitHub, Slack, Stripe, etc.)
+# 2. Generic patterns for key names containing: password, secret, token, key
+#    (case-insensitive, minimum 8-char value to avoid false positives)
+#
+# Duplicate handling (in scrub-secrets.ps1):
+#   - Same secret value → 1 GitHub Secret (deduplicated)
+#   - Same key name, different values → separate secrets (DB_PASSWORD, DB_PASSWORD_2)
+#
+# Reference: https://docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns
 
-title = "Migration Secret Scanner"
+title = "GitHub-Aligned Secret Scanner"
 
 # ============================================================================
-# Cloud Provider Specific Patterns
+# AWS
 # ============================================================================
 
 [[rules]]
 id = "aws-access-key-id"
 description = "AWS Access Key ID"
-regex = '''AKIA[0-9A-Z]{12,}'''
-keywords = ["AKIA"]
+regex = '''(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+keywords = ["AKIA", "AGPA", "AIDA", "AROA", "AIPA", "ANPA", "ANVA", "ASIA", "A3T"]
+
+# ============================================================================
+# Azure / Microsoft
+# ============================================================================
 
 [[rules]]
-id = "aws-secret-access-key"
-description = "AWS Secret Access Key (key=value)"
-regex = '''(?i)aws[_]?secret[_]?access[_]?key\s*[=:]\s*['"]?([A-Za-z0-9/+=]{20,})['"]?'''
-secretGroup = 1
-keywords = ["aws_secret", "aws-secret", "awssecret"]
-
-[[rules]]
-id = "azure-client-secret"
-description = "Azure Client Secret / Service Principal"
-regex = '''(?i)(azure[_-]?client[_-]?secret|azure[_-]?secret|client[_-]?secret)\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
-secretGroup = 2
-keywords = ["azure_client_secret", "azure-client-secret", "client_secret", "client-secret", "azure_secret"]
-
-[[rules]]
-id = "azure-storage-key"
+id = "azure-storage-account-key"
 description = "Azure Storage Account Key"
-regex = '''(?i)(azure[_-]?storage[_-]?key|storage[_-]?account[_-]?key)\s*[=:]\s*['"]?([A-Za-z0-9/+=]{44,})['"]?'''
-secretGroup = 2
-keywords = ["azure_storage", "storage_account_key"]
+regex = '''(?i)(?:account[_-]?key|storage[_-]?key|azure[_-]?storage)\s*[=:]\s*['"]?([A-Za-z0-9/+=]{86,88}==)['"]?'''
+secretGroup = 1
+keywords = ["account_key", "accountkey", "storage_key", "storagekey", "azure_storage"]
+
+[[rules]]
+id = "azure-ad-client-secret"
+description = "Azure AD / Entra ID Client Secret"
+regex = '''(?i)(?:client[_-]?secret|azure[_-]?client[_-]?secret)\s*[=:]\s*['"]?([a-zA-Z0-9~_.]{34,40})['"]?'''
+secretGroup = 1
+keywords = ["client_secret", "clientsecret", "azure_client_secret"]
+
+[[rules]]
+id = "azure-connection-string"
+description = "Azure SQL / Service Bus Connection String"
+regex = '''(?i)(Server=tcp:.*?;.*?Password=|Endpoint=sb://.*?;SharedAccessKey=|DefaultEndpointsProtocol=https;.*?AccountKey=)[^\s;'"]{10,}'''
+keywords = ["AccountKey=", "SharedAccessKey=", "Password="]
+
+# ============================================================================
+# Google / GCP / Firebase
+# ============================================================================
 
 [[rules]]
 id = "gcp-api-key"
-description = "Google/GCP API Key"
+description = "Google / GCP API Key"
 regex = '''AIzaSy[0-9A-Za-z_-]{33}'''
 keywords = ["AIzaSy"]
 
 [[rules]]
-id = "gcp-service-account"
-description = "GCP Service Account Key"
-regex = '''"private_key"\s*:\s*"(-----BEGIN [A-Z]+ KEY-----[^"]+)"'''
+id = "gcp-service-account-key"
+description = "GCP Service Account Private Key"
+regex = '''"private_key"\s*:\s*"(-----BEGIN [A-Z ]+KEY-----\\n[^"]+)"'''
 secretGroup = 1
 keywords = ["private_key"]
 
 # ============================================================================
-# Token & Key Patterns (Prefix-based)
+# GitHub
 # ============================================================================
 
 [[rules]]
-id = "github-pat"
-description = "GitHub Personal Access Token"
+id = "github-pat-classic"
+description = "GitHub Personal Access Token (classic)"
 regex = '''ghp_[0-9a-zA-Z]{36}'''
 keywords = ["ghp_"]
 
 [[rules]]
 id = "github-pat-fine-grained"
 description = "GitHub Fine-Grained PAT"
-regex = '''github_pat_[0-9a-zA-Z_]{20,}'''
+regex = '''github_pat_[0-9a-zA-Z_]{22,}'''
 keywords = ["github_pat_"]
 
 [[rules]]
-id = "github-oauth"
-description = "GitHub OAuth Token"
+id = "github-oauth-access-token"
+description = "GitHub OAuth Access Token"
 regex = '''gho_[0-9a-zA-Z]{36}'''
 keywords = ["gho_"]
 
 [[rules]]
-id = "jwt-token"
-description = "JWT Token"
-regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
-keywords = ["eyJ"]
+id = "github-app-token"
+description = "GitHub App Installation Token"
+regex = '''ghs_[0-9a-zA-Z]{36}'''
+keywords = ["ghs_"]
 
 [[rules]]
-id = "stripe-key"
+id = "github-refresh-token"
+description = "GitHub App Refresh Token"
+regex = '''ghr_[0-9a-zA-Z]{36,}'''
+keywords = ["ghr_"]
+
+# ============================================================================
+# Private Keys (PEM blocks — universally recognized)
+# ============================================================================
+
+[[rules]]
+id = "private-key-pem"
+description = "Private Key (PEM encoded)"
+regex = '''-----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+|PGP\s+|ENCRYPTED\s+)?PRIVATE\s+KEY(\s+BLOCK)?-----'''
+keywords = ["BEGIN", "PRIVATE KEY"]
+
+# ============================================================================
+# Tokens with known prefixes
+# ============================================================================
+
+[[rules]]
+id = "slack-bot-token"
+description = "Slack Bot / User Token"
+regex = '''xox[bpors]-[0-9]{10,}-[0-9a-zA-Z-]+'''
+keywords = ["xoxb-", "xoxp-", "xoxo-", "xoxr-", "xoxs-"]
+
+[[rules]]
+id = "slack-webhook"
+description = "Slack Webhook URL"
+regex = '''https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[a-zA-Z0-9]+'''
+keywords = ["hooks.slack.com"]
+
+[[rules]]
+id = "stripe-secret-key"
 description = "Stripe Secret Key"
-regex = '''sk_(test|live)_[0-9a-zA-Z]{10,}'''
-keywords = ["sk_test", "sk_live"]
+regex = '''sk_(test|live)_[0-9a-zA-Z]{24,}'''
+keywords = ["sk_test_", "sk_live_"]
 
 [[rules]]
-id = "stripe-publishable"
-description = "Stripe Publishable Key"
-regex = '''pk_(test|live)_[0-9a-zA-Z]{10,}'''
-keywords = ["pk_test", "pk_live"]
+id = "stripe-restricted-key"
+description = "Stripe Restricted Key"
+regex = '''rk_(test|live)_[0-9a-zA-Z]{24,}'''
+keywords = ["rk_test_", "rk_live_"]
 
 [[rules]]
-id = "slack-token"
-description = "Slack Token"
-regex = '''xox[bpors]-[0-9a-zA-Z-]{10,}'''
-keywords = ["xoxb", "xoxp", "xoxo", "xoxr", "xoxs"]
+id = "twilio-api-key"
+description = "Twilio API Key"
+regex = '''SK[0-9a-fA-F]{32}'''
+keywords = ["SK"]
 
 [[rules]]
-id = "npm-token"
-description = "NPM Access Token"
-regex = '''npm_[0-9a-zA-Z]{36}'''
-keywords = ["npm_"]
-
-[[rules]]
-id = "sendgrid-key"
+id = "sendgrid-api-key"
 description = "SendGrid API Key"
 regex = '''SG\.[0-9a-zA-Z_-]{22}\.[0-9a-zA-Z_-]{43}'''
 keywords = ["SG."]
 
 [[rules]]
-id = "twilio-key"
-description = "Twilio API Key"
-regex = '''SK[0-9a-fA-F]{32}'''
-keywords = ["SK"]
+id = "npm-access-token"
+description = "npm Access Token"
+regex = '''npm_[0-9a-zA-Z]{36}'''
+keywords = ["npm_"]
+
+[[rules]]
+id = "pypi-api-token"
+description = "PyPI API Token"
+regex = '''pypi-[A-Za-z0-9_-]{50,}'''
+keywords = ["pypi-"]
+
+[[rules]]
+id = "nuget-api-key"
+description = "NuGet API Key"
+regex = '''oy2[a-z0-9]{43}'''
+keywords = ["oy2"]
 
 # ============================================================================
-# Private Key Blocks
+# JWT (only full 3-part tokens, not fragments)
 # ============================================================================
 
 [[rules]]
-id = "private-key-block"
-description = "Private Key (PEM block)"
-regex = '''-----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+|ENCRYPTED\s+)?PRIVATE\s+KEY-----'''
-keywords = ["BEGIN", "PRIVATE KEY"]
-
-[[rules]]
-id = "private-key-assignment"
-description = "Private key in assignment"
-regex = '''(?i)(private[_-]?key)\s*[=:]\s*['"]?(-----BEGIN[^'"]+|[^\s'"]{8,})['"]?'''
-secretGroup = 2
-keywords = ["private_key", "private-key", "PRIVATE_KEY"]
+id = "jwt-token"
+description = "JSON Web Token"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+keywords = ["eyJ"]
 
 # ============================================================================
-# Connection Strings & URIs
+# Database connection strings with embedded credentials
 # ============================================================================
 
 [[rules]]
-id = "connection-string"
-description = "Database/service connection string with password"
-regex = '''(?i)(connection[_-]?string|conn[_-]?str|database[_-]?url|db[_-]?url|mongodb|postgres|mysql|redis|amqp|mssql)[=:]\s*['"]?([^\s'"]{10,})['"]?'''
-secretGroup = 2
-keywords = ["connection_string", "conn_str", "database_url", "db_url", "mongodb://", "postgres://", "mysql://", "redis://", "amqp://", "mssql://"]
-
-[[rules]]
-id = "uri-with-credentials"
-description = "URI containing embedded credentials"
-regex = '''[a-zA-Z]+://[^:]+:([^@\s]{3,})@[^\s]+'''
-secretGroup = 1
-keywords = ["://"]
+id = "uri-credentials"
+description = "URI with embedded credentials"
+regex = '''(?i)(mongodb(\+srv)?|postgres(ql)?|mysql|amqp|redis|mssql)://[^:\s]+:([^@\s]{6,})@[^\s]+'''
+secretGroup = 4
+keywords = ["mongodb://", "mongodb+srv://", "postgres://", "postgresql://", "mysql://", "amqp://", "redis://", "mssql://"]
 
 # ============================================================================
-# Generic Key=Value Catch-All (DEEP SCAN — captures broad patterns)
-# This rule catches secrets that don't match any specific pattern above.
-# secretGroup = 2 captures the VALUE, not the key name.
+# Other cloud / SaaS provider patterns
+# ============================================================================
+
+[[rules]]
+id = "mailchimp-api-key"
+description = "Mailchimp API Key"
+regex = '''[0-9a-f]{32}-us[0-9]{1,2}'''
+keywords = ["-us"]
+
+[[rules]]
+id = "shopify-access-token"
+description = "Shopify Access Token"
+regex = '''shpat_[a-fA-F0-9]{32}'''
+keywords = ["shpat_"]
+
+[[rules]]
+id = "shopify-custom-access-token"
+description = "Shopify Custom App Access Token"
+regex = '''shpca_[a-fA-F0-9]{32}'''
+keywords = ["shpca_"]
+
+[[rules]]
+id = "shopify-private-app-password"
+description = "Shopify Private App Password"
+regex = '''shppa_[a-fA-F0-9]{32}'''
+keywords = ["shppa_"]
+
+[[rules]]
+id = "databricks-pat"
+description = "Databricks Personal Access Token"
+regex = '''dapi[a-h0-9]{32}'''
+keywords = ["dapi"]
+
+[[rules]]
+id = "hashicorp-vault-token"
+description = "HashiCorp Vault Service Token"
+regex = '''hvs\.[A-Za-z0-9_-]{24,}'''
+keywords = ["hvs."]
+
+[[rules]]
+id = "hashicorp-terraform-token"
+description = "HashiCorp Terraform API Token"
+regex = '''[a-zA-Z0-9]{14}\.atlasv1\.[a-zA-Z0-9_-]{60,}'''
+keywords = ["atlasv1"]
+
+# ============================================================================
+# Generic patterns — key names containing password, secret, token, key
+# Case-insensitive. Value must be 8+ chars to skip trivial/empty values.
+# secretGroup=2 captures only the secret VALUE, not the key name.
 # ============================================================================
 
 [[rules]]
 id = "generic-password"
-description = "Password in key=value assignment"
-regex = '''(?i)(password|passwd|pwd|db_password|db_passwd|admin_password|root_password|user_password|login_password|mysql_password|pg_password|redis_password|mongo_password)[_A-Z0-9]*\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
+description = "Generic Password Assignment"
+regex = '''(?i)([a-z0-9_.]*password[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
 secretGroup = 2
-keywords = ["password", "passwd", "pwd", "db_password", "admin_password", "root_password"]
+keywords = ["password"]
 
 [[rules]]
 id = "generic-secret"
-description = "Secret value in key=value assignment"
-regex = '''(?i)(secret|secret_key|app_secret|jwt_secret|signing_secret|webhook_secret|encryption_key|decrypt_key|master_key)[_A-Z0-9]*\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
+description = "Generic Secret Assignment"
+regex = '''(?i)([a-z0-9_.]*secret[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
 secretGroup = 2
-keywords = ["secret", "secret_key", "app_secret", "jwt_secret", "signing_secret", "webhook_secret", "encryption_key"]
+keywords = ["secret"]
 
 [[rules]]
-id = "generic-api-key"
-description = "API key/token in key=value assignment"
-regex = '''(?i)(api[_-]?key|api[_-]?token|access[_-]?key|access[_-]?token|auth[_-]?token|auth[_-]?key|bearer[_-]?token|service[_-]?key|app[_-]?key|env[_-]?key)[_A-Z0-9]*\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
+id = "generic-token"
+description = "Generic Token Assignment"
+regex = '''(?i)([a-z0-9_.]*token[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
 secretGroup = 2
-keywords = ["api_key", "api_token", "access_key", "access_token", "auth_token", "auth_key", "bearer_token", "service_key", "app_key", "env_key", "api-key", "api-token"]
+keywords = ["token"]
 
 [[rules]]
-id = "generic-credential"
-description = "Credential/key in key=value assignment"
-regex = '''(?i)(credential|credentials|token|oauth_token|refresh_token|session_token|session_secret|private_token|personal_token)[_A-Z0-9]*\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
+id = "generic-key"
+description = "Generic Key Assignment"
+regex = '''(?i)([a-z0-9_.]*(?:api[_-]?key|access[_-]?key|auth[_-]?key|encryption[_-]?key|private[_-]?key|signing[_-]?key)[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
 secretGroup = 2
-keywords = ["credential", "token", "oauth_token", "refresh_token", "session_token", "personal_token"]
+keywords = ["api_key", "apikey", "access_key", "accesskey", "auth_key", "authkey", "encryption_key", "private_key", "signing_key"]
 
 # ============================================================================
-# Firebase / Google specific (often found in Angular/web apps)
-# ============================================================================
-
-[[rules]]
-id = "firebase-config"
-description = "Firebase configuration secret"
-regex = '''(?i)(firebase[_-]?api[_-]?key|firebase[_-]?auth[_-]?domain|firebase[_-]?project|messaging[_-]?sender[_-]?id|app[_-]?id|measurement[_-]?id)\s*[=:]\s*['"]?([^\s'"]{6,})['"]?'''
-secretGroup = 2
-keywords = ["firebase", "messagingSenderId", "appId", "measurementId"]
-
-# ============================================================================
-# Allowlist — paths and patterns to exclude from scanning
+# Allowlist — paths to exclude from scanning
 # ============================================================================
 
 [allowlist]
@@ -204,5 +277,8 @@ paths = [
     '''node_modules/''',
     '''package-lock\.json$''',
     '''yarn\.lock$''',
-    '''\.min\.js$'''
+    '''\.min\.js$''',
+    '''\.min\.css$''',
+    '''vendor/'''
 ]
+

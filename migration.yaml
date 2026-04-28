@@ -326,6 +326,21 @@ stages:
                 $ghUrl = "https://x-access-token:$ghPat@github.com/$ghOrg/$ghRepo.git"
 
                 Push-Location $cloneDir
+
+                # Remove hidden/internal refs that GitHub rejects on push
+                # - refs/pull/*    : PR merge/head refs (GitHub system-managed)
+                # - refs/merge/*   : ADO merge refs
+                # - refs/pipelines/* : ADO pipeline refs
+                $hiddenRefs = git for-each-ref --format='%(refname)' 'refs/pull/' 'refs/merge/' 'refs/pipelines/' 2>$null
+                if ($hiddenRefs) {
+                    $refCount = ($hiddenRefs | Measure-Object).Count
+                    Write-Host "  Removing $refCount hidden/internal refs before push..." -ForegroundColor Yellow
+                    foreach ($ref in $hiddenRefs) {
+                        git update-ref -d $ref 2>$null
+                    }
+                    Write-Host "  ✓ Hidden refs removed" -ForegroundColor Green
+                }
+
                 git remote add origin "$ghUrl" 2>&1 | Out-Null
                 if ($LASTEXITCODE -ne 0) {
                     git remote set-url origin "$ghUrl" 2>&1 | Out-Null
