@@ -23,7 +23,7 @@ param(
 
     [int[]]$PipelineId,
 
-    [ValidateSet("list", "dry-run", "migrate", "audit")]
+    [ValidateSet("list", "dry-run", "migrate", "audit", "migrate-reusables")]
     [string]$Mode = "dry-run",
 
     [ValidateSet("build", "release")]
@@ -34,6 +34,14 @@ param(
     [string]$ImporterConfigFile,
 
     [string]$ConfigFilePath,  # New parameter for --config-file-path
+
+    # Central GitHub repo (e.g. "my-org/pipeline-templates") that should host
+    # every converted reusable workflow + composite action. When set, the script
+    # rewrites every target_url in config.yml to this repo before calling GEI.
+    [string]$ReusablesTargetRepo,
+
+    # Branch/tag/SHA the consuming pipelines should pin to. Defaults to "main".
+    [string]$ReusablesRef = "main",
 
     [string]$OutputDir = "./output/pipelines"
 )
@@ -294,6 +302,127 @@ if ($Mode -eq "audit") {
     )
     gh @auditArgs 2>&1
     Write-Host "Audit complete. Check: $OutputDir/audit_summary.md" -ForegroundColor Green
+
+    # --- Surface generated config.yml (lists reusable workflows + composite actions) ---
+    $generatedConfig = Join-Path $OutputDir "config.yml"
+    if (Test-Path $generatedConfig) {
+        Write-Host "`n=== Reusable Workflows / Composite Actions Discovered ===" -ForegroundColor Cyan
+        Write-Host "GEI generated a config file describing every reusable workflow and composite" -ForegroundColor Gray
+        Write-Host "action it converted from your ADO templates:" -ForegroundColor Gray
+        Write-Host "  $generatedConfig" -ForegroundColor Yellow
+        Write-Host "`n--- config.yml contents ---" -ForegroundColor DarkGray
+        Get-Content $generatedConfig | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+        Write-Host "--- end ---" -ForegroundColor DarkGray
+
+        Write-Host "`nNEXT STEPS to migrate the reusable templates:" -ForegroundColor Yellow
+        Write-Host "  Option A (central repo - recommended for ADO 'templates repo' pattern):" -ForegroundColor Gray
+        Write-Host "    .\migrate-pipelines.ps1 -Mode migrate-reusables ``" -ForegroundColor Green
+        Write-Host "        -ConfigFilePath '$generatedConfig' ``" -ForegroundColor Green
+        Write-Host "        -AdoProject '$AdoProject' ``" -ForegroundColor Green
+        Write-Host "        -ReusablesTargetRepo '$ghOrg/pipeline-templates' -ReusablesRef main" -ForegroundColor Green
+        Write-Host "  Option B (manual): edit '$generatedConfig' and set target_url per entry, then:" -ForegroundColor Gray
+        Write-Host "    .\migrate-pipelines.ps1 -Mode migrate-reusables -ConfigFilePath '$generatedConfig' -AdoProject '$AdoProject'" -ForegroundColor Green
+    } else {
+        Write-Host "`nNote: no config.yml was produced (no reusable templates detected)." -ForegroundColor Yellow
+    }
+    return
+}
+
+# ---------------------------------------------------------------------------
+# migrate-reusables: open PRs for every reusable workflow / composite action
+# listed in the GEI-produced config.yml (--config-file-path flow).
+# ---------------------------------------------------------------------------
+if ($Mode -eq "migrate-reusables") {
+    if (-not $ConfigFilePath -or -not (Test-Path $ConfigFilePath)) {
+        Write-Host "ERROR: -ConfigFilePath is required and must point to the config.yml" -ForegroundColor Red
+        Write-Host "       produced by 'audit' (e.g. ./output/pipelines/config.yml)." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "`n=== Migrating Reusable Workflows / Composite Actions ===" -ForegroundColor Cyan
+    Write-Host "  Config file: $ConfigFilePath" -ForegroundColor Gray
+
+    # -----------------------------------------------------------------------
+    # Optional: rewrite every target_url in config.yml to a single central
+    # GitHub repo. This implements the ADO "central templates repo" pattern:
+    # all reusable workflows + composite actions land in one shared repo.
+    # -----------------------------------------------------------------------
+    if ($ReusablesTargetRepo) {
+        $centralUrl = if ($ReusablesTargetRepo -match '^https?://') {
+            $ReusablesTargetRepo.TrimEnd('/')
+        } elseif ($ReusablesTargetRepo -match '/') {
+            "https://github.com/$ReusablesTargetRepo"
+        } else {
+            "https://github.com/$ghOrg/$ReusablesTargetRepo"
+        }
+
+        Write-Host "  Centralizing all reusables -> $centralUrl (ref: $ReusablesRef)" -ForegroundColor Yellow
+
+        # Back up original then rewrite in place
+        $backup = "$ConfigFilePath.bak"
+        Copy-Item $ConfigFilePath $backup -Force
+        Write-Host "  Backup saved: $backup" -ForegroundColor DarkGray
+
+        $rewritten = Get-Content $ConfigFilePath | ForEach-Object {
+            $line = $_
+            if ($line -match '^(\s*)target_url:\s*\S+') {
+                "$($matches[1])target_url: $centralUrl"
+            } elseif ($line -match '^(\s*)ref:\s*\S+') {
+                "$($matches[1])ref: $ReusablesRef"
+            } else {
+                $line
+            }
+        }
+        Set-Content -Path $ConfigFilePath -Value $rewritten -Encoding utf8
+
+        $reusableCount = (Select-String -Path $ConfigFilePath -Pattern '^\s*-\s*name:').Count
+        Write-Host "  Rewrote $reusableCount reusable entries to central repo." -ForegroundColor Green
+        $reusableTargetUrl = $centralUrl
+    } else {
+        # Determine a default --target-url (required by GEI even when config drives routing).
+        $reusableTargetUrl = $null
+        if ($defaultTargetRepo) {
+            $reusableTargetUrl = "https://github.com/$ghOrg/$defaultTargetRepo"
+        } else {
+            $firstTarget = (Select-String -Path $ConfigFilePath -Pattern 'target_url:\s*(\S+)' | Select-Object -First 1)
+            if ($firstTarget) {
+                $reusableTargetUrl = ($firstTarget.Matches[0].Groups[1].Value).Trim()
+            }
+        }
+        if (-not $reusableTargetUrl) {
+            Write-Host "ERROR: No target URL available. Pass -ReusablesTargetRepo, set GH_REPO env var, or add 'target_url' entries in config.yml." -ForegroundColor Red
+            exit 1
+        }
+    }
+    Write-Host "  Default target-url: $reusableTargetUrl" -ForegroundColor Gray
+
+    $reusableArgs = @(
+        "actions-importer", "migrate", "azure-devops", "pipeline",
+        "--output-dir", (Join-Path $OutputDir "reusables"),
+        "--azure-devops-organization", $adoOrgName,
+        "--azure-devops-project", $AdoProject,
+        "--config-file-path", $ConfigFilePath,
+        "--target-url", $reusableTargetUrl
+    )
+    if ($CustomTransformersDir -and (Test-Path $CustomTransformersDir)) {
+        $reusableArgs += "--custom-transformers"
+        $reusableArgs += $CustomTransformersDir
+    }
+
+    Write-Host "  Command: gh $($reusableArgs -join ' ')" -ForegroundColor DarkGray
+    gh @reusableArgs 2>&1 | ForEach-Object { Write-Host "    $_" }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Reusable migration FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+
+    Write-Host "`nReusable workflow / composite action PRs opened per target_url in config.yml." -ForegroundColor Green
+    Write-Host "Next:" -ForegroundColor Yellow
+    Write-Host "  1. Review and merge the PR(s) in the shared repo." -ForegroundColor Gray
+    Write-Host "  2. (Private repo) Settings -> Actions -> General -> Access ->" -ForegroundColor Gray
+    Write-Host "     'Accessible from repositories owned by <org>' so consumers can call them." -ForegroundColor Gray
+    Write-Host "  3. Re-run consuming pipelines with the SAME --config-file-path so generated" -ForegroundColor Gray
+    Write-Host "     workflows emit 'uses: <repo>/.github/workflows/<x>.yml@$ReusablesRef'." -ForegroundColor Gray
     return
 }
 
