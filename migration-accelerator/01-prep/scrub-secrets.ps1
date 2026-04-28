@@ -230,8 +230,11 @@ foreach ($reportFile in $reportFiles) {
     $uniqueCount = $seenSecrets.Count
     Write-Host "    $uniqueCount unique secrets (deduped for scrubbing), $secretCounter total occurrences reported" -ForegroundColor Cyan
 
-    # Write expressions file
-    $expressions | Out-File -FilePath $expressionsFile -Encoding utf8 -NoNewline:$false
+    # Sort expressions by secret length (longest first) so longer matches
+    # are processed before shorter ones — prevents partial replacements
+    # e.g. "AKIAIOSFODNN7EXAMPLE" must be replaced before "AKIA" alone
+    $sortedExpressions = $expressions | Sort-Object { ($_ -split "==>")[0].Length } -Descending
+    $sortedExpressions | Out-File -FilePath $expressionsFile -Encoding utf8 -NoNewline:$false
 
     if ($DryRun) {
         Write-Host "    [DRY RUN] Would redact $($expressions.Count) secrets" -ForegroundColor Gray

@@ -7,6 +7,10 @@
 #   - Same secret value → 1 GitHub Secret (deduplicated)
 #   - Same key name, different values → separate secrets (DB_PASSWORD, DB_PASSWORD_2)
 #
+# IMPORTANT: All regex groups that are NOT the target secret MUST use
+# non-capturing groups (?:...) to prevent gitleaks from only extracting
+# a partial match. Gitleaks uses group 1 by default if capturing groups exist.
+#
 # Reference: https://docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns
 
 title = "GitHub-Aligned Secret Scanner"
@@ -18,7 +22,8 @@ title = "GitHub-Aligned Secret Scanner"
 [[rules]]
 id = "aws-access-key-id"
 description = "AWS Access Key ID"
-regex = '''(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+# (?:...) = non-capturing group so gitleaks uses the FULL 20-char match
+regex = '''(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
 keywords = ["AKIA", "AGPA", "AIDA", "AROA", "AIPA", "ANPA", "ANVA", "ASIA", "A3T"]
 
 # ============================================================================
@@ -42,7 +47,9 @@ keywords = ["client_secret", "clientsecret", "azure_client_secret"]
 [[rules]]
 id = "azure-connection-string"
 description = "Azure SQL / Service Bus Connection String"
-regex = '''(?i)(Server=tcp:.*?;.*?Password=|Endpoint=sb://.*?;SharedAccessKey=|DefaultEndpointsProtocol=https;.*?AccountKey=)[^\s;'"]{10,}'''
+# Capture the FULL connection string including the password/key portion
+regex = '''(?i)((?:Server=tcp:.*?;.*?Password=|Endpoint=sb://.*?;SharedAccessKey=|DefaultEndpointsProtocol=https;.*?AccountKey=)[^\s;'"]{10,})'''
+secretGroup = 1
 keywords = ["AccountKey=", "SharedAccessKey=", "Password="]
 
 # ============================================================================
@@ -97,23 +104,26 @@ regex = '''ghr_[0-9a-zA-Z]{36,}'''
 keywords = ["ghr_"]
 
 # ============================================================================
-# Private Keys (PEM blocks — universally recognized)
+# Private Keys (PEM blocks — match full block from BEGIN to END)
 # ============================================================================
 
 [[rules]]
 id = "private-key-pem"
 description = "Private Key (PEM encoded)"
-regex = '''-----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+|PGP\s+|ENCRYPTED\s+)?PRIVATE\s+KEY(\s+BLOCK)?-----'''
+# Match full PEM block: BEGIN header + base64 content + END footer
+# Uses non-capturing groups so full match = secret
+regex = '''-----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+|PGP\s+|ENCRYPTED\s+)?PRIVATE\s+KEY(?:\s+BLOCK)?-----[\s\S]*?-----END\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+|PGP\s+|ENCRYPTED\s+)?PRIVATE\s+KEY(?:\s+BLOCK)?-----'''
 keywords = ["BEGIN", "PRIVATE KEY"]
 
 # ============================================================================
-# Tokens with known prefixes
+# Tokens with known prefixes (no capturing groups needed)
 # ============================================================================
 
 [[rules]]
 id = "slack-bot-token"
 description = "Slack Bot / User Token"
-regex = '''xox[bpors]-[0-9]{10,}-[0-9a-zA-Z-]+'''
+# (?:...) = non-capturing group for the prefix alternation
+regex = '''xox(?:b|p|o|r|s)-[0-9]{10,}-[0-9a-zA-Z-]+'''
 keywords = ["xoxb-", "xoxp-", "xoxo-", "xoxr-", "xoxs-"]
 
 [[rules]]
@@ -125,13 +135,14 @@ keywords = ["hooks.slack.com"]
 [[rules]]
 id = "stripe-secret-key"
 description = "Stripe Secret Key"
-regex = '''sk_(test|live)_[0-9a-zA-Z]{24,}'''
+# (?:...) for test|live alternation
+regex = '''sk_(?:test|live)_[0-9a-zA-Z]{24,}'''
 keywords = ["sk_test_", "sk_live_"]
 
 [[rules]]
 id = "stripe-restricted-key"
 description = "Stripe Restricted Key"
-regex = '''rk_(test|live)_[0-9a-zA-Z]{24,}'''
+regex = '''rk_(?:test|live)_[0-9a-zA-Z]{24,}'''
 keywords = ["rk_test_", "rk_live_"]
 
 [[rules]]
@@ -181,8 +192,9 @@ keywords = ["eyJ"]
 [[rules]]
 id = "uri-credentials"
 description = "URI with embedded credentials"
-regex = '''(?i)(mongodb(\+srv)?|postgres(ql)?|mysql|amqp|redis|mssql)://[^:\s]+:([^@\s]{6,})@[^\s]+'''
-secretGroup = 4
+# Capture the FULL connection URI as the secret (protocol://user:pass@host/db)
+regex = '''(?i)((?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|amqp|redis|mssql)://[^\s'"]+)'''
+secretGroup = 1
 keywords = ["mongodb://", "mongodb+srv://", "postgres://", "postgresql://", "mysql://", "amqp://", "redis://", "mssql://"]
 
 # ============================================================================
@@ -281,4 +293,3 @@ paths = [
     '''\.min\.css$''',
     '''vendor/'''
 ]
-
