@@ -10,6 +10,7 @@ parameters:
       - repo
       - both
       - reclaim
+      - discovery
 
   - name: MigrationMode
     displayName: "Migration Mode"
@@ -74,7 +75,7 @@ stages:
   # ===========================================================================
   - stage: PipelineDiscover
     displayName: "1. Discover & Audit Pipelines"
-    condition: in('${{ parameters.migrationType }}', 'pipeline', 'both')
+    condition: in('${{ parameters.migrationType }}', 'pipeline', 'both', 'discovery')
     pool:
       vmImage: ubuntu-latest
     jobs:
@@ -303,7 +304,7 @@ stages:
   # ===========================================================================
   - stage: RepoDiscover
     displayName: "1. Discover & Analyse"
-    condition: in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim')
+    condition: in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim', 'discovery')
     pool:
       vmImage: windows-latest
     jobs:
@@ -484,7 +485,7 @@ stages:
   - stage: ReviewGate
     displayName: "2. Review Gate"
     dependsOn: RepoDiscover
-    condition: and(succeeded(), in('${{ parameters.migrationType }}', 'repo', 'both'))
+    condition: and(not(failed()), in('${{ parameters.migrationType }}', 'repo', 'both'))
     jobs:
       - job: ReviewGateJob
         displayName: "Gate: Review Discovery Findings"
