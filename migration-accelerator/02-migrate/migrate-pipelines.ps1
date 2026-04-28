@@ -294,14 +294,23 @@ if ($Mode -eq "list") {
 
 if ($Mode -eq "audit") {
     Write-Host "`nRunning audit..." -ForegroundColor Yellow
+
+    # Ensure actions-importer Docker image is available (audit needs it too)
+    Write-Host "Ensuring actions-importer image is up to date..." -ForegroundColor Yellow
+    gh actions-importer update 2>&1 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  WARNING: Could not update actions-importer image." -ForegroundColor Yellow
+    }
+
     $auditArgs = @(
         "actions-importer", "audit", "azure-devops",
         "--output-dir", $OutputDir,
         "--azure-devops-organization", $adoOrgName,
         "--azure-devops-project", $AdoProject
     )
-    gh @auditArgs 2>&1
-    Write-Host "Audit complete. Check: $OutputDir/audit_summary.md" -ForegroundColor Green
+    gh @auditArgs 2>&1 | ForEach-Object { Write-Host "  $_" }
+    $auditExit = $LASTEXITCODE
+    Write-Host "Audit complete (exit $auditExit). Check: $OutputDir/audit_summary.md" -ForegroundColor Green
 
     # --- Surface generated config.yml (lists reusable workflows + composite actions) ---
     $generatedConfig = Join-Path $OutputDir "config.yml"
@@ -325,7 +334,8 @@ if ($Mode -eq "audit") {
     } else {
         Write-Host "`nNote: no config.yml was produced (no reusable templates detected)." -ForegroundColor Yellow
     }
-    return
+    # Audit is informational only — never fail the job from this branch.
+    exit 0
 }
 
 # ---------------------------------------------------------------------------
