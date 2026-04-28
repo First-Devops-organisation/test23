@@ -179,10 +179,93 @@ stages:
               artifact: "pipeline-dry-run"
               publishLocation: pipeline
 
+      # ---------------------------------------------------------------------
+      # 2.1.b  Migrate reusable workflows + composite actions to central repo
+      # ---------------------------------------------------------------------
+      # Runs only when REUSABLES_REPO is defined in the variable group
+      # (e.g. "my-org/pipeline-templates"). It uses the GEI-produced
+      # config.yml and rewrites every target_url to that single shared repo.
+      - job: MigrateReusables
+        displayName: "2.1.b Migrate Reusable Templates -> Central Repo"
+        dependsOn: DryRun
+        condition: and(succeeded(), ne(variables['REUSABLES_REPO'], ''))
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: PowerShell@2
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: 'filePath'
+              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download dry-run output (for config.yml)"
+            inputs:
+              artifact: "pipeline-dry-run"
+              path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+
+          - task: PowerShell@2
+            displayName: "Audit (refresh config.yml listing reusables)"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                -AdoProject "$(ADO_PROJECT)"
+                -Mode "audit"
+                -OutputDir "output/pipelines"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Migrate reusables to $(REUSABLES_REPO)@$(REUSABLES_REF)"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                -AdoProject "$(ADO_PROJECT)"
+                -Mode "migrate-reusables"
+                -ConfigFilePath "$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/config.yml"
+                -ReusablesTargetRepo "$(REUSABLES_REPO)"
+                -ReusablesRef "$(REUSABLES_REF)"
+                -OutputDir "output/pipelines"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+            env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+              GH_REPO: $(GH_REPO)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish reusables config + output"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+              artifact: "pipeline-reusables"
+              publishLocation: pipeline
+
       - job: Migrate
         displayName: "2.2 Migrate to GitHub"
-        dependsOn: DryRun
-        condition: and(succeeded(), eq(stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'], 'migrate'))
+        dependsOn:
+          - DryRun
+          - MigrateReusables
+        condition: |
+          and(
+            in(dependencies.DryRun.result, 'Succeeded', 'SucceededWithIssues'),
+            in(dependencies.MigrateReusables.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'),
+            eq(stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'], 'migrate')
+          )
         steps:
           - checkout: self
             fetchDepth: 0
@@ -207,6 +290,7 @@ stages:
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
+                -ConfigFilePath "$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/config.yml"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
             env:
