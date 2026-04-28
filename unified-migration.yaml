@@ -524,7 +524,7 @@ stages:
   - stage: MigrateSingle
     displayName: "3a. Migrate (Single Repo)"
     dependsOn: ReviewGate
-    condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Single'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
+    condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Single'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     pool:
       vmImage: windows-latest
     jobs:
@@ -649,7 +649,7 @@ stages:
   - stage: MigrateBatch
     displayName: "3b. Migrate (Batch)"
     dependsOn: ReviewGate
-    condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
+    condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Batch'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     pool:
       vmImage: windows-latest
     jobs:
