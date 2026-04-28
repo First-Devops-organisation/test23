@@ -42,7 +42,7 @@
     }
   ],
   "PIPELINE_IDS": [],
-  "PIPELINE_REPO_MAP": {"1156": "testrepo","1158": "APIOPS"},
+  "PIPELINE_REPO_MAP": {"1156": "testrepo"},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "",
   "GH_REPO": "Appinsight"
