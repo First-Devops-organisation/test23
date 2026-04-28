@@ -326,7 +326,10 @@ param(
     [int]$BatchTotal = 1,
 
     [Parameter(Mandatory = $false)]
-    [string]$RepoName = ""
+    [string]$RepoName = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$BatchName = ""
 )
 
 Set-StrictMode -Version Latest
@@ -361,6 +364,19 @@ if (-not [string]::IsNullOrWhiteSpace($RepoName)) {
         Write-Warning "Repository '$RepoName' not found in inventory. Scanning nothing."
     } else {
         Write-Host "Target: Specific repo only — $RepoName" -ForegroundColor Cyan
+    }
+}
+
+# Filter by BatchName if provided
+if (-not [string]::IsNullOrWhiteSpace($BatchName)) {
+    $batch = $config.batches | Where-Object { $_.name -eq $BatchName }
+    if ($null -eq $batch) {
+        Write-Warning "Batch '$BatchName' not found in config. Scanning nothing."
+        $repos = @()
+    } else {
+        $batchRepos = @($batch.repos)
+        $repos = @($repos | Where-Object { $batchRepos -contains $_.Name })
+        Write-Host "Target: Batch '$BatchName' — scanning $($repos.Count) repositories from config" -ForegroundColor Cyan
     }
 }
 
@@ -569,4 +585,3 @@ Write-Host "  Summary  : $summaryJson"
 Write-Host "  Findings : $findingsJson"
 Write-Host "  HTML     : $htmlPath"
 Write-Host "`nNext step: Run 02-prep\install-tools.ps1, then 02-prep\scrub-secrets.ps1"
-
