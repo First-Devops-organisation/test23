@@ -59,7 +59,7 @@ keywords = ["AccountKey=", "SharedAccessKey=", "Password="]
 [[rules]]
 id = "gcp-api-key"
 description = "Google / GCP API Key"
-regex = '''AIzaSy[0-9A-Za-z_-]{33}'''
+regex = '''AIzaSy[0-9A-Za-z_-]{33,}'''
 keywords = ["AIzaSy"]
 
 [[rules]]
@@ -124,8 +124,8 @@ id = "ssh-public-key"
 description = "SSH Public Key"
 # Matches ssh-rsa, ssh-ed25519, ecdsa-sha2-nistp256/384/521 keys
 # Captures the full key: algorithm + base64 data + optional comment
-regex = '''(?i)(?:ssh[_-]?(?:pub(?:lic)?)?[_-]?key|authorized[_-]?keys?|id[_-]rsa\.pub)\s*[=:]\s*['"]?(ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))\s+([A-Za-z0-9+/=]{20,}(?:\s+\S+@\S+)?)['"]?'''
-secretGroup = 0
+regex = '''(?i)(?:ssh[_-]?(?:pub(?:lic)?)?[_-]?key|authorized[_-]?keys?|id[_-]rsa\.pub)\s*[=:]\s*['"]?((?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))\s+[A-Za-z0-9+/=]{20,}(?:\s+\S+@\S+)?)['"]?'''
+secretGroup = 1
 keywords = ["ssh-rsa", "ssh-ed25519", "ssh-dss", "ecdsa-sha2", "ssh_key", "ssh-key", "authorized_key"]
 
 [[rules]]
