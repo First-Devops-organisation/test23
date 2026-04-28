@@ -89,7 +89,7 @@ stages:
             displayName: 'Install required tooling'
             inputs:
               targetType: 'filePath'
-              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              filePath: 'Pipeline-migration/01-prep/install-tools.ps1'
               pwsh: true
             env:
               GH_PAT: $(GH_PAT)
