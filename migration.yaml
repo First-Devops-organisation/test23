@@ -183,7 +183,7 @@ stages:
       # 2.1.b  Migrate reusable workflows + composite actions to central repo
       # ---------------------------------------------------------------------
       # Runs only when REUSABLES_REPO is defined in the variable group
-      # (e.g. "my-org/pipeline-templates"). It uses the GEI-produced
+      # (e.g. "my-org/reusable-workflows"). It uses the GEI-produced
       # config.yml and rewrites every target_url to that single shared repo.
       - job: MigrateReusables
         displayName: "2.1.b Migrate Reusable Templates -> Central Repo"
@@ -208,6 +208,31 @@ stages:
             inputs:
               artifact: "pipeline-dry-run"
               path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+
+          - task: PowerShell@2
+            displayName: "Ensure central reusables repo exists on GitHub"
+            inputs:
+              targetType: 'inline'
+              pwsh: true
+              script: |
+                $repo = "$(REUSABLES_REPO)"   # e.g. my-org/reusable-workflows
+                if ([string]::IsNullOrWhiteSpace($repo)) {
+                  Write-Host "REUSABLES_REPO not set; skipping."
+                  exit 0
+                }
+                $env:GH_TOKEN = "$(GH_PAT)"
+                gh repo view $repo *> $null
+                if ($LASTEXITCODE -ne 0) {
+                  Write-Host "Creating $repo ..."
+                  gh repo create $repo --private --add-readme `
+                    --description "Central reusable workflows + composite actions migrated from Azure DevOps"
+                  if ($LASTEXITCODE -ne 0) { Write-Error "Failed to create $repo"; exit 1 }
+                } else {
+                  Write-Host "$repo already exists."
+                }
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Audit (refresh config.yml listing reusables)"
