@@ -179,8 +179,8 @@ permissions:
   repository-projects: read
 
 env:
-  PROJECT_NUMBER: 2
-  PROJECT_OWNER: Urvashi773
+  PROJECT_NUMBER: $($config.target.projectNumber)
+  PROJECT_OWNER: $($config.target.projectOwner)
 
 jobs:
   validate-workflow-rules:
@@ -189,7 +189,7 @@ jobs:
       - name: Validate All Project Items
         uses: actions/github-script@v7
         with:
-          github-token: `${{ secrets.GITHUB_TOKEN }}
+          github-token: `${{ secrets.PROJECT_PAT || secrets.GITHUB_TOKEN }}
           script: |
             // ADO workflow rules - valid states per work item type
             const validStates = $validationJsonStr;
