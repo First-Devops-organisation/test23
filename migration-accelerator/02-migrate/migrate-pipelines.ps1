@@ -343,14 +343,23 @@ if ($Mode -eq "audit") {
 # listed in the GEI-produced config.yml (--config-file-path flow).
 # ---------------------------------------------------------------------------
 if ($Mode -eq "migrate-reusables") {
+    # Graceful skip: no templates in this batch == nothing to do (NOT an error).
+    # Supports mixed batches where some pipelines use templates and some don't.
     if (-not $ConfigFilePath -or -not (Test-Path $ConfigFilePath)) {
-        Write-Host "ERROR: -ConfigFilePath is required and must point to the config.yml" -ForegroundColor Red
-        Write-Host "       produced by 'audit' (e.g. ./output/pipelines/config.yml)." -ForegroundColor Red
-        exit 1
+        Write-Host "No config.yml found at '$ConfigFilePath' — pipeline(s) have no reusable templates." -ForegroundColor Yellow
+        Write-Host "Skipping migrate-reusables (nothing to do)." -ForegroundColor Yellow
+        exit 0
+    }
+
+    $entryCount = (Select-String -Path $ConfigFilePath -Pattern '^\s*-\s*name:' -ErrorAction SilentlyContinue).Count
+    if ($entryCount -eq 0) {
+        Write-Host "config.yml at '$ConfigFilePath' has 0 reusable entries — nothing to migrate." -ForegroundColor Yellow
+        Write-Host "Skipping migrate-reusables." -ForegroundColor Yellow
+        exit 0
     }
 
     Write-Host "`n=== Migrating Reusable Workflows / Composite Actions ===" -ForegroundColor Cyan
-    Write-Host "  Config file: $ConfigFilePath" -ForegroundColor Gray
+    Write-Host "  Config file: $ConfigFilePath ($entryCount entries)" -ForegroundColor Gray
 
     # -----------------------------------------------------------------------
     # Optional: rewrite every target_url in config.yml to a single central
