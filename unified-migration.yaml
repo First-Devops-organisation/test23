@@ -457,6 +457,8 @@ stages:
               arguments: >-
                 -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)
+                -RepoName "${{ parameters.ADORepo }}"
+                -BatchName "${{ parameters.BatchName }}"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
