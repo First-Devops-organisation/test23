@@ -297,6 +297,19 @@ foreach ($item in $sortedItems) {
     $body += "| Assigned To | $($assignee.displayName) |`n"
     $body += "| Area Path | $areaPathValue |`n"
     $body += "| Iteration | $($item.fields.'System.IterationPath') |`n"
+    # Add optional ADO fields only if they have values
+    $valueArea = $item.fields.'Microsoft.VSTS.Common.ValueArea'
+    if ($valueArea) { $body += "| Value Area | $valueArea |`n" }
+    $storyPts = $item.fields.'Microsoft.VSTS.Scheduling.StoryPoints'
+    if ($storyPts) { $body += "| Story Points | $storyPts |`n" }
+    $effort = $item.fields.'Microsoft.VSTS.Scheduling.Effort'
+    if ($effort) { $body += "| Effort | $effort |`n" }
+    $reason = $item.fields.'System.Reason'
+    if ($reason) { $body += "| Reason | $reason |`n" }
+    $priority = $item.fields.'Microsoft.VSTS.Common.Priority'
+    if ($priority) { $body += "| Priority | $priority |`n" }
+    $severity = $item.fields.'Microsoft.VSTS.Common.Severity'
+    if ($severity) { $body += "| Severity | $severity |`n" }
 
     # --- Resolve GitHub assignee ---
     $ghAssignees = @()
@@ -423,10 +436,9 @@ foreach ($item in $sortedItems) {
                     }
                 }
 
-                # --- Field: Story Points ---
+                # --- Field: Story Points (only from StoryPoints, NOT Effort) ---
                 $sp = $item.fields.'Microsoft.VSTS.Scheduling.StoryPoints'
-                if (-not $sp) { $sp = $item.fields.'Microsoft.VSTS.Scheduling.Effort' }
-                if ($sp) {
+                if ($sp -and [double]$sp -gt 0) {
                     if ($storyPtsField) {
                         Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
                             -FieldId $storyPtsField.id -Value ([double]$sp) -Pat $ghPat
