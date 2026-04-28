@@ -1,4 +1,4 @@
-<#
+# <#
 .SYNOPSIS
     Installs all required tools for the ADO-to-GitHub migration accelerator.
 .DESCRIPTION
@@ -95,6 +95,28 @@ $ghExtensions = @(
 
 $gh = Get-Command gh -ErrorAction SilentlyContinue
 if ($gh) {
+    # Validate GH_TOKEN — if it's invalid, gh extension install fails with 401
+    # even for public repos. Clear it temporarily so anonymous API access is used.
+    $tokenWasCleared = $false
+    $savedGhToken = $env:GH_TOKEN
+    $savedGithubToken = $env:GITHUB_TOKEN
+    if ($env:GH_TOKEN -or $env:GITHUB_TOKEN) {
+        Write-Host "Validating GH_TOKEN against api.github.com..." -ForegroundColor DarkGray
+        $authCheck = gh api user 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[WARN] GH_TOKEN appears invalid (gh api user failed):" -ForegroundColor Yellow
+            Write-Host "       $authCheck" -ForegroundColor Yellow
+            Write-Host "       Temporarily clearing GH_TOKEN/GITHUB_TOKEN so public extension installs can proceed anonymously." -ForegroundColor Yellow
+            Write-Host "       >>> Fix the GH_PAT secret in your variable group (needs scopes: repo, workflow, read:org, delete_repo, admin:org). <<<" -ForegroundColor Yellow
+            $env:GH_TOKEN = $null
+            $env:GITHUB_TOKEN = $null
+            $tokenWasCleared = $true
+        }
+        else {
+            Write-Host "[OK] GH_TOKEN is valid." -ForegroundColor Green
+        }
+    }
+
     $installedExts = gh extension list 2>&1
 
     foreach ($ext in $ghExtensions) {
@@ -111,6 +133,12 @@ if ($gh) {
                 Write-Host "  Failed to install $($ext.Name). Run manually: gh extension install $($ext.Repo)" -ForegroundColor Red
             }
         }
+    }
+
+    # Restore tokens for downstream tasks (GEI etc. still need them — but they'll fail too if invalid)
+    if ($tokenWasCleared) {
+        $env:GH_TOKEN = $savedGhToken
+        $env:GITHUB_TOKEN = $savedGithubToken
     }
 
     # --- Pull latest actions-importer Docker image ---
