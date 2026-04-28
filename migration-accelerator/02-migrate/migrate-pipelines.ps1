@@ -373,41 +373,50 @@ if ($Mode -eq "migrate-reusables") {
         Copy-Item $ConfigFilePath $backup -Force
         Write-Host "  Backup saved: $backup" -ForegroundColor DarkGray
 
-        # Walk every line: rewrite existing target_url/ref, and INJECT target_url
-        # right after each "- name:" entry when it's missing (GEI sometimes emits
-        # config.yml with only name + ref).
+        # Walk every line. For each "- name: <foo>" entry, drop any existing
+        # target_url/ref/path lines belonging to that entry and emit a fresh,
+        # canonical 4-field block:
+        #   - name: <foo>
+        #     target_url: <central>
+        #     ref: <ref>
+        #     path: .github/actions/<lowercased_name>
+        # The `path:` field is REQUIRED so GEI generates full
+        # `org/repo/.github/actions/<name>@ref` URLs in the produced action.yml.
+        # Pass-through everything else (top-level keys, comments, blank lines).
         $rewritten = New-Object System.Collections.Generic.List[string]
         $lines = Get-Content $ConfigFilePath
+
+        # Helper: is a line one of the per-entry property lines we manage?
+        $isEntryProp = {
+            param($l)
+            return ($l -match '^\s+target_url:\s*\S+') -or
+                   ($l -match '^\s+ref:\s*\S+')        -or
+                   ($l -match '^\s+path:\s*\S+')
+        }
+
         for ($i = 0; $i -lt $lines.Count; $i++) {
             $line = $lines[$i]
 
-            if ($line -match '^(\s*)target_url:\s*\S+') {
-                $rewritten.Add("$($matches[1])target_url: $centralUrl")
-                continue
-            }
-            if ($line -match '^(\s*)ref:\s*\S+') {
-                $rewritten.Add("$($matches[1])ref: $ReusablesRef")
-                continue
-            }
-
-            # Match "- name: foo.yml" (entry start). Add the line, then ensure
-            # the next non-name lines for this entry contain target_url.
-            if ($line -match '^(\s*)-\s*name:\s*\S+') {
+            if ($line -match '^(\s*)-\s*name:\s*(\S+)') {
                 $entryIndent = $matches[1]
+                $rawName     = $matches[2]
                 $propIndent  = "$entryIndent  "   # YAML list-item property indent
-                $rewritten.Add($line)
 
-                # Look ahead within this entry block to see if target_url already exists.
-                $hasTarget = $false
-                for ($j = $i + 1; $j -lt $lines.Count; $j++) {
-                    $look = $lines[$j]
-                    if ($look -match '^\s*-\s*name:') { break }                 # next entry
-                    if ($look -match '^\S' -or $look -match '^[A-Za-z_]+:') { break }  # new top-level key
-                    if ($look -match '^\s*target_url:') { $hasTarget = $true; break }
-                }
-                if (-not $hasTarget) {
-                    $rewritten.Add("${propIndent}target_url: $centralUrl")
-                }
+                # Sanitize name -> filesystem-safe folder (lowercase, strip extension,
+                # replace anything not [a-z0-9_-] with _).
+                $folderName = ($rawName -replace '\.ya?ml$', '').ToLower()
+                $folderName = ($folderName -replace '[^a-z0-9_\-]', '_')
+
+                # Emit canonical block.
+                $rewritten.Add($line)
+                $rewritten.Add("${propIndent}target_url: $centralUrl")
+                $rewritten.Add("${propIndent}ref: $ReusablesRef")
+                $rewritten.Add("${propIndent}path: .github/actions/$folderName")
+
+                # Skip any existing target_url/ref/path lines that belong to this entry.
+                $j = $i + 1
+                while ($j -lt $lines.Count -and (& $isEntryProp $lines[$j])) { $j++ }
+                $i = $j - 1
                 continue
             }
 
