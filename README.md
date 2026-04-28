@@ -15,46 +15,43 @@ During a migration, GitHub attributes ADO history (commits, PRs, comments) to pl
 
 ## 🏗️ Pipeline Architecture
 
-```mermaid
-graph TD
-  subgraph Stage1["Stage 1: Discovery & Mapping"]
-    A[GitHub Org] --> B["gh ado2gh generate-mannequin-csv"]
-    B --> C[mannequins.csv]
-    C --> D[Import-Csv & Fix Headers]
-    D --> E["$mannequins (PowerShell Objects)"]
+### 📊 Pipeline Workflow
 
-    F[user-mappings.csv] --> G[Clean Empty Lines]
-    G --> H[ConvertFrom-Csv]
-    H --> I["$mappings (PowerShell Objects)"]
-
-    E --> J{Loop Each Mannequin}
-    I --> J
-    J --> K{Compare 4 Ways}
-    K -- Match --> L[Resolve Target GitHub User]
-    K -- No Match --> M["*** NO MAPPING ***"]
-    L --> N["$preview (Results)"]
-    M --> N
-
-    N --> O[Display Console Table]
-    O --> P[Generate Markdown Summary]
-    P --> Q[Save reclaim-input.csv]
-  end
-
-  subgraph Stage2["Stage 2: Approval Gate"]
-    Q --> R{Manual Validation}
-    R -- Approved --> S[Proceed to Stage 3]
-    R -- Rejected --> T[Abort]
-  end
-
-  subgraph Stage3["Stage 3: Execution"]
-    S --> U[Search for reclaim-input.csv]
-    U --> V{Validate File Exists}
-    V -- Yes --> W["gh ado2gh reclaim-mannequin --csv"]
-    W --> X{Check Exit Code}
-    X -- 0 --> Y[✅ Success]
-    X -- 1+ --> Z[❌ Failure]
-  end
+```text
+[ STAGE 1: DISCOVERY & MAPPING ]
+GitHub Org ➔ gh ado2gh generate-mannequin-csv ➔ mannequins.csv
+                                                     │
+[ DATA PREPARATION ]                                 ▼
+user-mappings.csv ➔ Clean Empty Lines ➔ $mappings ➔ [ MATCHING ENGINE ]
+                                                     │
+[ MATCHING LOGIC (4-Way Check) ]                     ▼
+Loop Mannequins ➔ Email/User/Name Check ➔ Result ($preview)
+                                                     │
+[ OUTPUT GENERATION ]                                ▼
+Console Table ➔ Markdown Summary ➔ reclaim-input.csv (Mapped Only)
+                                                     │
+                                                     ▼
+[ STAGE 2: APPROVAL GATE ] ➔ ➔ ➔ ➔ ➔ ➔ ➔ ➔ ➔ [ MANUAL VALIDATION ]
+                                                     │
+                                                     ▼
+[ STAGE 3: EXECUTION ]                               ▼
+Search for reclaim-input.csv ➔ Validate File ➔ gh reclaim-mannequin --csv
+                                                     │
+[ RESULT ]                                           ▼
+                                             [ ✅ SUCCESS / ❌ FAILURE ]
 ```
+
+---
+
+### 🔄 Detailed Logic Flow
+1. **GitHub Discovery**: Fetches all mannequins to `mannequins.csv`.
+2. **Import & Fix**: PowerShell loads mannequins and forces correct headers (`m_user`, `m_id`).
+3. **Clean Mappings**: Skips empty lines in `user-mappings.csv` to find real data.
+4. **Matching**: Loops through each mannequin and checks against CSV (Email, Username, Display Name, and Email Prefix).
+5. **Split Results**: Separates users into `Mapped` (Green) and `Unmapped` (Red).
+6. **Reporting**: Saves a preview report and generates the final `reclaim-input.csv`.
+7. **Approval**: Stage 2 pauses for a human to review the preview.
+8. **Reclaim**: Stage 3 locates the CSV and runs the bulk reclaim command.
 
 The pipeline (`azure-pipeline-reclaim.yaml`) is divided into three distinct stages:
 
