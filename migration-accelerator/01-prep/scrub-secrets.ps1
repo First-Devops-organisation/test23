@@ -104,7 +104,7 @@ foreach ($reportFile in $reportFiles) {
     $secretCounter = 0
 
     foreach ($finding in $findings) {
-        $secret = $finding.Secret
+        $secret = $finding.Secret.Trim()
         $match = $finding.Match
         if ([string]::IsNullOrWhiteSpace($secret)) { continue }
 

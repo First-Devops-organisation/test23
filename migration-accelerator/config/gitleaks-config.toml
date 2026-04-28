@@ -268,33 +268,37 @@ keywords = ["atlasv1"]
 # Generic patterns — key names containing password, secret, token, key
 # Case-insensitive. Value must be 8+ chars to skip trivial/empty values.
 # secretGroup=2 captures only the secret VALUE, not the key name.
+#
+# IMPORTANT: Uses [^\r\n'"] instead of [^\s'"] so that values containing
+# spaces (SSH keys, template expressions, multi-word secrets) are captured
+# as a COMPLETE value on the same line, not truncated at the first space.
 # ============================================================================
 
 [[rules]]
 id = "generic-password"
 description = "Generic Password Assignment"
-regex = '''(?i)([a-z0-9_.]*password[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
+regex = '''(?i)([a-z0-9_.]*password[a-z0-9_.]*)\s*[=:]\s*['"]?([^\r\n'"]{8,})['"]?'''
 secretGroup = 2
 keywords = ["password"]
 
 [[rules]]
 id = "generic-secret"
 description = "Generic Secret Assignment"
-regex = '''(?i)([a-z0-9_.]*secret[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
+regex = '''(?i)([a-z0-9_.]*secret[a-z0-9_.]*)\s*[=:]\s*['"]?([^\r\n'"]{8,})['"]?'''
 secretGroup = 2
 keywords = ["secret"]
 
 [[rules]]
 id = "generic-token"
 description = "Generic Token Assignment"
-regex = '''(?i)([a-z0-9_.]*token[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
+regex = '''(?i)([a-z0-9_.]*token[a-z0-9_.]*)\s*[=:]\s*['"]?([^\r\n'"]{8,})['"]?'''
 secretGroup = 2
 keywords = ["token"]
 
 [[rules]]
 id = "generic-key"
 description = "Generic Key Assignment"
-regex = '''(?i)([a-z0-9_.]*[_.]key[a-z0-9_.]*|[a-z0-9_.]*key[_.]?[a-z0-9_.]*)\s*[=:]\s*['"]?([^\s'"]{8,})['"]?'''
+regex = '''(?i)([a-z0-9_.]*[_.]key[a-z0-9_.]*|[a-z0-9_.]*key[_.]?[a-z0-9_.]*)\s*[=:]\s*['"]?([^\r\n'"]{8,})['"]?'''
 secretGroup = 2
 keywords = ["key"]
 
