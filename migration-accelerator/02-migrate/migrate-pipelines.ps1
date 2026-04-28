@@ -48,6 +48,58 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# ---------------------------------------------------------------------------
+# Per-pipeline template-detection helper.
+#
+# WHY: `gh actions-importer audit azure-devops` is PROJECT-wide -- it doesn't
+# accept --pipeline-id, so it returns the same config.yml for every pipeline
+# in a project. We need a per-pipeline answer ("does THIS pipeline use any
+# reusable templates?") to:
+#   1. Skip no-template pipelines in migrate-reusables (avoids wrong central PRs)
+#   2. Skip template-using pipelines in the main migrate loop (avoids duplicate
+#      central-repo PRs created by the consumer's --config-file-path).
+#
+# HOW: Run `dry-run --pipeline-id N` (which IS per-pipeline) into a probe dir
+# and check whether GEI produced any composite-action files. If it did, the
+# pipeline references reusable templates. Cached so each ID is probed once
+# per script run.
+# ---------------------------------------------------------------------------
+$script:templateProbeCache = @{}
+function Test-PipelineHasTemplates {
+    param(
+        [Parameter(Mandatory)] $PipelineIdToProbe,
+        [Parameter(Mandatory)] [string]$AdoOrgNameProbe,
+        [Parameter(Mandatory)] [string]$AdoProjectProbe,
+        [Parameter(Mandatory)] [string]$ProbeRoot
+    )
+    $key = "$PipelineIdToProbe"
+    if ($script:templateProbeCache.ContainsKey($key)) {
+        return $script:templateProbeCache[$key]
+    }
+
+    $probeDir = Join-Path $ProbeRoot "template-probe/$PipelineIdToProbe"
+    if (-not (Test-Path $probeDir)) {
+        New-Item -ItemType Directory -Path $probeDir -Force | Out-Null
+    }
+
+    $probeArgs = @(
+        "actions-importer", "dry-run", "azure-devops", "pipeline",
+        "--output-dir",                $probeDir,
+        "--azure-devops-organization", $AdoOrgNameProbe,
+        "--azure-devops-project",      $AdoProjectProbe,
+        "--pipeline-id",               $PipelineIdToProbe
+    )
+    Write-Host "  Probing pipeline $PipelineIdToProbe for reusable templates (dry-run)..." -ForegroundColor DarkGray
+    gh @probeArgs 2>&1 | Out-Null
+
+    $actionFiles = Get-ChildItem -Path $probeDir -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '[\\/]\.github[\\/]actions[\\/]' -and $_.Name -eq 'action.yml' }
+    $hasTemplates = ($actionFiles -and $actionFiles.Count -gt 0)
+
+    $script:templateProbeCache[$key] = $hasTemplates
+    return $hasTemplates
+}
+
 # Load config file if provided, otherwise use env vars from variable group
 $config = $null
 if ($ConfigFile -and (Test-Path $ConfigFile)) {
@@ -467,35 +519,22 @@ if ($Mode -eq "migrate-reusables") {
     foreach ($pipelineIdItem in $PipelineId) {
         Write-Host "`n  --- Checking pipeline ID $pipelineIdItem for reusable templates ---" -ForegroundColor Cyan
 
-        # Per-pipeline audit so we know whether THIS specific pipeline uses
-        # any reusable templates. Without this check, GEI would also push
-        # the consumer workflow YAML into the central repo for pipelines
-        # that have zero templates — which is wrong (no-template pipelines
-        # belong only in their consumer repo, handled by the Migrate job).
-        $perPipelineAuditDir = Join-Path $OutputDir "reusables-audit/$pipelineIdItem"
-        if (-not (Test-Path $perPipelineAuditDir)) {
-            New-Item -ItemType Directory -Path $perPipelineAuditDir -Force | Out-Null
-        }
-        $auditCheckArgs = @(
-            "actions-importer", "audit", "azure-devops",
-            "--output-dir",                $perPipelineAuditDir,
-            "--azure-devops-organization", $adoOrgName,
-            "--azure-devops-project",      $AdoProject
-        )
-        Write-Host "  Per-pipeline audit (to count reusable entries)..." -ForegroundColor DarkGray
-        gh @auditCheckArgs 2>&1 | Out-Null
-        $perPipelineConfig = Join-Path $perPipelineAuditDir "config.yml"
-        $perPipelineEntries = 0
-        if (Test-Path $perPipelineConfig) {
-            $perPipelineEntries = (Select-String -Path $perPipelineConfig -Pattern '^\s*-\s*name:' -ErrorAction SilentlyContinue).Count
-        }
+        # Per-pipeline detection via dry-run. Audit is project-wide and useless
+        # here -- it returns the same config.yml for every pipeline in the project.
+        # Dry-run accepts --pipeline-id and tells us whether THIS pipeline
+        # actually emits any composite-action files (= uses reusable templates).
+        $hasTemplates = Test-PipelineHasTemplates `
+            -PipelineIdToProbe $pipelineIdItem `
+            -AdoOrgNameProbe   $adoOrgName `
+            -AdoProjectProbe   $AdoProject `
+            -ProbeRoot         $OutputDir
 
-        if ($perPipelineEntries -eq 0) {
+        if (-not $hasTemplates) {
             Write-Host "  Pipeline $pipelineIdItem has 0 reusable templates -- SKIPPING (will be handled by Migrate job into its consumer repo)." -ForegroundColor Yellow
             continue
         }
 
-        Write-Host "  Pipeline $pipelineIdItem uses $perPipelineEntries reusable template(s) -- migrating to central repo." -ForegroundColor Green
+        Write-Host "  Pipeline $pipelineIdItem uses reusable template(s) -- migrating to central repo." -ForegroundColor Green
         $reusableArgs = @(
             "actions-importer", "migrate", "azure-devops", "pipeline",
             "--output-dir",                (Join-Path $OutputDir "reusables/$pipelineIdItem"),
@@ -573,6 +612,31 @@ foreach ($pipeline in $pipelines) {
     $pipelineName = $pipeline.name
     $currentId = [int]$pipeline.id
     Write-Host "`n  Processing: $pipelineName (ID: $currentId)" -ForegroundColor Yellow
+
+    # Skip pipelines already fully migrated by the migrate-reusables job.
+    # That job (when run) emits BOTH the composite actions (to central repo)
+    # AND the consumer workflow YAML (to consumer repo) in a single GEI call.
+    # Re-running migrate here would create duplicate central-repo PRs because
+    # --config-file-path routes every template entry to the central target_url.
+    if ($Mode -eq "migrate") {
+        $alreadyHandled = Test-PipelineHasTemplates `
+            -PipelineIdToProbe $currentId `
+            -AdoOrgNameProbe   $adoOrgName `
+            -AdoProjectProbe   $AdoProject `
+            -ProbeRoot         $OutputDir
+        if ($alreadyHandled) {
+            Write-Host "    Pipeline $currentId uses reusable templates -- already handled by MigrateReusables job. Skipping to avoid duplicate central-repo PR." -ForegroundColor Yellow
+            $results += [PSCustomObject]@{
+                Pipeline   = $pipelineName
+                Id         = $currentId
+                TargetRepo = if ($pipelineRepoMap.ContainsKey("$currentId")) { $pipelineRepoMap["$currentId"] } else { $defaultTargetRepo }
+                Mode       = $Mode
+                Status     = "SKIPPED"
+                OutputDir  = ""
+            }
+            continue
+        }
+    }
 
     # Determine target repo: PIPELINE_REPO_MAP > GH_REPO > ADO repo name
     $targetRepo = $null
@@ -759,6 +823,7 @@ foreach ($r in $results | Sort-Object Status, Pipeline) {
         "SUCCESS"   { "<span class='badge-ok'>&#9989; Success</span>" }
         "PARTIAL"   { "<span class='badge-warn'>&#9888;&#65039; Partial</span>" }
         "NO_OUTPUT" { "<span class='badge-warn'>&#128196; No Output</span>" }
+        "SKIPPED"   { "<span class='badge-warn'>&#8987; Handled by Reusables</span>" }
         "FAILED"    { "<span class='badge-fail'>&#10060; Failed</span>" }
         "ERROR"     { "<span class='badge-fail'>&#128683; Error</span>" }
         default     { "<span class='badge-fail'>$($r.Status)</span>" }
