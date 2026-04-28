@@ -131,6 +131,25 @@ if ($repoMapRaw) {
 # Default target repo from GH_REPO env var
 $defaultTargetRepo = if ($config -and $config.GH_REPO) { $config.GH_REPO } elseif ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
 
+# Allow-list of pipeline IDs that use reusable templates. This is the SOLE
+# router between MigrateReusables (central PR) and Migrate (consumer PR).
+# - Pipelines IN this list: handled by MigrateReusables, skipped in main Migrate.
+# - Pipelines NOT in this list: skipped in MigrateReusables, handled by main Migrate.
+# Accepts JSON array in config (REUSABLE_PIPELINE_IDS) or comma-separated env var.
+$script:reusablePipelineIds = @()
+if ($config -and $config.REUSABLE_PIPELINE_IDS) {
+    $script:reusablePipelineIds = @($config.REUSABLE_PIPELINE_IDS | ForEach-Object { [int]$_ })
+} elseif ($env:REUSABLE_PIPELINE_IDS) {
+    $script:reusablePipelineIds = @(
+        $env:REUSABLE_PIPELINE_IDS -split ',' |
+            Where-Object { $_ -match '\d' } |
+            ForEach-Object { [int]($_.Trim()) }
+    )
+}
+if ($script:reusablePipelineIds.Count -gt 0) {
+    Write-Host "Reusable pipeline allow-list: $($script:reusablePipelineIds -join ', ')" -ForegroundColor Cyan
+}
+
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
 Write-Host "  Project:      $AdoProject" -ForegroundColor Gray
