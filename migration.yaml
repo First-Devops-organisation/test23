@@ -136,6 +136,7 @@ stages:
     jobs:
       - job: DryRun
         displayName: "2.1 Dry-Run Preview"
+        condition: succeeded()
         steps:
           - checkout: self
             fetchDepth: 0
@@ -259,6 +260,8 @@ stages:
                 -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -Mode "migrate-reusables"
+                -PipelineId $(PIPELINE_IDS)
+                -PipelineType "$(PIPELINE_TYPE)"
                 -ConfigFilePath "output/pipelines/config.yml"
                 -ReusablesTargetRepo "$(REUSABLES_REPO)"
                 -ReusablesRef "$(REUSABLES_REF)"
