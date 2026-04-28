@@ -465,7 +465,37 @@ if ($Mode -eq "migrate-reusables") {
 
     $anyFailure = $false
     foreach ($pipelineIdItem in $PipelineId) {
-        Write-Host "`n  --- Migrating reusables via consumer pipeline ID: $pipelineIdItem ---" -ForegroundColor Cyan
+        Write-Host "`n  --- Checking pipeline ID $pipelineIdItem for reusable templates ---" -ForegroundColor Cyan
+
+        # Per-pipeline audit so we know whether THIS specific pipeline uses
+        # any reusable templates. Without this check, GEI would also push
+        # the consumer workflow YAML into the central repo for pipelines
+        # that have zero templates — which is wrong (no-template pipelines
+        # belong only in their consumer repo, handled by the Migrate job).
+        $perPipelineAuditDir = Join-Path $OutputDir "reusables-audit/$pipelineIdItem"
+        if (-not (Test-Path $perPipelineAuditDir)) {
+            New-Item -ItemType Directory -Path $perPipelineAuditDir -Force | Out-Null
+        }
+        $auditCheckArgs = @(
+            "actions-importer", "audit", "azure-devops",
+            "--output-dir",                $perPipelineAuditDir,
+            "--azure-devops-organization", $adoOrgName,
+            "--azure-devops-project",      $AdoProject
+        )
+        Write-Host "  Per-pipeline audit (to count reusable entries)..." -ForegroundColor DarkGray
+        gh @auditCheckArgs 2>&1 | Out-Null
+        $perPipelineConfig = Join-Path $perPipelineAuditDir "config.yml"
+        $perPipelineEntries = 0
+        if (Test-Path $perPipelineConfig) {
+            $perPipelineEntries = (Select-String -Path $perPipelineConfig -Pattern '^\s*-\s*name:' -ErrorAction SilentlyContinue).Count
+        }
+
+        if ($perPipelineEntries -eq 0) {
+            Write-Host "  Pipeline $pipelineIdItem has 0 reusable templates -- SKIPPING (will be handled by Migrate job into its consumer repo)." -ForegroundColor Yellow
+            continue
+        }
+
+        Write-Host "  Pipeline $pipelineIdItem uses $perPipelineEntries reusable template(s) -- migrating to central repo." -ForegroundColor Green
         $reusableArgs = @(
             "actions-importer", "migrate", "azure-devops", "pipeline",
             "--output-dir",                (Join-Path $OutputDir "reusables/$pipelineIdItem"),
