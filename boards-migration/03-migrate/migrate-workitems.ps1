@@ -519,47 +519,80 @@ if ($preserveHierarchy -and -not $DryRun) {
     $linkedCount = 0
     $failedLinks = 0
 
+    # Group children by parent for batch processing
+    $parentChildMap = @{}  # parentAdoId -> @(childAdoIds)
     foreach ($item in $sortedItems) {
         $adoId = $item.id
         $parentAdoId = Get-AdoParentId -WorkItemDetails $item
-
         if (-not $parentAdoId) { continue }
-
-        if (-not $adoToGhMap.ContainsKey($adoId)) {
-            Write-Log -Message "  Child ADO#$adoId not in mapping - skipping" -Level "DEBUG"
+        if (-not $adoToGhMap.ContainsKey($adoId) -or -not $adoToGhMap.ContainsKey($parentAdoId)) {
+            Write-Log -Message "  ADO#$adoId parent=$parentAdoId - one or both not in map, skipping" -Level "DEBUG"
             continue
         }
-        if (-not $adoToGhMap.ContainsKey($parentAdoId)) {
-            Write-Log -Message "  Parent ADO#$parentAdoId not in mapping - skipping" -Level "DEBUG"
-            continue
-        }
-
-        $childNodeId    = $adoToGhMap[$adoId].issueNodeId
-        $childIssueNum  = $adoToGhMap[$adoId].issueNumber
-        $parentNodeId   = $adoToGhMap[$parentAdoId].issueNodeId
-        $parentIssueNum = $adoToGhMap[$parentAdoId].issueNumber
-
-        Write-Log -Message "  Linking: ADO#$adoId (GH#$childIssueNum) -> parent ADO#$parentAdoId (GH#$parentIssueNum)" -Level "INFO"
-        Write-Log -Message "    ChildNodeId=$childNodeId  ParentNodeId=$parentNodeId" -Level "DEBUG"
-
-        # Try GitHub sub-issues API first
-        $success = Add-GhSubIssue -ParentIssueNodeId $parentNodeId -ChildIssueNodeId $childNodeId -Pat $ghPat
-        if ($success) {
-            Write-Log -Message "    Sub-issue linked successfully" -Level "SUCCESS"
-            $linkedCount++
-        } else {
-            # Fallback: add task-list reference comment on parent (GitHub renders these as sub-issues)
-            $childUrl = $adoToGhMap[$adoId].issueUrl
-            $childTitle = $item.fields.'System.Title'
-            $taskListBody = "- [ ] $childUrl"
-            Add-GhIssueComment -Org $ghOrg -Repo $ghRepo -IssueNumber $parentIssueNum -Body $taskListBody -Pat $ghPat | Out-Null
-            Write-Log -Message "    Fallback: added task-list reference on #$parentIssueNum" -Level "INFO"
-            $linkedCount++
-            $failedLinks++
-        }
-        Start-Sleep -Milliseconds 300
+        if (-not $parentChildMap.ContainsKey($parentAdoId)) { $parentChildMap[$parentAdoId] = @() }
+        $parentChildMap[$parentAdoId] += $adoId
     }
-    Write-Log -Message "Established $linkedCount parent-child links ($failedLinks used fallback)" -Level "SUCCESS"
+
+    Write-Log -Message "Found $($parentChildMap.Count) parent(s) with children to link" -Level "INFO"
+
+    foreach ($parentAdoId in $parentChildMap.Keys) {
+        $parentIssueNum = $adoToGhMap[$parentAdoId].issueNumber
+        $parentNodeId   = $adoToGhMap[$parentAdoId].issueNodeId
+        $children       = $parentChildMap[$parentAdoId]
+
+        Write-Log -Message "  Parent: ADO#$parentAdoId (GH#$parentIssueNum) -> $($children.Count) children" -Level "INFO"
+
+        $subIssueSuccess = $true
+
+        foreach ($childAdoId in $children) {
+            $childNodeId   = $adoToGhMap[$childAdoId].issueNodeId
+            $childIssueNum = $adoToGhMap[$childAdoId].issueNumber
+
+            # Try sub-issues API
+            $success = Add-GhSubIssue -ParentIssueNodeId $parentNodeId -ChildIssueNodeId $childNodeId -Pat $ghPat
+            if ($success) {
+                Write-Log -Message "    Sub-issue: GH#$childIssueNum linked" -Level "SUCCESS"
+                $linkedCount++
+            } else {
+                $subIssueSuccess = $false
+                Write-Log -Message "    Sub-issue API failed for GH#$childIssueNum" -Level "DEBUG"
+            }
+            Start-Sleep -Milliseconds 300
+        }
+
+        # If sub-issues API failed, use task-list fallback (update parent body)
+        if (-not $subIssueSuccess) {
+            $taskListLines = @()
+            $taskListLines += ""
+            $taskListLines += "## Child Work Items"
+            $taskListLines += ""
+            foreach ($childAdoId in $children) {
+                $childIssueNum = $adoToGhMap[$childAdoId].issueNumber
+                $childUrl      = $adoToGhMap[$childAdoId].issueUrl
+                $childItem     = $allItems[$childAdoId]
+                $childTitle    = if ($childItem) { $childItem.fields.'System.Title' } else { "Issue #$childIssueNum" }
+                $childType     = if ($childItem) { $childItem.fields.'System.WorkItemType' } else { "Item" }
+                $taskListLines += "- [ ] [$childType: $childTitle]($childUrl)"
+                $linkedCount++
+                $failedLinks++
+            }
+            $taskListBody = $taskListLines -join "`n"
+
+            # Append task list to parent issue body
+            try {
+                $headers = Get-GhRestHeaders -Pat $ghPat
+                $parentIssue = Invoke-RestMethod -Uri "https://api.github.com/repos/$ghOrg/$ghRepo/issues/$parentIssueNum" -Headers $headers
+                $updatedBody = $parentIssue.body + "`n`n$taskListBody"
+                $updateBody = @{ body = $updatedBody } | ConvertTo-Json -Depth 5
+                Invoke-RestMethod -Uri "https://api.github.com/repos/$ghOrg/$ghRepo/issues/$parentIssueNum" `
+                    -Method PATCH -Headers $headers -Body $updateBody | Out-Null
+                Write-Log -Message "    Updated GH#$parentIssueNum body with $($children.Count) child task-list links" -Level "SUCCESS"
+            } catch {
+                Write-Log -Message "    Failed to update parent body: $_" -Level "WARN"
+            }
+        }
+    }
+    Write-Log -Message "Established $linkedCount parent-child links ($failedLinks used task-list fallback)" -Level "SUCCESS"
 }
 
 # --- Final Summary ---

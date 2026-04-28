@@ -460,13 +460,22 @@ function Add-GhSubIssue {
     param([string]$ParentIssueNodeId, [string]$ChildIssueNodeId, [string]$Pat)
     $mutation = "mutation { addSubIssue(input: {issueId: `"$ParentIssueNodeId`", subIssueId: `"$ChildIssueNodeId`"}) { issue { id } subIssue { id } } }"
     try {
-        $resp = Invoke-GhGraphQL -Query $mutation -Pat $Pat
+        # Sub-issues API requires special preview header
+        $headers = @{
+            Authorization  = "Bearer $Pat"
+            "Content-Type" = "application/json"
+            Accept         = "application/vnd.github+json"
+            "X-Github-Next"= "sub_issues"
+        }
+        $body = @{ query = $mutation } | ConvertTo-Json -Depth 10
+        $resp = Invoke-RestMethod -Method POST -Uri "https://api.github.com/graphql" -Headers $headers -Body $body
         if ($resp.errors) {
             $errMsg = ($resp.errors | ForEach-Object { $_.message }) -join '; '
             Write-Log -Message "Sub-issue API error: $errMsg" -Level "WARN"
             return $false
         }
-        return $true
+        if ($resp.data.addSubIssue) { return $true }
+        return $false
     } catch {
         Write-Log -Message "Failed to add sub-issue: $_" -Level "WARN"
         return $false
