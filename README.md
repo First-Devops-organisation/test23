@@ -15,6 +15,47 @@ During a migration, GitHub attributes ADO history (commits, PRs, comments) to pl
 
 ## 🏗️ Pipeline Architecture
 
+```mermaid
+graph TD
+  subgraph Stage1["Stage 1: Discovery & Mapping"]
+    A[GitHub Org] --> B["gh ado2gh generate-mannequin-csv"]
+    B --> C[mannequins.csv]
+    C --> D[Import-Csv & Fix Headers]
+    D --> E["$mannequins (PowerShell Objects)"]
+
+    F[user-mappings.csv] --> G[Clean Empty Lines]
+    G --> H[ConvertFrom-Csv]
+    H --> I["$mappings (PowerShell Objects)"]
+
+    E --> J{Loop Each Mannequin}
+    I --> J
+    J --> K{Compare 4 Ways}
+    K -- Match --> L[Resolve Target GitHub User]
+    K -- No Match --> M["*** NO MAPPING ***"]
+    L --> N["$preview (Results)"]
+    M --> N
+
+    N --> O[Display Console Table]
+    O --> P[Generate Markdown Summary]
+    P --> Q[Save reclaim-input.csv]
+  end
+
+  subgraph Stage2["Stage 2: Approval Gate"]
+    Q --> R{Manual Validation}
+    R -- Approved --> S[Proceed to Stage 3]
+    R -- Rejected --> T[Abort]
+  end
+
+  subgraph Stage3["Stage 3: Execution"]
+    S --> U[Search for reclaim-input.csv]
+    U --> V{Validate File Exists}
+    V -- Yes --> W["gh ado2gh reclaim-mannequin --csv"]
+    W --> X{Check Exit Code}
+    X -- 0 --> Y[✅ Success]
+    X -- 1+ --> Z[❌ Failure]
+  end
+```
+
 The pipeline (`azure-pipeline-reclaim.yaml`) is divided into three distinct stages:
 
 ### 1. 🔍 Stage 1: Discover & Map
