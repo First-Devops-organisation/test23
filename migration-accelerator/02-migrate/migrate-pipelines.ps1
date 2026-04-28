@@ -65,36 +65,60 @@ $ErrorActionPreference = "Stop"
 # per script run.
 # ---------------------------------------------------------------------------
 $script:templateProbeCache = @{}
+$script:reusablePipelineIds = @()
 function Test-PipelineHasTemplates {
     param(
         [Parameter(Mandatory)] $PipelineIdToProbe,
         [Parameter(Mandatory)] [string]$AdoOrgNameProbe,
         [Parameter(Mandatory)] [string]$AdoProjectProbe,
-        [Parameter(Mandatory)] [string]$ProbeRoot
+        [Parameter(Mandatory)] [string]$ProbeRoot,
+        [string]$ProbeTargetUrl = "https://github.com/placeholder/placeholder"
     )
     $key = "$PipelineIdToProbe"
     if ($script:templateProbeCache.ContainsKey($key)) {
         return $script:templateProbeCache[$key]
     }
 
-    $probeDir = Join-Path $ProbeRoot "template-probe/$PipelineIdToProbe"
-    if (-not (Test-Path $probeDir)) {
-        New-Item -ItemType Directory -Path $probeDir -Force | Out-Null
+    # Allow-list short-circuit: if user explicitly listed reusable pipeline IDs,
+    # trust that and skip the (slow + sometimes flaky) GEI dry-run probe.
+    if ($script:reusablePipelineIds -and $script:reusablePipelineIds.Count -gt 0) {
+        $isReusable = $script:reusablePipelineIds -contains [int]$PipelineIdToProbe
+        $script:templateProbeCache[$key] = $isReusable
+        Write-Host "  Pipeline $PipelineIdToProbe: allow-list match = $isReusable" -ForegroundColor DarkGray
+        return $isReusable
     }
 
+    $probeDir = Join-Path $ProbeRoot "template-probe/$PipelineIdToProbe"
+    # Wipe any stale probe output so a previous run's action.yml files can't
+    # produce a false positive (or mask a current-run failure).
+    if (Test-Path $probeDir) {
+        Remove-Item $probeDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    New-Item -ItemType Directory -Path $probeDir -Force | Out-Null
+
+    # GEI requires --target-url even for dry-run. The URL is never written to;
+    # a placeholder is fine. Without it the command silently fails and we get
+    # zero output -> false negative for every pipeline.
     $probeArgs = @(
         "actions-importer", "dry-run", "azure-devops", "pipeline",
         "--output-dir",                $probeDir,
         "--azure-devops-organization", $AdoOrgNameProbe,
         "--azure-devops-project",      $AdoProjectProbe,
-        "--pipeline-id",               $PipelineIdToProbe
+        "--pipeline-id",               $PipelineIdToProbe,
+        "--target-url",                $ProbeTargetUrl
     )
     Write-Host "  Probing pipeline $PipelineIdToProbe for reusable templates (dry-run)..." -ForegroundColor DarkGray
-    gh @probeArgs 2>&1 | Out-Null
+    $probeOutput = gh @probeArgs 2>&1
+    $probeExit = $LASTEXITCODE
+    if ($probeExit -ne 0) {
+        Write-Warning "  Probe FAILED for pipeline $PipelineIdToProbe (exit $probeExit). Output:"
+        $probeOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkYellow }
+    }
 
     $actionFiles = Get-ChildItem -Path $probeDir -Recurse -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -match '[\\/]\.github[\\/]actions[\\/]' -and $_.Name -eq 'action.yml' }
     $hasTemplates = ($actionFiles -and $actionFiles.Count -gt 0)
+    Write-Host "  Probe found $(@($actionFiles).Count) composite action file(s) for pipeline $PipelineIdToProbe (hasTemplates=$hasTemplates)" -ForegroundColor DarkGray
 
     $script:templateProbeCache[$key] = $hasTemplates
     return $hasTemplates
@@ -182,6 +206,24 @@ if ($repoMapRaw) {
 
 # Default target repo from GH_REPO env var
 $defaultTargetRepo = if ($config -and $config.GH_REPO) { $config.GH_REPO } elseif ($env:GH_REPO) { $env:GH_REPO } elseif ($env:GHRepo) { $env:GHRepo } else { $null }
+
+# Optional explicit allow-list of pipeline IDs that use reusable templates.
+# When set, this short-circuits the dry-run probe in Test-PipelineHasTemplates
+# (faster + immune to GEI probe flakiness). Accepts JSON array in config or
+# comma-separated env var: REUSABLE_PIPELINE_IDS=1156,1158
+$script:reusablePipelineIds = @()
+if ($config -and $config.REUSABLE_PIPELINE_IDS) {
+    $script:reusablePipelineIds = @($config.REUSABLE_PIPELINE_IDS | ForEach-Object { [int]$_ })
+} elseif ($env:REUSABLE_PIPELINE_IDS) {
+    $script:reusablePipelineIds = @(
+        $env:REUSABLE_PIPELINE_IDS -split ',' |
+            Where-Object { $_ -match '\d' } |
+            ForEach-Object { [int]($_.Trim()) }
+    )
+}
+if ($script:reusablePipelineIds.Count -gt 0) {
+    Write-Host "Reusable pipeline allow-list: $($script:reusablePipelineIds -join ', ')" -ForegroundColor Cyan
+}
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
@@ -527,7 +569,8 @@ if ($Mode -eq "migrate-reusables") {
             -PipelineIdToProbe $pipelineIdItem `
             -AdoOrgNameProbe   $adoOrgName `
             -AdoProjectProbe   $AdoProject `
-            -ProbeRoot         $OutputDir
+            -ProbeRoot         $OutputDir `
+            -ProbeTargetUrl    $reusableTargetUrl
 
         if (-not $hasTemplates) {
             Write-Host "  Pipeline $pipelineIdItem has 0 reusable templates -- SKIPPING (will be handled by Migrate job into its consumer repo)." -ForegroundColor Yellow
@@ -619,11 +662,18 @@ foreach ($pipeline in $pipelines) {
     # Re-running migrate here would create duplicate central-repo PRs because
     # --config-file-path routes every template entry to the central target_url.
     if ($Mode -eq "migrate") {
+        # Resolve a probe target URL (placeholder is fine -- dry-run never writes).
+        $probeTargetForMain = if ($defaultTargetRepo) {
+            "https://github.com/$ghOrg/$defaultTargetRepo"
+        } else {
+            "https://github.com/$ghOrg/placeholder"
+        }
         $alreadyHandled = Test-PipelineHasTemplates `
             -PipelineIdToProbe $currentId `
             -AdoOrgNameProbe   $adoOrgName `
             -AdoProjectProbe   $AdoProject `
-            -ProbeRoot         $OutputDir
+            -ProbeRoot         $OutputDir `
+            -ProbeTargetUrl    $probeTargetForMain
         if ($alreadyHandled) {
             Write-Host "    Pipeline $currentId uses reusable templates -- already handled by MigrateReusables job. Skipping to avoid duplicate central-repo PR." -ForegroundColor Yellow
             $results += [PSCustomObject]@{
