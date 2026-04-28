@@ -10,7 +10,6 @@ parameters:
       - repo
       - both
       - reclaim
-      - discovery
 
   - name: MigrationMode
     displayName: "Migration Mode"
@@ -75,7 +74,7 @@ stages:
   # ===========================================================================
   - stage: PipelineDiscover
     displayName: "1. Discover & Audit Pipelines"
-    condition: in('${{ parameters.migrationType }}', 'pipeline', 'both', 'discovery')
+    condition: in('${{ parameters.migrationType }}', 'pipeline', 'both')
     pool:
       vmImage: ubuntu-latest
     jobs:
@@ -304,7 +303,7 @@ stages:
   # ===========================================================================
   - stage: RepoDiscover
     displayName: "1. Discover & Analyse"
-    condition: in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim', 'discovery')
+    condition: in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim')
     pool:
       vmImage: windows-latest
     jobs:
@@ -485,7 +484,7 @@ stages:
   - stage: ReviewGate
     displayName: "2. Review Gate"
     dependsOn: RepoDiscover
-    condition: and(not(failed()), in('${{ parameters.migrationType }}', 'repo', 'both'))
+    condition: and(succeeded(), in('${{ parameters.migrationType }}', 'repo', 'both'))
     jobs:
       - job: ReviewGateJob
         displayName: "Gate: Review Discovery Findings"
@@ -1022,12 +1021,9 @@ stages:
       - Validate
     condition: |
       and(
-        in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim'),
-        ne('${{ parameters.ReclaimMode }}', 'Skip'),
-        or(
-          in(dependencies.Validate.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'),
-          eq('${{ parameters.migrationType }}', 'reclaim')
-        )
+        not(failed()),
+        in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim', 'discovery'),
+        ne('${{ parameters.ReclaimMode }}', 'Skip')
       )
     pool:
       vmImage: windows-latest
