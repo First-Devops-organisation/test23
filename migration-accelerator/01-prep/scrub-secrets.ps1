@@ -108,6 +108,32 @@ foreach ($reportFile in $reportFiles) {
         $match = $finding.Match
         if ([string]::IsNullOrWhiteSpace($secret)) { continue }
 
+        # --- Filter out values that are NOT real secrets ---
+        # Skip multi-line or values with control characters (GitHub API rejects these)
+        if ($secret -match '[\r\n\x00-\x1f]') {
+            Write-Host "    ⊘ Skipped (contains control chars): [$($finding.RuleID)] $($finding.File):$($finding.StartLine)" -ForegroundColor DarkGray
+            continue
+        }
+
+        # Skip common false-positive values
+        $falsePositives = @(
+            'changeme', 'password', 'secret', 'example', 'placeholder',
+            'your-secret-here', 'your-password-here', 'your-token-here',
+            'xxxxxxxx', 'test1234', 'abcdefgh', 'changeit', 'replace_me',
+            'todo_replace', 'CHANGE_ME', 'INSERT_HERE', 'none', 'null',
+            'undefined', 'default', 'required', 'optional'
+        )
+        if ($falsePositives -contains $secret.ToLower()) {
+            Write-Host "    ⊘ Skipped (placeholder value): [$secret] $($finding.File)" -ForegroundColor DarkGray
+            continue
+        }
+
+        # Skip values that look like file paths or URLs (not secrets)
+        if ($secret -match '^(https?://|/|\\|\./)' -or $secret -match '\.(js|ts|css|html|json|xml|yaml|yml|md|txt|png|jpg|svg)$') {
+            Write-Host "    ⊘ Skipped (path/URL): [$secret]" -ForegroundColor DarkGray
+            continue
+        }
+
         $secretCounter++
         $totalSecrets++
 
