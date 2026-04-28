@@ -486,6 +486,27 @@ if ($Mode -eq "migrate-reusables") {
             continue
         }
 
+        # Resolve the CONSUMER repo for this pipeline. The root workflow YAML
+        # (the one that calls into the composite actions) must land in the
+        # consumer repo, NOT the central reusables repo. Composite actions
+        # themselves are routed to the central repo by the rewritten
+        # target_url: entries inside config.yml -- that routing is independent
+        # of this --target-url flag.
+        $consumerRepo = $null
+        if ($pipelineRepoMap.ContainsKey("$pipelineIdItem")) {
+            $consumerRepo = $pipelineRepoMap["$pipelineIdItem"]
+        } elseif ($defaultTargetRepo) {
+            $consumerRepo = $defaultTargetRepo
+        }
+        if (-not $consumerRepo) {
+            Write-Host "  ERROR: No consumer repo for pipeline $pipelineIdItem. Set PIPELINE_REPO_MAP or GH_REPO." -ForegroundColor Red
+            $anyFailure = $true
+            continue
+        }
+        $consumerTargetUrl = "https://github.com/$ghOrg/$consumerRepo"
+        Write-Host "  Consumer target-url: $consumerTargetUrl" -ForegroundColor Gray
+        Write-Host "  Reusables target_url(s) inside config.yml: $reusableTargetUrl" -ForegroundColor DarkGray
+
         $reusableArgs = @(
             "actions-importer", "migrate", "azure-devops", "pipeline",
             "--output-dir",                (Join-Path $OutputDir "reusables/$pipelineIdItem"),
@@ -493,7 +514,7 @@ if ($Mode -eq "migrate-reusables") {
             "--azure-devops-project",      $AdoProject,
             "--pipeline-id",               $pipelineIdItem,
             "--config-file-path",          $ConfigFilePath,
-            "--target-url",                $reusableTargetUrl
+            "--target-url",                $consumerTargetUrl
         )
         if ($CustomTransformersDir -and (Test-Path $CustomTransformersDir)) {
             $reusableArgs += "--custom-transformers"
