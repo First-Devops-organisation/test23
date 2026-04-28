@@ -447,20 +447,7 @@ foreach ($item in $sortedItems) {
                     Write-Log -Message "  ADO ID: $adoId" -Level "DEBUG"
                 }
 
-                # --- Field: Size (map from Story Points if available) ---
-                if ($sizeField -and $sp) {
-                    $sizeOpt = $null
-                    if ([double]$sp -le 1)      { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "XS|Extra Small" } | Select-Object -First 1 }
-                    elseif ([double]$sp -le 3)   { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "^S$|Small" } | Select-Object -First 1 }
-                    elseif ([double]$sp -le 5)   { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "^M$|Medium" } | Select-Object -First 1 }
-                    elseif ([double]$sp -le 8)   { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "^L$|Large" } | Select-Object -First 1 }
-                    else                         { $sizeOpt = $sizeField.options | Where-Object { $_.name -match "XL|Extra Large" } | Select-Object -First 1 }
-                    if ($sizeOpt) {
-                        Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
-                            -FieldId $sizeField.id -OptionId $sizeOpt.id -Pat $ghPat
-                        Write-Log -Message "  Size: '$($sizeOpt.name)' (from SP=$sp)" -Level "DEBUG"
-                    }
-                }
+
 
             } catch {
                 Write-Log -Message "  Project/Field update failed: $_" -Level "WARN"
@@ -477,6 +464,11 @@ foreach ($item in $sortedItems) {
         $comments = Get-AdoWorkItemComments -Org $adoOrg -Project $adoProject -WorkItemId $adoId -Pat $adoPat
         if ($comments -and $comments.Count -gt 0) {
             foreach ($comment in $comments) {
+                # Debug: log raw HTML to find image format
+                $rawPreview = if ($comment.text.Length -gt 200) { $comment.text.Substring(0, 200) + "..." } else { $comment.text }
+                if ($comment.text -match '<img|\.jpg|\.png|\.jpeg|\.gif|attachment') {
+                    Write-Log -Message "  Comment has image/attachment. Raw HTML: $rawPreview" -Level "INFO"
+                }
                 $commentBody = "**$($comment.createdBy.displayName)** _($($comment.createdDate))_:`n`n"
                 $commentBody += Convert-AdoHtmlToMarkdown -Html $comment.text `
                     -AdoOrg $adoOrg -Pat $adoPat -TempDir $tempDir -GhOrg $ghOrg -GhRepo $ghRepo -GhPat $ghPat

@@ -52,7 +52,7 @@ stages:
 #  Stage 1: DISCOVER
 # ============================================================
 - stage: Discover
-  displayName: '🔍 Phase 1 — Discover Work Items'
+  displayName: 'Phase 1 — Discover Work Items'
   condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'discover'))
   jobs:
   - job: DiscoverWorkItems
@@ -117,7 +117,7 @@ stages:
 #  Stage 2: PREPARE
 # ============================================================
 - stage: Prepare
-  displayName: '🔧 Phase 2 — Prepare & Validate'
+  displayName: 'Phase 2 — Prepare & Validate'
   dependsOn: Discover
   condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'prep'))
   jobs:
@@ -127,6 +127,16 @@ stages:
 
     - checkout: self
       persistCredentials: true
+
+    # Download discovery reports from Stage 1
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Discovery Reports'
+      inputs:
+        buildType: 'current'
+        artifactName: 'discovery-reports'
+        targetPath: '$(workingDir)\reports'
+      condition: and(succeeded(), in('${{ parameters.phase }}', 'all'))
+      continueOnError: true
 
     - task: PowerShell@2
       displayName: 'Install Azure DevOps CLI Extension'
@@ -175,7 +185,7 @@ stages:
 #  Stage 3: MIGRATE (with manual approval gate)
 # ============================================================
 - stage: Migrate
-  displayName: '🚀 Phase 3 — Migrate Work Items'
+  displayName: 'Phase 3 — Migrate Work Items'
   dependsOn: Prepare
   condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'migrate'))
   jobs:
@@ -301,7 +311,7 @@ stages:
 #  Stage 4: VALIDATE
 # ============================================================
 - stage: Validate
-  displayName: '✅ Phase 4 — Validate & Report'
+  displayName: 'Phase 4 — Validate & Report'
   dependsOn: Migrate
   condition: and(succeeded(), in('${{ parameters.phase }}', 'all', 'validate'))
   jobs:

@@ -114,32 +114,41 @@ function Save-AdoInlineImage {
     param([string]$ImageUrl, [string]$TempDir, [string]$Pat)
     if (-not (Test-Path $TempDir)) { New-Item -ItemType Directory -Path $TempDir -Force | Out-Null }
 
-    # Determine file extension from URL
+    # Determine file extension from URL or fileName param
     $ext = ".png"
-    if ($ImageUrl -match '\.(png|jpg|jpeg|gif|bmp|svg|webp)(\?|$)') { $ext = ".$($Matches[1])" }
+    if ($ImageUrl -match 'fileName=([^&]+)') {
+        $fn = [System.Uri]::UnescapeDataString($Matches[1])
+        if ($fn -match '\.(png|jpg|jpeg|gif|bmp|svg|webp)$') { $ext = ".$($Matches[1])" }
+    } elseif ($ImageUrl -match '\.(png|jpg|jpeg|gif|bmp|svg|webp)(\?|$)') {
+        $ext = ".$($Matches[1])"
+    }
 
     $fileName = "img_$(Get-Date -Format 'yyyyMMddHHmmssfff')_$([guid]::NewGuid().ToString('N').Substring(0,8))$ext"
     $outputPath = Join-Path $TempDir $fileName
-    $headers = Get-AdoAuthHeaders -Pat $Pat
 
-    Write-Log -Message "    Downloading image from ADO: $ImageUrl" -Level "DEBUG"
+    # Use auth-only headers (NO Content-Type) for binary downloads
+    $base64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+    $downloadHeaders = @{ Authorization = "Basic $base64" }
+
+    Write-Log -Message "    Downloading image: $ImageUrl" -Level "DEBUG"
 
     try {
-        # Use Invoke-WebRequest with explicit options for compatibility
-        $response = Invoke-WebRequest -Uri $ImageUrl -Headers $headers -OutFile $outputPath -PassThru -UseBasicParsing
-        
+        Invoke-WebRequest -Uri $ImageUrl -Headers $downloadHeaders -OutFile $outputPath -UseBasicParsing -ErrorAction Stop
+
         # Verify file was downloaded and has content
-        if ((Test-Path $outputPath) -and (Get-Item $outputPath).Length -gt 0) {
+        if ((Test-Path $outputPath) -and (Get-Item $outputPath).Length -gt 100) {
             $sizeKB = [math]::Round((Get-Item $outputPath).Length / 1024, 1)
-            Write-Log -Message "    Downloaded image: $fileName ($sizeKB KB)" -Level "DEBUG"
+            Write-Log -Message "    Downloaded: $fileName ($sizeKB KB)" -Level "DEBUG"
             return $outputPath
         } else {
-            Write-Log -Message "    Image download produced empty file" -Level "WARN"
+            $actualSize = if (Test-Path $outputPath) { (Get-Item $outputPath).Length } else { 0 }
+            Write-Log -Message "    Image download too small ($actualSize bytes) - likely HTML error page" -Level "WARN"
+            if (Test-Path $outputPath) { Remove-Item $outputPath -Force -ErrorAction SilentlyContinue }
             return $null
         }
     } catch {
-        Write-Log -Message "    Failed to download inline image: $_" -Level "WARN"
-        Write-Log -Message "    URL was: $ImageUrl" -Level "DEBUG"
+        Write-Log -Message "    Failed to download image: $_" -Level "WARN"
+        Write-Log -Message "    URL: $ImageUrl" -Level "DEBUG"
         return $null
     }
 }
