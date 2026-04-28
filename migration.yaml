@@ -308,6 +308,34 @@ stages:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
+          # Pull the rewritten config.yml (4-field entries with `path:`) produced by
+          # MigrateReusables. Without this, `Test-Path output/pipelines/config.yml`
+          # below is false, the script drops --config-file-path, and GEI inlines
+          # every template as a local `./.github/actions/<name>` ref in the
+          # consumer repo. If MigrateReusables was skipped (no REUSABLES_REPO),
+          # this download is a no-op via `continueOnError`.
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download rewritten config.yml from MigrateReusables"
+            continueOnError: true
+            inputs:
+              artifact: "pipeline-reusables"
+              path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+
+          - task: PowerShell@2
+            displayName: "Verify config.yml is present"
+            inputs:
+              targetType: 'inline'
+              pwsh: true
+              script: |
+                $cfg = "$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/config.yml"
+                if (Test-Path $cfg) {
+                  Write-Host "config.yml found at $cfg" -ForegroundColor Green
+                  Write-Host "First 20 lines:" -ForegroundColor Gray
+                  Get-Content $cfg -TotalCount 20 | ForEach-Object { Write-Host "  $_" }
+                } else {
+                  Write-Host "WARNING: $cfg NOT found. GEI will inline templates as local refs." -ForegroundColor Yellow
+                }
+
           - task: PowerShell@2
             displayName: "Migrate pipelines: $(PIPELINE_IDS)"
             inputs:
