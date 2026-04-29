@@ -54,9 +54,10 @@ parameters:
     default: true
 
 variables:
-  - group: pipeline-migration       # ADO_ORG, ADO_PROJECT, ADO_PAT, GH_PAT
-  - group: repo-migration-discove   # ADO_ORG, ADO_PROJECT, ADO_PAT
-  - group: repo-migration-migrate   # GH_ORG, GH_PAT
+  #- group: pipeline-migration       # ADO_ORG, ADO_PROJECT, ADO_PAT, GH_PAT
+  #- group: repo-migration-discove   # ADO_ORG, ADO_PROJECT, ADO_PAT
+  #- group: repo-migration-migrate   # GH_ORG, GH_PAT
+  - group: ankit-adotogit
 
 stages:
   # ===========================================================================
