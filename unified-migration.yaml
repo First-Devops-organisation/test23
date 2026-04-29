@@ -545,6 +545,18 @@ stages:
       - job: MigrateBatchRepos
         displayName: "Migrate Batch"
         timeoutInMinutes: 480
+        strategy:
+          maxParallel: 3
+          matrix:
+            Batch0:
+              BATCH_INDEX: 0
+              BATCH_TOTAL: 3
+            Batch1:
+              BATCH_INDEX: 1
+              BATCH_TOTAL: 3
+            Batch2:
+              BATCH_INDEX: 2
+              BATCH_TOTAL: 3
         steps:
           - checkout: self
           - task: PowerShell@2
@@ -596,6 +608,8 @@ stages:
                     ConfigPath  = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
                     BatchName   = '${{ parameters.BatchName }}'
                     OutputDir   = '$(Build.SourcesDirectory)\repo-migration\output'
+                    BatchIndex  = $(BATCH_INDEX)
+                    BatchTotal  = $(BATCH_TOTAL)
                 }
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
                 if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
@@ -613,7 +627,15 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
-              artifact: "BatchMigrationLogs"
+              artifact: "BatchMigrationLogs-$(BATCH_INDEX)"
+              publishLocation: pipeline
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Batch Migration Reports"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              artifact: "BatchMigrationReports-$(BATCH_INDEX)"
               publishLocation: pipeline
 
           - task: PublishHtmlReport@1
@@ -646,6 +668,49 @@ stages:
         displayName: "4.1 Validate Migrated Repos"
         steps:
           - checkout: self
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Reports"
+            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
+            inputs:
+              artifact: "BatchMigrationReports-0"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports-0'
+            continueOnError: true
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Reports"
+            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
+            inputs:
+              artifact: "BatchMigrationReports-1"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports-1'
+            continueOnError: true
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Reports"
+            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
+            inputs:
+              artifact: "BatchMigrationReports-2"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports-2'
+            continueOnError: true
+
+          - task: PowerShell@2
+            displayName: "Consolidate Batch Summaries"
+            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
+            inputs:
+              targetType: inline
+              script: |
+                $merged = @()
+                0..2 | ForEach-Object {
+                    $p = "$(Build.SourcesDirectory)\repo-migration\output\reports-$_\batch-migration-summary.json"
+                    if (Test-Path $p) {
+                        $merged += Get-Content $p -Raw | ConvertFrom-Json
+                    }
+                }
+                $target = "$(Build.SourcesDirectory)\repo-migration\output\reports\batch-migration-summary.json"
+                New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
+                $merged | ConvertTo-Json -Depth 5 | Out-File $target -Encoding utf8
+                Write-Host "Consolidated $($merged.Count) repo results into $target"
+              pwsh: true
+
           - task: PowerShell@2
             displayName: "Replace config tokens"
             inputs:
@@ -669,9 +734,19 @@ stages:
             inputs:
               targetType: inline
               script: |
-                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
-                    -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -GHOrg '$(GH_ORG)' `
-                    -OutputDir '$(Build.SourcesDirectory)\repo-migration\output'
+                $params = @{
+                    ADOOrg      = '$(ADO_ORG)'
+                    ADOProject  = '$(ADO_PROJECT)'
+                    GHOrg       = '$(GH_ORG)'
+                    OutputDir   = '$(Build.SourcesDirectory)\repo-migration\output'
+                }
+                if ('${{ parameters.MigrationMode }}' -eq 'Single') {
+                    $params['GHRepo']  = '${{ parameters.GHRepo }}'.Trim()
+                    $params['ADORepo'] = '${{ parameters.ADORepo }}'.Trim()
+                    if ([string]::IsNullOrWhiteSpace($params['GHRepo'])) { $params['GHRepo'] = $params['ADORepo'] }
+                }
+
+                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' @params
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
