@@ -125,11 +125,11 @@ stages:
               publishLocation: pipeline
 
           - task: PublishHtmlReport@1
-            displayName: "Audit Dashboard on Pipeline Tab"
+            displayName: "1. Pipeline Audit Summary"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipeline-audit\dashboard'
-              tabName: "Pipeline Audit Dashboard"
+              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipeline-audit\dashboard\index.html'
+              tabName: "1. Pipeline Audit Summary"
 
           - task: PowerShell@2
             displayName: "Parse config for pipeline conditions"
@@ -231,12 +231,12 @@ stages:
               publishLocation: pipeline
 
           - task: PublishHtmlReport@1
-            displayName: "Show Pipeline Dry-Run Report"
+            displayName: "2. Pipeline Dry-Run Preview"
             condition: always()
             continueOnError: true
             inputs:
-              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
-              tabName: "Pipeline Dry-Run"
+              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipelines\index.html'
+              tabName: "2. Pipeline Dry-Run Preview"
 
       - job: Migrate
         displayName: "2.2 Migrate to GitHub"
@@ -285,11 +285,11 @@ stages:
               publishLocation: pipeline
               
           - task: PublishHtmlReport@1
-            displayName: "Migration Dashboard on Pipeline Tab"
+            displayName: "3. Pipeline Migration Result"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipelines\dashboard'
-              tabName: "Migration Dashboard"
+              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipelines\dashboard\index.html'
+              tabName: "3. Pipeline Migration Result"
   # ===========================================================================
   # REPO MIGRATION: STAGES SYNCED WITH azure-pipeline.yaml
   # ===========================================================================
