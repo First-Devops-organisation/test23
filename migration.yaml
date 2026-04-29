@@ -26,7 +26,7 @@ stages:
             displayName: 'Install required tooling'
             inputs:
               targetType: 'filePath'
-              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              filePath: 'pipeline-migration/01-prep/install-tools.ps1'
               pwsh: true
             env:
               GH_PAT: $(GH_PAT)
@@ -35,7 +35,7 @@ stages:
           - task: PowerShell@2
             displayName: "Run audit-pipelines.ps1"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/audit-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/00-discovery/audit-pipelines.ps1'
               arguments: >-
                 -AdoOrg "$(ADO_ORG)"
                 -AdoProject "$(ADO_PROJECT)"
@@ -43,7 +43,7 @@ stages:
                 -GitHubPat "$(GH_PAT)"
                 -OutputDir "output/pipeline-audit"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
@@ -52,13 +52,13 @@ stages:
           - task: PowerShell@2
             displayName: "List all ADO Pipeline IDs"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -Mode "list"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
              
               ADO_PAT: $(ADO_PAT)
@@ -69,7 +69,7 @@ stages:
             displayName: "Publish Audit Artifact"
             condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit'
+              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipeline-audit'
               artifact: "pipeline-audit"
               publishLocation: pipeline
 
@@ -77,7 +77,7 @@ stages:
             displayName: "Audit Dashboard on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
+              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipeline-audit/dashboard'
               tabName: "Pipeline Audit Dashboard"
 
           - task: PowerShell@2
@@ -86,7 +86,7 @@ stages:
             inputs:
               targetType: 'inline'
               script: |
-                $configPath = "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                $configPath = "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 $ids = ""
                 $mode = ""
                 $type = ""
@@ -144,7 +144,7 @@ stages:
             displayName: 'Install required tooling'
             inputs:
               targetType: 'filePath'
-              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              filePath: 'pipeline-migration/01-prep/install-tools.ps1'
               pwsh: true
             env:
               GH_PAT: $(GH_PAT)
@@ -153,15 +153,15 @@ stages:
           - task: PowerShell@2
             displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
@@ -175,7 +175,7 @@ stages:
             displayName: "Publish Dry-Run Output"
             condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
               artifact: "pipeline-dry-run"
               publishLocation: pipeline
 
@@ -191,7 +191,7 @@ stages:
             displayName: 'Install required tooling'
             inputs:
               targetType: 'filePath'
-              filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+              filePath: 'pipeline-migration/01-prep/install-tools.ps1'
               pwsh: true
             env:
               GH_PAT: $(GH_PAT)
@@ -200,15 +200,15 @@ stages:
           - task: PowerShell@2
             displayName: "Migrate pipelines: $(PIPELINE_IDS)"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
-                -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+                -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
@@ -221,7 +221,7 @@ stages:
             displayName: "Publish Migration Output"
             condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
               artifact: "pipeline-migrate"
               publishLocation: pipeline
 
@@ -229,5 +229,5 @@ stages:
             displayName: "Migration Dashboard on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
+              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines/dashboard'
               tabName: "Migration Dashboard"
