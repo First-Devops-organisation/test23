@@ -11,7 +11,7 @@
     "pat": "$(GH_PAT)"
   },
   "migration": {
-    "cloneTempDir": "./tmp/clones",
+    "cloneTempDir": "$(CLONE_TEMP_DIR)",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
@@ -36,7 +36,7 @@
     "branches": []
   },
   "output": {
-    "reportDir": "./output/reports",
-    "logDir": "./output/logs"
+    "reportDir": "$(REPORT_DIR)",
+    "logDir": "$(LOG_DIR)"
   }
 }
