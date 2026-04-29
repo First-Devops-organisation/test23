@@ -29,14 +29,18 @@ if (-not (Test-Path $ConfigPath)) {
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 
 # Resolve config values — if they look like ADO pipeline variable references, read from env
-$ADO_Org  = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
-$adoProj = if ($config.source.project      -match '^\$\(') { $env:ADO_PROJECT } else { $config.source.project }
+$ADO_Org  = if ($config.source.organization -match '^\$\(') { $env:ADO_Org } else { $config.source.organization }
+$adoProj = if ($config.source.project      -match '^\$\(') { $env:ADO_Project } else { $config.source.project }
 $adoPat  = if ($config.source.pat           -match '^\$\(') { $env:ADO_PAT } else { $config.source.pat }
 
 $ADO_Org = ($ADO_Org ?? '').TrimEnd('/')
+if ($ADO_Org -and $ADO_Org -notmatch '^https?://') {
+    Write-Host "Normalizing ADO_Org to full URL..." -ForegroundColor Gray
+    $ADO_Org = "https://dev.azure.com/$ADO_Org"
+}
 
 if ([string]::IsNullOrWhiteSpace($ADO_Org)) {
-    Write-Error "Set the ADO_ORG environment variable or update config.source.organization"
+    Write-Error "Set the ADO_Org environment variable or update config.source.organization"
 }
 if ([string]::IsNullOrWhiteSpace($adoProj)) {
     Write-Error "Set the ADO_PROJECT environment variable or update config.source.project"
