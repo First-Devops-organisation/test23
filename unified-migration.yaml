@@ -619,9 +619,8 @@ stages:
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
               pwsh: true
             env:
-              GH_TOKEN: $(GH_PAT)
               GH_PAT: $(GH_PAT)
-             
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Generate Mannequin CSV"
@@ -634,6 +633,7 @@ stages:
                 gh ado2gh generate-mannequin-csv --github-org $ghOrg --output $csv
               pwsh: true
             env:
+              GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -689,6 +689,5 @@ stages:
                 }
               pwsh: true
             env:
-              ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
