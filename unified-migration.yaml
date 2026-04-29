@@ -701,25 +701,6 @@ stages:
       and(
         in('${{ parameters.migrationType }}', 'repo', 'both'),
         eq('${{ parameters.RunValidation }}', true),
-        or(
-          eq(dependencies.MigrateSingle.result, 'Succeeded'),
-          eq(dependencies.MigrateSingle.result, 'SucceededWithIssues'),
-          eq(dependencies.MigrateBatch.result, 'Succeeded'),
-          eq(dependencies.MigrateBatch.result, 'SucceededWithIssues')
-        )
-      )
-    pool:
-      vmImage: windows-latest
-    jobs:
-  - stage: Validate
-    displayName: "4. Validate Migration"
-    dependsOn:
-      - MigrateSingle
-      - MigrateBatch
-    condition: |
-      and(
-        in('${{ parameters.migrationType }}', 'repo', 'both'),
-        eq('${{ parameters.RunValidation }}', true),
         not(failed()),
         not(canceled())
       )
