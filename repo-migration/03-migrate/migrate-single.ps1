@@ -10,16 +10,16 @@
       4. Branch-wise post-migration audit (branches, tags, commits, PRs, files)
       5. Download GEI migration log (exponential backoff)
       6. Generate HTML dashboard + Markdown summary
-.PARAMETER ADOOrg
+.PARAMETER ADO_Org
     Azure DevOps organisation name (e.g. "mycompany")
-.PARAMETER ADOProject
+.PARAMETER ADO_Project
     Azure DevOps project name
-.PARAMETER ADORepo
+.PARAMETER ADO_Repo
     Source repository name in ADO
-.PARAMETER GHOrg
+.PARAMETER GitHub_Org
     Target GitHub organisation name
-.PARAMETER GHRepo
-    Target GitHub repository name (defaults to ADORepo if omitted)
+.PARAMETER GitHub_Repo
+    Target GitHub repository name (defaults to ADO_Repo if omitted)
 .PARAMETER OutputDir
     Directory for all reports, logs and dashboards  (default: ./output)
 .PARAMETER TargetRepoVisibility
@@ -31,11 +31,11 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]  [string]$ADOOrg,
-    [Parameter(Mandatory = $true)]  [string]$ADOProject,
-    [Parameter(Mandatory = $true)]  [string]$ADORepo,
-    [Parameter(Mandatory = $true)]  [string]$GHOrg,
-    [Parameter(Mandatory = $false)] [string]$GHRepo     = $ADORepo,
+    [Parameter(Mandatory = $true)]  [string]$ADO_Org,
+    [Parameter(Mandatory = $true)]  [string]$ADO_Project,
+    [Parameter(Mandatory = $true)]  [string]$ADO_Repo,
+    [Parameter(Mandatory = $true)]  [string]$GitHub_Org,
+    [Parameter(Mandatory = $false)] [string]$GitHub_Repo     = $ADO_Repo,
     [Parameter(Mandatory = $false)] [string]$OutputDir  = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)]
     [ValidateSet('private', 'internal', 'public')]
@@ -48,28 +48,28 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # ── Trim whitespace from all string parameters ─────────────────────────────────────────────
-$ADOOrg    = $ADOOrg.Trim()
-$ADOProject = $ADOProject.Trim()
-$ADORepo   = $ADORepo.Trim()
-$GHOrg     = $GHOrg.Trim()
-$GHRepo    = $GHRepo.Trim()
+$ADO_Org    = $ADO_Org.Trim()
+$ADO_Project = $ADO_Project.Trim()
+$ADO_Repo   = $ADO_Repo.Trim()
+$GitHub_Org     = $GitHub_Org.Trim()
+$GitHub_Repo    = $GitHub_Repo.Trim()
 
-# ── Fallback: if GHRepo is empty after trimming, default to ADORepo ──────────
-if ([string]::IsNullOrWhiteSpace($GHRepo)) {
-    Write-Host "  GHRepo was empty — defaulting to ADORepo: '$ADORepo'"
-    $GHRepo = $ADORepo
+# ── Fallback: if GitHub_Repo is empty after trimming, default to ADO_Repo ──────────
+if ([string]::IsNullOrWhiteSpace($GitHub_Repo)) {
+    Write-Host "  GitHub_Repo was empty — defaulting to ADO_Repo: '$ADO_Repo'"
+    $GitHub_Repo = $ADO_Repo
 }
 
-# ── Normalize ADOOrg — strip full URL if user set it as https://dev.azure.com/<org> ──
-if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
-    Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
-    $ADOOrg = $Matches[1]
+# ── Normalize ADO_Org — strip full URL if user set it as https://dev.azure.com/<org> ──
+if ($ADO_Org -match '^https?://dev\.azure\.com/([^/]+)/?$') {
+    Write-Host "  Normalising ADO_Org: stripping URL prefix → '$($Matches[1])'"
+    $ADO_Org = $Matches[1]
 }
 
-# ── Normalize GHOrg — strip full URL if user set it as https://github.com/<org> ──
-if ($GHOrg -match '^https?://github\.com/([^/]+)/?$') {
-    Write-Host "  Normalising GHOrg: stripping URL prefix → '$($Matches[1])'"
-    $GHOrg = $Matches[1]
+# ── Normalize GitHub_Org — strip full URL if user set it as https://github.com/<org> ──
+if ($GitHub_Org -match '^https?://github\.com/([^/]+)/?$') {
+    Write-Host "  Normalising GitHub_Org: stripping URL prefix → '$($Matches[1])'"
+    $GitHub_Org = $Matches[1]
 }
 
 # ── Validate PATs ────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environmen
 # ── ADO REST API auth header (for branch comparison in Step 4) ────────────────
 $adoBase64   = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $adoHeaders  = @{ Authorization = "Basic $adoBase64" }
-$adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$ADORepo"
+$adoRepoUrl  = "https://dev.azure.com/$ADO_Org/$ADO_Project/_apis/git/repositories/$ADO_Repo"
 
 # ── Set GH_TOKEN once for all gh CLI calls ────────────────────────────────────
 $env:GH_TOKEN = $ghPat
@@ -102,21 +102,21 @@ $missingInGH = @()
 # ── Output directories ───────────────────────────────────────────────────────
 $reportDir  = "$OutputDir\reports"
 $logDir     = "$OutputDir\logs"
-$auditDir   = "$OutputDir\audit\$GHRepo"
-$dashDir    = "$OutputDir\dashboard\$GHRepo"
+$auditDir   = "$OutputDir\audit\$GitHub_Repo"
+$dashDir    = "$OutputDir\dashboard\$GitHub_Repo"
 $folderDir  = "$auditDir\folder-listing"
 
 foreach ($d in @($reportDir, $logDir, $auditDir, $dashDir, $folderDir)) {
     New-Item -ItemType Directory -Path $d -Force | Out-Null
 }
 
-$stateFile    = "$logDir\migration-state-$GHRepo.txt"
-$precheckFile = "$logDir\repo-precheck-$GHRepo.txt"
+$stateFile    = "$logDir\migration-state-$GitHub_Repo.txt"
+$precheckFile = "$logDir\repo-precheck-$GitHub_Repo.txt"
 
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  SINGLE REPO MIGRATION"
-Write-Host "  ADO:    $ADOOrg / $ADOProject / $ADORepo"
-Write-Host "  GitHub: $GHOrg / $GHRepo"
+Write-Host "  ADO:    $ADO_Org / $ADO_Project / $ADO_Repo"
+Write-Host "  GitHub: $GitHub_Org / $GitHub_Repo"
 Write-Host "  DryRun: $DryRun"
 Write-Host "============================================"
 
@@ -147,12 +147,12 @@ gh extension list
 Write-Host "`n[Step 2] Pre-check repo existence in GitHub..." -ForegroundColor Cyan
 $repoStatus = "NOT_EXISTS"
 $ErrorActionPreference = 'SilentlyContinue'
-[void](gh repo view "$GHOrg/$GHRepo" --json name 2>&1)
+[void](gh repo view "$GitHub_Org/$GitHub_Repo" --json name 2>&1)
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "  Repo already exists: $GHOrg/$GHRepo" -ForegroundColor Yellow
+    Write-Host "  Repo already exists: $GitHub_Org/$GitHub_Repo" -ForegroundColor Yellow
     $repoStatus = "ALREADY_EXISTS"
 } else {
-    Write-Host "  Repo does not exist yet (will be migrated): $GHRepo"
+    Write-Host "  Repo does not exist yet (will be migrated): $GitHub_Repo"
     $repoStatus = "NOT_EXISTS"
 }
 $ErrorActionPreference = 'Stop'
@@ -170,7 +170,7 @@ if ($repoStatus -eq "ALREADY_EXISTS") {
 }
 elseif ($DryRun) {
     Write-Host "`n[Step 3] DRY RUN — GEI command that would run:" -ForegroundColor DarkYellow
-    Write-Host "  gh ado2gh migrate-repo --ado-org `"$ADOOrg`" --ado-team-project `"$ADOProject`" --ado-repo `"$ADORepo`" --github-org `"$GHOrg`" --github-repo `"$GHRepo`" --target-repo-visibility $TargetRepoVisibility"
+    Write-Host "  gh ado2gh migrate-repo --ado-org `"$ADO_Org`" --ado-team-project `"$ADO_Project`" --ado-repo `"$ADO_Repo`" --github-org `"$GitHub_Org`" --github-repo `"$GitHub_Repo`" --target-repo-visibility $TargetRepoVisibility"
     $migState = "DRY_RUN"
     $migState | Out-File $stateFile -Encoding utf8
 }
@@ -188,11 +188,11 @@ else {
     # GEI reads ADO_PAT and GH_PAT from environment variables automatically.
     # Passing PATs as CLI args causes quoting issues when PATs contain +, =, / chars.
     $migOutput = gh ado2gh migrate-repo `
-        --ado-org          $ADOOrg `
-        --ado-team-project $ADOProject `
-        --ado-repo         $ADORepo `
-        --github-org       $GHOrg `
-        --github-repo      $GHRepo `
+        --ado-org          $ADO_Org `
+        --ado-team-project $ADO_Project `
+        --ado-repo         $ADO_Repo `
+        --github-org       $GitHub_Org `
+        --github-repo      $GitHub_Repo `
         --target-repo-visibility $TargetRepoVisibility 2>&1
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
@@ -218,7 +218,7 @@ else {
             Start-Sleep -Seconds 60
             Write-Host "  Poll $w/30..."
             $ErrorActionPreference = 'SilentlyContinue'
-            $check = gh repo view "$GHOrg/$GHRepo" --json name 2>&1
+            $check = gh repo view "$GitHub_Org/$GitHub_Repo" --json name 2>&1
             $ErrorActionPreference = 'Stop'
             if ($LASTEXITCODE -eq 0) { $found = $true; break }
         }
@@ -239,7 +239,7 @@ else {
         $outputStr = $migOutput -join "`n"
         if ($outputStr -match 'lookup the Organization ID|Failed to lookup') {
             Write-Warning @"
-Migration failed: GitHub could not resolve org '$GHOrg'.
+Migration failed: GitHub could not resolve org '$GitHub_Org'.
   ROOT CAUSE — GH_PAT is missing required scopes.
   Required classic PAT scopes:
     - repo          (Full control of private repositories)
@@ -253,9 +253,9 @@ Migration failed: GitHub could not resolve org '$GHOrg'.
             Write-Warning @"
 Migration failed (exit code $LASTEXITCODE). Common causes:
   1. ADO_PAT scope: needs 'Code (Read)' + 'Identity (Read)' on the ADO organisation.
-  2. ADOOrg name mismatch: check the value in the repo-migration-discover variable group.
+  2. ADO_Org name mismatch: check the value in the repo-migration-discover variable group.
      (Value must be bare org name e.g. 'YashTech-DevOps', not a full URL)
-  3. GHOrg name mismatch or GH_PAT lacks 'repo' + 'read:org' scopes.
+  3. GitHub_Org name mismatch or GH_PAT lacks 'repo' + 'read:org' scopes.
 GEI output above should contain a more specific error message.
 "@
         }
@@ -289,7 +289,7 @@ else {
 
     # ── 4a. Repo metadata (default branch + size) — single API call ────────
     Write-Host "  Fetching repo metadata..."
-    $repoInfoRaw = gh api "repos/$GHOrg/$GHRepo" 2>$null
+    $repoInfoRaw = gh api "repos/$GitHub_Org/$GitHub_Repo" 2>$null
     $repoInfo = $null
     if ($repoInfoRaw) { $repoInfo = $repoInfoRaw | ConvertFrom-Json }
 
@@ -303,7 +303,7 @@ else {
 
         # ── 4b. Branches via REST API (paginated) ─────────────────────────
         Write-Host "  Fetching branches..."
-        $branchObjs  = Get-GitHubPages "repos/$GHOrg/$GHRepo/branches"
+        $branchObjs  = Get-GitHubPages "repos/$GitHub_Org/$GitHub_Repo/branches"
         $branches    = @($branchObjs | ForEach-Object { $_.name })
         $branchCount = $branches.Count
         $branches    | Out-File "$auditDir\gh-branches.txt" -Encoding utf8
@@ -341,7 +341,7 @@ else {
 
         # ── 4c. Tags via REST API (paginated) ─────────────────────────────
         Write-Host "  Fetching tags..."
-        $tagObjs  = Get-GitHubPages "repos/$GHOrg/$GHRepo/tags"
+        $tagObjs  = Get-GitHubPages "repos/$GitHub_Org/$GitHub_Repo/tags"
         $tags     = @($tagObjs | ForEach-Object { $_.name })
         $tagCount = $tags.Count
         if ($tags.Count -gt 0) { $tags | Out-File "$auditDir\gh-tags.txt" -Encoding utf8 }
@@ -359,7 +359,7 @@ else {
         foreach ($bObj in $branchObjs) {
             $bName = $bObj.name
             $bSha  = $bObj.commit.sha
-            $cRaw  = gh api "repos/$GHOrg/$GHRepo/commits/$bSha" 2>$null
+            $cRaw  = gh api "repos/$GitHub_Org/$GitHub_Repo/commits/$bSha" 2>$null
             $cDetail = $null
             if ($cRaw) { $cDetail = $cRaw | ConvertFrom-Json }
             if ($cDetail -and $cDetail.PSObject.Properties['commit']) {
@@ -393,7 +393,7 @@ else {
                 $aliases += "  $alias`: ref(qualifiedName: `"$qualName`") { target { ... on Commit { history { totalCount } } } }"
                 $idx++
             }
-            $gqlQuery = "{ repository(owner: `"$GHOrg`", name: `"$GHRepo`") {`n" + ($aliases -join "`n") + "`n} }"
+            $gqlQuery = "{ repository(owner: `"$GitHub_Org`", name: `"$GitHub_Repo`") {`n" + ($aliases -join "`n") + "`n} }"
             $gqlRaw = gh api graphql -f query="$gqlQuery" 2>$null
             $gqlResult = $null
             if ($gqlRaw) { $gqlResult = $gqlRaw | ConvertFrom-Json }
@@ -436,7 +436,7 @@ else {
         $bFolderCount = 0
 
         if ($defaultSha) {
-            $treeRaw = gh api "repos/$GHOrg/$GHRepo/git/trees/${defaultSha}?recursive=1" 2>$null
+            $treeRaw = gh api "repos/$GitHub_Org/$GitHub_Repo/git/trees/${defaultSha}?recursive=1" 2>$null
             $treeData = $null
             if ($treeRaw) { $treeData = $treeRaw | ConvertFrom-Json }
             if ($treeData -and $treeData.PSObject.Properties['tree']) {
@@ -557,7 +557,7 @@ else {
         # PR audit via GitHub API
         $allPRs = @(); $page = 1
         do {
-            $prs = @(gh api "repos/$GHOrg/$GHRepo/pulls?state=all&per_page=100&page=$page" 2>$null | ConvertFrom-Json)
+            $prs = @(gh api "repos/$GitHub_Org/$GitHub_Repo/pulls?state=all&per_page=100&page=$page" 2>$null | ConvertFrom-Json)
             if ($prs.Count -gt 0) { $allPRs += $prs; $page++ } else { break }
         } while ($prs.Count -eq 100)
 
@@ -642,7 +642,7 @@ if ($migState -in @("SKIPPED","DRY_RUN","FAILED")) {
 }
 else {
     Write-Host "`n[Step 5] Downloading GEI migration log..." -ForegroundColor Cyan
-    $migLogFile = "$logDir\migration-log-$GHRepo.log"
+    $migLogFile = "$logDir\migration-log-$GitHub_Repo.log"
     $success = $false
 
     # ── Fast path: direct download via URL captured from GEI output ────────
@@ -664,7 +664,7 @@ else {
             Write-Host "  Attempt $i/4 (waiting ${backoff}s)..."
             Start-Sleep -Seconds $backoff
             $ErrorActionPreference = 'SilentlyContinue'
-            $out = gh ado2gh download-logs --github-org $GHOrg --github-repo $GHRepo --migration-log-file $migLogFile --overwrite 2>&1
+            $out = gh ado2gh download-logs --github-org $GitHub_Org --github-repo $GitHub_Repo --migration-log-file $migLogFile --overwrite 2>&1
             $ErrorActionPreference = 'Stop'
             if ($LASTEXITCODE -eq 0) { $success = $true; break }
             $backoff = [math]::Min($backoff * 2, 60)   # max 60s between retries
@@ -773,7 +773,7 @@ if (Test-Path $branchCsvFile) {
 if ($allBranchHtml -eq "") { $allBranchHtml = "<tr><td colspan='3' style='color:#999;text-align:center;'>No data</td></tr>" }
 
 $nl = [Environment]::NewLine
-$html  = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>Migration Report - $GHRepo</title>" + $nl
+$html  = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>Migration Report - $GitHub_Repo</title>" + $nl
 $html += "<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f4f6f9;color:#333;padding:30px;font-size:16px}"
 $html += ".container{max-width:960px;margin:0 auto}.header{background:linear-gradient(135deg,#0d1117 0%,#161b22 100%);color:#fff;padding:32px 36px;border-radius:14px;margin-bottom:24px}"
 $html += ".header h1{font-size:28px;margin-bottom:12px}.status-banner{display:inline-block;padding:10px 22px;border-radius:8px;font-size:18px;font-weight:600;margin-top:6px;background:$statusBg;color:$statusColor;border:2px solid $statusColor}"
@@ -795,8 +795,8 @@ $html += "<div class='header'><h1>&#x1F680; ADO &#x2192; GitHub Migration Report
 # Migration overview
 $html += "<div class='card'><h2>&#x1F4C2; Migration Overview</h2><table class='overview-table'>" + $nl
 $html += "<tr><td>&#x1F4C5; Migration Date</td><td>$migDate</td></tr>" + $nl
-$html += "<tr><td>&#x1F4E6; Source (ADO)</td><td><code>$ADOOrg / $ADOProject / $ADORepo</code></td></tr>" + $nl
-$html += "<tr><td>&#x1F3AF; Target (GitHub)</td><td><code>$GHOrg / $GHRepo</code></td></tr>" + $nl
+$html += "<tr><td>&#x1F4E6; Source (ADO)</td><td><code>$ADO_Org / $ADO_Project / $ADO_Repo</code></td></tr>" + $nl
+$html += "<tr><td>&#x1F3AF; Target (GitHub)</td><td><code>$GitHub_Org / $GitHub_Repo</code></td></tr>" + $nl
 $html += "<tr><td>&#x1F33F; Default Branch</td><td><code>$defaultBranch</code></td></tr>" + $nl
 $html += "</table></div>" + $nl
 # Pipeline execution status
@@ -833,8 +833,8 @@ $html += "<p style='margin-top:12px;font-size:15px;'>&#x2705; Recommended for au
 # Footer
 $html += "<div class='footer'>Generated $migDate &bull; ADO-to-GitHub Migration Pipeline</div></div></body></html>"
 
-$html | Out-File "$dashDir\migration-report-$GHRepo.html" -Encoding utf8
-Write-Host "  HTML saved: $dashDir\migration-report-$GHRepo.html" -ForegroundColor Green
+$html | Out-File "$dashDir\migration-report-$GitHub_Repo.html" -Encoding utf8
+Write-Host "  HTML saved: $dashDir\migration-report-$GitHub_Repo.html" -ForegroundColor Green
 
 # Markdown summary (with Unicode chars matching yaml.yaml)
 $emojiCheck = [char]::ConvertFromUtf32(0x2705)
@@ -848,17 +848,18 @@ $md  = "# " + [char]::ConvertFromUtf32(0x1F680) + " ADO " + [char]::ConvertFromU
 $md += "> Status: $mdStatus`n`n"
 $md += "| | |`n|:---|:---|`n"
 $md += "| " + [char]::ConvertFromUtf32(0x1F4C5) + " Date | $migDate |`n"
-$md += "| " + [char]::ConvertFromUtf32(0x1F4E6) + " Source | ``$ADOOrg / $ADOProject / $ADORepo`` |`n"
-$md += "| " + [char]::ConvertFromUtf32(0x1F3AF) + " Target | ``$GHOrg / $GHRepo`` |`n"
+$md += "| " + [char]::ConvertFromUtf32(0x1F4E6) + " Source | ``$ADO_Org / $ADO_Project / $ADO_Repo`` |`n"
+$md += "| " + [char]::ConvertFromUtf32(0x1F3AF) + " Target | ``$GitHub_Org / $GitHub_Repo`` |`n"
 $md += "| " + [char]::ConvertFromUtf32(0x1F33F) + " Branches | $branchCount |`n"
 $md += "| " + [char]::ConvertFromUtf32(0x1F4DD) + " Commits | $commitCount |`n"
 $md += "| " + [char]::ConvertFromUtf32(0x1F500) + " PRs | $prOpen Open / $prMerged Merged / $prClosed Closed |`n`n"
 $md += "> " + [char]::ConvertFromUtf32(0x1F4A1) + " Download the **MigrationDashboard** artifact for the full HTML report.`n"
-$md | Out-File "$reportDir\migration-summary-$GHRepo.md" -Encoding utf8
+$md | Out-File "$reportDir\migration-summary-$GitHub_Repo.md" -Encoding utf8
 
 Write-Host "`n============================================" -ForegroundColor Green
-Write-Host "  MIGRATION COMPLETE: $GHRepo"
+Write-Host "  MIGRATION COMPLETE: $GitHub_Repo"
 Write-Host "  Status:   $migResult"
 Write-Host "  Branches: $branchCount | Tags: $tagCount | Commits: $commitCount"
 Write-Host "  PRs:      $prCount (Open:$prOpen Merged:$prMerged Closed:$prClosed)"
 Write-Host "============================================"
+

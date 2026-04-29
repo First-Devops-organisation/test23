@@ -5,21 +5,21 @@
 .DESCRIPTION
     Reads batch repo list from:
       - config/repo-migration-config.json  (batches[].repos)  OR
-      - a CSV file passed via –RepoListCsv  (columns: ADORepo, GHRepo)
+      - a CSV file passed via –RepoListCsv  (columns: ADO_Repo, GitHub_Repo)
     Runs up to –MaxParallel migrations concurrently via PowerShell jobs.
     After all jobs finish, writes a combined batch-summary report.
-.PARAMETER ADOOrg
+.PARAMETER ADO_Org
     Azure DevOps organisation name
-.PARAMETER ADOProject
+.PARAMETER ADO_Project
     Azure DevOps project name
-.PARAMETER GHOrg
+.PARAMETER GitHub_Org
     Target GitHub organisation name
 .PARAMETER ConfigPath
     Path to repo-migration-config.json (used when no –RepoListCsv)
 .PARAMETER BatchName
     Specific batch name from config to run (default: all batches)
 .PARAMETER RepoListCsv
-    Optional CSV with columns ADORepo,GHRepo — overrides config batches
+    Optional CSV with columns ADO_Repo,GitHub_Repo — overrides config batches
 .PARAMETER OutputDir
     Directory for all reports/logs/dashboards (default: ./output)
 .PARAMETER MaxParallel
@@ -31,9 +31,9 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]  [string]$ADOOrg,
-    [Parameter(Mandatory = $true)]  [string]$ADOProject,
-    [Parameter(Mandatory = $true)]  [string]$GHOrg,
+    [Parameter(Mandatory = $true)]  [string]$ADO_Org,
+    [Parameter(Mandatory = $true)]  [string]$ADO_Project,
+    [Parameter(Mandatory = $true)]  [string]$GitHub_Org,
     [Parameter(Mandatory = $false)] [string]$ConfigPath   = "$PSScriptRoot\..\config\repo-migration-config.json",
     [Parameter(Mandatory = $false)] [string]$BatchName,
     [Parameter(Mandatory = $false)] [string]$RepoListCsv,
@@ -64,9 +64,9 @@ if ($RepoListCsv) {
     if (-not (Test-Path $RepoListCsv)) { Write-Error "CSV not found: $RepoListCsv" }
     $csv = Import-Csv $RepoListCsv
     foreach ($row in $csv) {
-        $ado = $row.ADORepo.Trim()
-        $gh  = if ($row.GHRepo) { $row.GHRepo.Trim() } else { $ado }
-        if ($seen.Add($ado)) { $repoList.Add(@{ ADORepo = $ado; GHRepo = $gh }) }
+        $ado = $row.ADO_Repo.Trim()
+        $gh  = if ($row.GitHub_Repo) { $row.GitHub_Repo.Trim() } else { $ado }
+        if ($seen.Add($ado)) { $repoList.Add(@{ ADO_Repo = $ado; GitHub_Repo = $gh }) }
     }
     Write-Host "Loaded $($repoList.Count) repos from CSV: $RepoListCsv"
 }
@@ -84,7 +84,7 @@ else {
     foreach ($batch in $batches) {
         foreach ($repo in $batch.repos) {
             $name = $repo.ToString().Trim()
-            if ($seen.Add($name)) { $repoList.Add(@{ ADORepo = $name; GHRepo = $name }) }
+            if ($seen.Add($name)) { $repoList.Add(@{ ADO_Repo = $name; GitHub_Repo = $name }) }
         }
     }
     Write-Host "Loaded $($repoList.Count) repos from config batch(es)"
@@ -107,8 +107,8 @@ New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Cyan
 Write-Host "  BATCH MIGRATION"
-Write-Host "  ADO:         $ADOOrg / $ADOProject"
-Write-Host "  GitHub:      $GHOrg"
+Write-Host "  ADO:         $ADO_Org / $ADO_Project"
+Write-Host "  GitHub:      $GitHub_Org"
 Write-Host "  Repos:       $($repoList.Count)"
 Write-Host "  MaxParallel: $MaxParallel"
 Write-Host "  DryRun:      $DryRun"
@@ -125,17 +125,17 @@ $repoIndex    = 0
 
 foreach ($entry in $repoList) {
     $repoIndex++
-    $adoRepo = $entry.ADORepo
-    $ghRepo  = $entry.GHRepo
+    $ADO_Repo = $entry.ADO_Repo
+    $GitHub_Repo  = $entry.GitHub_Repo
 
-    Write-Host "`n[$repoIndex/$($repoList.Count)] Migrating: $adoRepo → $ghRepo" -ForegroundColor Yellow
+    Write-Host "`n[$repoIndex/$($repoList.Count)] Migrating: $ADO_Repo → $GitHub_Repo" -ForegroundColor Yellow
 
     $migParams = @{
-        ADOOrg     = $ADOOrg
-        ADOProject = $ADOProject
-        ADORepo    = $adoRepo
-        GHOrg      = $GHOrg
-        GHRepo     = $ghRepo
+        ADO_Org     = $ADO_Org
+        ADO_Project = $ADO_Project
+        ADO_Repo    = $ADO_Repo
+        GitHub_Org      = $GitHub_Org
+        GitHub_Repo     = $GitHub_Repo
         OutputDir  = $OutputDir
         TargetRepoVisibility = $targetVisibility
     }
@@ -144,12 +144,12 @@ foreach ($entry in $repoList) {
 
     try {
         & $singleScript @migParams
-        Write-Host "  [$adoRepo] Completed successfully." -ForegroundColor Green
-        $successRepos += $adoRepo
+        Write-Host "  [$ADO_Repo] Completed successfully." -ForegroundColor Green
+        $successRepos += $ADO_Repo
     }
     catch {
-        Write-Host "  [$adoRepo] FAILED: $($_.Exception.Message)" -ForegroundColor Red
-        $failedRepos += $adoRepo
+        Write-Host "  [$ADO_Repo] FAILED: $($_.Exception.Message)" -ForegroundColor Red
+        $failedRepos += $ADO_Repo
     }
 }
 
@@ -160,10 +160,10 @@ Write-Host "`nGenerating batch summary report..." -ForegroundColor Cyan
 
 $batchResults = @()
 foreach ($entry in $repoList) {
-    $ghRepo    = $entry['GHRepo']
-    $adoRepo   = $entry['ADORepo']
-    $stateFile = "$OutputDir\logs\migration-state-$ghRepo.txt"
-    $auditDir  = "$OutputDir\audit\$ghRepo"
+    $GitHub_Repo    = $entry['GitHub_Repo']
+    $ADO_Repo   = $entry['ADO_Repo']
+    $stateFile = "$OutputDir\logs\migration-state-$GitHub_Repo.txt"
+    $auditDir  = "$OutputDir\audit\$GitHub_Repo"
 
     $state = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { "UNKNOWN" }
 
@@ -174,14 +174,14 @@ foreach ($entry in $repoList) {
     }
 
     $batchResults += [PSCustomObject]@{
-        ADORepo      = $adoRepo
-        GHRepo       = $ghRepo
+        ADO_Repo      = $ADO_Repo
+        GitHub_Repo       = $GitHub_Repo
         State        = $state
         Branches     = Get-Val2 $auditDir "gh-branch-count.txt"
         Tags         = Get-Val2 $auditDir "gh-tag-count.txt"
         Commits      = Get-Val2 $auditDir "gh-commit-count.txt"
         PRs          = Get-Val2 $auditDir "gh-pr-count.txt"
-        DashboardPath = "$OutputDir\dashboard\$ghRepo\migration-report-$ghRepo.html"
+        DashboardPath = "$OutputDir\dashboard\$GitHub_Repo\migration-report-$GitHub_Repo.html"
     }
 }
 
@@ -195,7 +195,7 @@ Write-Host ""
 Write-Host "======================================================" -ForegroundColor Green
 Write-Host "  BATCH MIGRATION SUMMARY"
 Write-Host "======================================================"
-$batchResults | Format-Table ADORepo, GHRepo, State, Branches, Tags, Commits, PRs -AutoSize
+$batchResults | Format-Table ADO_Repo, GitHub_Repo, State, Branches, Tags, Commits, PRs -AutoSize
 
 $successCount = @($batchResults | Where-Object { $_.State -in @("COMPLETE","SKIPPED","DRY_RUN") }).Count
 $failCount    = @($batchResults | Where-Object { $_.State -in @("FAILED","UNKNOWN") }).Count
@@ -213,3 +213,4 @@ Write-Host "  Summary CSV : $summaryCsv"
 exit 0
 Write-Host ""
 Write-Host "Next step: Run validate-migration.ps1 to verify migrated repos." -ForegroundColor Cyan
+

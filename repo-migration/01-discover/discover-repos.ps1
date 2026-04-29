@@ -29,13 +29,13 @@ if (-not (Test-Path $ConfigPath)) {
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 
 # Resolve config values — if they look like ADO pipeline variable references, read from env
-$adoOrg  = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
+$ADO_Org  = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
 $adoProj = if ($config.source.project      -match '^\$\(') { $env:ADO_PROJECT } else { $config.source.project }
 $adoPat  = if ($config.source.pat           -match '^\$\(') { $env:ADO_PAT } else { $config.source.pat }
 
-$adoOrg = ($adoOrg ?? '').TrimEnd('/')
+$ADO_Org = ($ADO_Org ?? '').TrimEnd('/')
 
-if ([string]::IsNullOrWhiteSpace($adoOrg)) {
+if ([string]::IsNullOrWhiteSpace($ADO_Org)) {
     Write-Error "Set the ADO_ORG environment variable or update config.source.organization"
 }
 if ([string]::IsNullOrWhiteSpace($adoProj)) {
@@ -59,16 +59,16 @@ $headers = @{
 # ── Verify PAT connectivity ─────────────────────────────────────────────────
 Write-Host "Verifying PAT connectivity..." -ForegroundColor Cyan
 try {
-    $connTest = Invoke-RestMethod -Uri "$adoOrg/_apis/connectiondata" -Headers $headers -Method Get
+    $connTest = Invoke-RestMethod -Uri "$ADO_Org/_apis/connectiondata" -Headers $headers -Method Get
     Write-Host "  Authenticated as: $($connTest.authenticatedUser.providerDisplayName)" -ForegroundColor Green
 }
 catch {
-    Write-Error "PAT authentication failed against $adoOrg. Ensure ADO_PAT is valid and not expired. Detail: $_"
+    Write-Error "PAT authentication failed against $ADO_Org. Ensure ADO_PAT is valid and not expired. Detail: $_"
 }
 
 # ── Fetch all repos ─────────────────────────────────────────────────────────
-Write-Host "=== Discovering repos in $adoOrg/$adoProj ===" -ForegroundColor Cyan
-$repoApiUrl = "$adoOrg/$adoProj/_apis/git/repositories?api-version=7.1"
+Write-Host "=== Discovering repos in $ADO_Org/$adoProj ===" -ForegroundColor Cyan
+$repoApiUrl = "$ADO_Org/$adoProj/_apis/git/repositories?api-version=7.1"
 
 try {
     $response = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get
@@ -93,7 +93,7 @@ Write-Host "Enriching $($repoList.Count) repos (parallel, throttle=$throttleLimi
 
 $repos = @($repoList | ForEach-Object -ThrottleLimit $throttleLimit -Parallel {
     $repo     = $_
-    $adoOrg   = $using:adoOrg
+    $ADO_Org   = $using:ADO_Org
     $adoProj  = $using:adoProj
     $headers  = $using:headers
     $lastCommitDate = $null
@@ -103,7 +103,7 @@ $repos = @($repoList | ForEach-Object -ThrottleLimit $throttleLimit -Parallel {
     try {
         $defaultBranch = if ($repo.PSObject.Properties['defaultBranch']) { $repo.defaultBranch -replace '^refs/heads/', '' } else { $null }
         if ($defaultBranch) {
-            $commitUrl = '{0}/{1}/_apis/git/repositories/{2}/commits?searchCriteria.$top=1&searchCriteria.itemVersion.version={3}&api-version=7.1' -f $adoOrg, $adoProj, $repo.id, $defaultBranch
+            $commitUrl = '{0}/{1}/_apis/git/repositories/{2}/commits?searchCriteria.$top=1&searchCriteria.itemVersion.version={3}&api-version=7.1' -f $ADO_Org, $adoProj, $repo.id, $defaultBranch
             $commitResp = Invoke-RestMethod -Uri $commitUrl -Headers $headers -Method Get
             if ($commitResp.value -and $commitResp.value.Count -gt 0) {
                 $lastCommitDate = $commitResp.value[0].committer.date
@@ -116,7 +116,7 @@ $repos = @($repoList | ForEach-Object -ThrottleLimit $throttleLimit -Parallel {
 
     # Check for .gitattributes LFS markers
     try {
-        $gitattrsUrl = "$adoOrg/$adoProj/_apis/git/repositories/$($repo.id)/items?path=.gitattributes&api-version=7.1"
+        $gitattrsUrl = "$ADO_Org/$adoProj/_apis/git/repositories/$($repo.id)/items?path=.gitattributes&api-version=7.1"
         $gitattrs = Invoke-RestMethod -Uri $gitattrsUrl -Headers $headers -Method Get -ErrorAction SilentlyContinue
         if ($gitattrs -match 'filter=lfs') { $hasLfs = $true }
     }
@@ -259,7 +259,7 @@ $htmlContent = @"
 <body>
 <div class="container">
   <h1>&#128269; ADO Repository Discovery Report</h1>
-  <p class="subtitle">$([System.Net.WebUtility]::HtmlEncode($adoOrg)) / $([System.Net.WebUtility]::HtmlEncode($adoProj)) &mdash; Generated: $timestamp</p>
+  <p class="subtitle">$([System.Net.WebUtility]::HtmlEncode($ADO_Org)) / $([System.Net.WebUtility]::HtmlEncode($adoProj)) &mdash; Generated: $timestamp</p>
   <div class="cards">
     <div class="card"><div class="value">$($included.Count)</div><div class="label">Repos to Migrate</div></div>
     <div class="card"><div class="value">$($excluded.Count)</div><div class="label">Excluded</div></div>
@@ -324,3 +324,4 @@ Write-Host "  JSON : $jsonOut"
 Write-Host "  CSV  : $csvOut"
 Write-Host "  HTML : $htmlOut"
 Write-Host "`nNext step: Run 01-discover\audit-repo-sizes.ps1 for detailed per-file size analysis."
+

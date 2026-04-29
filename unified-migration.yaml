@@ -62,8 +62,7 @@ stages:
   # ===========================================================================
   # PIPELINE MIGRATION: STAGE 1 – DISCOVER
   # ===========================================================================
-  - stage: PipelineDiscover
-    displayName: "1. Discover & Audit Pipelines"
+  - stage: PipelineDiscover`r`n    displayName: "Pipeline: 1. Discover & Audit"
     condition: in('${{ parameters.migrationType }}', 'pipeline', 'both')
     jobs:
       - job: AuditPipelines
@@ -89,8 +88,8 @@ stages:
             inputs:
               filePath: '$(Build.SourcesDirectory)/pipeline-migration/00-discovery/audit-pipelines.ps1'
               arguments: >-
-                -AdoOrg "$(ADO_ORG)"
-                -AdoProject "$(ADO_PROJECT)"
+                -AdoOrg "$(ADO_Org)"
+                -AdoProject "$(ADO_Project)"
                 -AdoPat "$(ADO_PAT)"
                 -GitHubPat "$(GH_PAT)"
                 -OutputDir "output/pipeline-audit"
@@ -107,7 +106,7 @@ stages:
               filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
-                -AdoProject "$(ADO_PROJECT)"
+                -AdoProject "$(ADO_Project)"
                 -Mode "list"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
@@ -160,8 +159,7 @@ stages:
   # ===========================================================================
   # PIPELINE MIGRATION: STAGE 2 – MIGRATE
   # ===========================================================================
-  - stage: MigratePipeline
-    displayName: "2. Migrate Pipelines"
+  - stage: MigratePipeline`r`n    displayName: "Pipeline: 2. Migrate"
     dependsOn: PipelineDiscover
     condition: and(not(failed()), eq(dependencies.PipelineDiscover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'), in('${{ parameters.migrationType }}', 'pipeline', 'both'))
     variables:
@@ -190,13 +188,13 @@ stages:
               filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
-                -AdoProject "$(ADO_PROJECT)"
+                -AdoProject "$(ADO_Project)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
               pwsh: true
             env:
-              ADO_ORG: $(ADO_ORG)
+              ADO_ORG: $(ADO_Org)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -239,13 +237,13 @@ stages:
               filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
-                -AdoProject "$(ADO_PROJECT)"
+                -AdoProject "$(ADO_Project)"
                 -PipelineId $(PIPELINE_IDS)
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
               pwsh: true
             env:
-              ADO_ORG: $(ADO_ORG)
+              ADO_ORG: $(ADO_Org)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -260,8 +258,7 @@ stages:
   # ===========================================================================
   # REPO MIGRATION: STAGES SYNCED WITH azure-pipeline.yaml
   # ===========================================================================
-  - stage: Discover
-    displayName: "1. Discover & Analyse"
+  - stage: Discover`r`n    displayName: "Repo: 1. Discover & Scan Secrets"
     condition: in('${{ parameters.migrationType }}', 'repo', 'both')
     pool:
       vmImage: windows-latest
@@ -288,10 +285,10 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GH_ORG\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
@@ -373,7 +370,7 @@ stages:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
               arguments: >-
                 -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
-                -RepoName "${{ parameters.ADORepo }}"
+                -RepoName "$(ADO_Repo)"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -452,8 +449,7 @@ stages:
               reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
               tabName: "Secret Scan Report"
 
-  - stage: ReviewGate
-    displayName: "2. Review Gate"
+  - stage: ReviewGate`r`n    displayName: "Repo: 2. Review Gate"
     dependsOn: Discover
     condition: and(not(failed()), not(canceled()), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     jobs:
@@ -472,15 +468,14 @@ stages:
                 Approve to proceed to migration, or Reject to abort.
               onTimeout: reject
 
-  - stage: MigrateSingle
-    displayName: "3a. Migrate (Single Repo)"
+  - stage: MigrateSingle`r`n    displayName: "Repo: 3a. Scrub & Migrate (Single)"
     dependsOn: ReviewGate
     condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Single'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     pool:
       vmImage: windows-latest
     jobs:
       - job: MigrateSingleRepo
-        displayName: "Migrate ${{ parameters.ADORepo }}"
+        displayName: "Migrate $(ADO_Repo)"
         timeoutInMinutes: 180
         steps:
           - checkout: self
@@ -510,10 +505,10 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GH_ORG\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
@@ -526,16 +521,16 @@ stages:
             inputs:
               targetType: inline
               script: |
-                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
-                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
+                $adoRepo = '$(ADO_Repo)'.Trim()
+                $ghRepo  = '$(GitHub_Repo)'.Trim()
                 if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
 
                 $params = @{
-                    ADOOrg     = '$(ADO_ORG)'.Trim()
-                    ADOProject = '$(ADO_PROJECT)'.Trim()
-                    ADORepo    = $adoRepo
-                    GHOrg      = '$(GH_ORG)'.Trim()
-                    GHRepo     = $ghRepo
+                    ADO_Org    = '$(ADO_Org)'.Trim()
+                    ADO_Project = '$(ADO_Project)'.Trim()
+                    ADO_Repo    = $adoRepo
+                    GitHub_Org  = '$(GitHub_Org)'.Trim()
+                    GitHub_Repo = $ghRepo
                     OutputDir  = '$(Build.SourcesDirectory)\repo-migration\output'
                 }
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
@@ -554,7 +549,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
-              artifact: "MigrationLogs-${{ parameters.ADORepo }}"
+              artifact: "MigrationLogs-$(ADO_Repo)"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -562,7 +557,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\audit'
-              artifact: "MigrationAudit-${{ parameters.ADORepo }}"
+              artifact: "MigrationAudit-$(ADO_Repo)"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -570,7 +565,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-              artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
+              artifact: "MigrationDashboard-$(ADO_Repo)"
               publishLocation: pipeline
 
           - task: PublishHtmlReport@1
@@ -580,8 +575,7 @@ stages:
               reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
               tabName: "Migration Report"
 
-  - stage: MigrateBatch
-    displayName: "3b. Migrate (Batch)"
+  - stage: MigrateBatch`r`n    displayName: "Repo: 3b. Scrub & Migrate (Batch)"
     dependsOn: ReviewGate
     condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Batch'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     pool:
@@ -618,10 +612,10 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GH_ORG\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
@@ -635,9 +629,9 @@ stages:
               targetType: inline
               script: |
                 $params = @{
-                    ADOOrg      = '$(ADO_ORG)'
-                    ADOProject  = '$(ADO_PROJECT)'
-                    GHOrg       = '$(GH_ORG)'
+                    ADO_Org    = '$(ADO_Org)'
+                    ADO_Project = '$(ADO_Project)'
+                    GitHub_Org  = '$(GitHub_Org)'
                     ConfigPath  = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
                     BatchName   = '${{ parameters.BatchName }}'
                     OutputDir   = '$(Build.SourcesDirectory)\repo-migration\output'
@@ -692,8 +686,7 @@ stages:
               reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
               tabName: "Migration Report"
 
-  - stage: Validate
-    displayName: "4. Validate Migration"
+  - stage: Validate`r`n    displayName: "Repo: 4. Validate Migration"
     dependsOn:
       - MigrateSingle
       - MigrateBatch
@@ -718,12 +711,12 @@ stages:
           - task: DownloadPipelineArtifact@2
             displayName: "Download Single Audit Data"
             inputs:
-              artifact: "MigrationAudit-${{ parameters.ADORepo }}"
+              artifact: "MigrationAudit-$(ADO_Repo)"
               path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
           - task: DownloadPipelineArtifact@2
             displayName: "Download Single Dashboard"
             inputs:
-              artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
+              artifact: "MigrationDashboard-$(ADO_Repo)"
               path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
 
           - task: PowerShell@2
@@ -733,10 +726,10 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GH_ORG\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
@@ -757,12 +750,12 @@ stages:
                     if ($cfg.migration.targetRepoVisibility) { $visibility = $cfg.migration.targetRepoVisibility }
                 }
 
-                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
-                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
-                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+                $ADO_Repo    = '$(ADO_Repo)'.Trim()
+                $GitHub_Repo = '$(GitHub_Repo)'.Trim()
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $GitHub_Repo = $adoRepo }
 
                 & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
-                    -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -GHOrg '$(GH_ORG)' `
+                    -ADOOrg '$(ADO_Org)' -ADOProject '$(ADO_Project)' -GHOrg '$(GitHub_Org)' `
                     -ADORepo $adoRepo -GHRepo $ghRepo `
                     -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
                     -ExpectedVisibility $visibility
@@ -838,10 +831,10 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GH_ORG\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
@@ -862,7 +855,7 @@ stages:
                 }
 
                 & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
-                    -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -GHOrg '$(GH_ORG)' `
+                    -ADOOrg '$(ADO_Org)' -ADOProject '$(ADO_Project)' -GHOrg '$(GitHub_Org)' `
                     -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
                     -ExpectedVisibility $visibility
               pwsh: true
@@ -924,3 +917,5 @@ stages:
                 $valSummary = "$(Build.SourcesDirectory)\repo-migration\output\reports\validation-summary.md"
                 if (Test-Path $valSummary) { Write-Host "##vso[task.uploadsummary]$valSummary" }
               pwsh: true
+
+

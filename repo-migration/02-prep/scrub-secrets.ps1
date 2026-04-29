@@ -250,8 +250,8 @@ foreach ($reportFile in $reportFiles) {
     if (Test-Path $cloneDir) { Remove-Item -Recurse -Force $cloneDir }
 
     Write-Host "    Cloning repo (read-only)..." -ForegroundColor Gray
-    $adoOrg = $env:ADO_ORG
-    $cloneUrl = "https://$Pat@dev.azure.com/$adoOrg/$project/_git/$repoName"
+    $ADO_Org = $env:ADO_ORG
+    $cloneUrl = "https://$Pat@dev.azure.com/$ADO_Org/$project/_git/$repoName"
     git clone --mirror $cloneUrl $cloneDir 2>&1 | Out-Null
 
     if (-not (Test-Path $cloneDir)) {
@@ -455,3 +455,4 @@ Write-Host "Scrubbed repos:      $OutputDir" -ForegroundColor Green
 Write-Host "Original ADO repos:  UNTOUCHED" -ForegroundColor Green
 
 exit 0
+

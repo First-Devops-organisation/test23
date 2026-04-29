@@ -9,11 +9,11 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]  [string]$ADOOrg,
-    [Parameter(Mandatory = $true)]  [string]$ADOProject,
-    [Parameter(Mandatory = $true)]  [string]$ADORepo,
-    [Parameter(Mandatory = $true)]  [string]$GHOrg,
-    [Parameter(Mandatory = $false)] [string]$GHRepo,
+    [Parameter(Mandatory = $true)]  [string]$ADO_Org,
+    [Parameter(Mandatory = $true)]  [string]$ADO_Project,
+    [Parameter(Mandatory = $true)]  [string]$ADO_Repo,
+    [Parameter(Mandatory = $true)]  [string]$GitHub_Org,
+    [Parameter(Mandatory = $false)] [string]$GitHub_Repo,
     [Parameter(Mandatory = $false)] [string]$OutputDir = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)] [string]$TargetRepoVisibility = "private",
     [switch]$SkipAudit,
@@ -23,10 +23,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if ([string]::IsNullOrWhiteSpace($GHRepo)) { $GHRepo = $ADORepo }
+if ([string]::IsNullOrWhiteSpace($GitHub_Repo)) { $GitHub_Repo = $ADO_Repo }
 
 Write-Host "`n======================================================" -ForegroundColor Cyan
-Write-Host "  SECURE MIGRATION: $ADORepo → $GHRepo"
+Write-Host "  SECURE MIGRATION: $ADO_Repo → $GitHub_Repo"
 Write-Host "======================================================" -ForegroundColor Cyan
 
 # ── 1. Scrub Secrets ────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ $scrubScript = "$PSScriptRoot\..\02-prep\scrub-secrets.ps1"
 if (-not (Test-Path $scrubScript)) { throw "Missing $scrubScript" }
 
 $scrubParams = @{
-    RepoName = $ADORepo
+    RepoName = $ADO_Repo
     OutputDir = $OutputDir
 }
 if ($DryRun) { $scrubParams['DryRun'] = $true }
@@ -45,11 +45,11 @@ if ($DryRun) { $scrubParams['DryRun'] = $true }
 Write-Host "`n[Step 2] Running GEI Migration (migrate-single.ps1)..." -ForegroundColor Cyan
 $migrateScript = "$PSScriptRoot\migrate-single.ps1"
 $migrateParams = @{
-    ADOOrg     = $ADOOrg
-    ADOProject = $ADOProject
-    ADORepo    = $ADORepo
-    GHOrg      = $GHOrg
-    GHRepo     = $GHRepo
+    ADO_Org     = $ADO_Org
+    ADO_Project = $ADO_Project
+    ADO_Repo    = $ADO_Repo
+    GitHub_Org      = $GitHub_Org
+    GitHub_Repo     = $GitHub_Repo
     OutputDir  = $OutputDir
     TargetRepoVisibility = $TargetRepoVisibility
 }
@@ -58,7 +58,7 @@ if ($DryRun) { $migrateParams['DryRun'] = $true }
 
 & $migrateScript @migrateParams
 
-$stateFile = "$OutputDir\logs\migration-state-$GHRepo.txt"
+$stateFile = "$OutputDir\logs\migration-state-$GitHub_Repo.txt"
 $migState = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { "UNKNOWN" }
 
 if ($migState -ne "COMPLETE") {
@@ -67,12 +67,12 @@ if ($migState -ne "COMPLETE") {
 }
 
 # ── 3. Overwrite History with Scrubbed Clone ──────────────────────────────────
-$scrubbedClone = "$OutputDir\tmp\clones\$ADORepo"
+$scrubbedClone = "$OutputDir\tmp\clones\$ADO_Repo"
 $secretValuesFile = "$OutputDir\scrubbed\secret-values.json"
 
 if (Test-Path $scrubbedClone) {
     Write-Host "`n[Step 3] Pushing scrubbed history to GitHub..." -ForegroundColor Cyan
-    $ghFullRepo = "$GHOrg/$GHRepo"
+    $ghFullRepo = "$GitHub_Org/$GitHub_Repo"
     try {
         Push-Location $scrubbedClone
         $ghUrl = "https://x-access-token:$($env:GH_TOKEN)@github.com/$ghFullRepo.git"
@@ -99,9 +99,9 @@ if (Test-Path $secretValuesFile) {
     $secretsData = Get-Content $secretValuesFile -Raw | ConvertFrom-Json
     $hasSecrets = $false
     if ($secretsData -is [array]) {
-        $hasSecrets = ($secretsData | Where-Object { $_.GitHubRepo -eq "$GHOrg/$GHRepo" }).Count -gt 0
+        $hasSecrets = ($secretsData | Where-Object { $_.GitHubRepo -eq "$GitHub_Org/$GitHub_Repo" }).Count -gt 0
     } elseif ($secretsData -is [object]) {
-        $hasSecrets = ($secretsData.GitHubRepo -eq "$GHOrg/$GHRepo")
+        $hasSecrets = ($secretsData.GitHubRepo -eq "$GitHub_Org/$GitHub_Repo")
     }
 
     if ($hasSecrets) {
@@ -109,8 +109,9 @@ if (Test-Path $secretValuesFile) {
         $createSecretsScript = "$PSScriptRoot\create-github-secrets.ps1"
         & $createSecretsScript -SecretValuesFile $secretValuesFile -DeleteAfterCreate $false
     } else {
-        Write-Host "`n[Step 4] No secrets to provision for $GHRepo." -ForegroundColor Green
+        Write-Host "`n[Step 4] No secrets to provision for $GitHub_Repo." -ForegroundColor Green
     }
 } else {
     Write-Host "`n[Step 4] No secrets file generated. Skipping provisioning." -ForegroundColor Green
 }
+

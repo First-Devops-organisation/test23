@@ -46,7 +46,7 @@ $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $conf
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
 # ── ADO API base + auth header ───────────────────────────────────────────────
-$adoOrg  = $config.source.organization.TrimEnd('/')
+$ADO_Org  = $config.source.organization.TrimEnd('/')
 $adoProj = $config.source.project
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $apiHeaders = @{ Authorization = "Basic $base64Auth" }
@@ -61,7 +61,7 @@ $results = @()
 
 # ── Helper: Audit via ADO REST API (no clone needed) ─────────────────────────
 function Get-RepoSizeViaApi {
-    param($repo, $adoOrg, $adoProj, $apiHeaders)
+    param($repo, $ADO_Org, $adoProj, $apiHeaders)
 
     $largestBlobs = @()
     $maxBlobSize  = 0
@@ -75,7 +75,7 @@ function Get-RepoSizeViaApi {
 
     try {
         # Fetch file tree with sizes — ADO supports recursionLevel=Full
-        $itemsUrl = "$adoOrg/$adoProj/_apis/git/repositories/$($repo.Id)/items?recursionLevel=Full&versionDescriptor.version=$defaultBranch&api-version=7.1"
+        $itemsUrl = "$ADO_Org/$adoProj/_apis/git/repositories/$($repo.Id)/items?recursionLevel=Full&versionDescriptor.version=$defaultBranch&api-version=7.1"
         $itemsResp = Invoke-RestMethod -Uri $itemsUrl -Headers $apiHeaders -Method Get
 
         if ($itemsResp.value) {
@@ -128,7 +128,7 @@ foreach ($repo in $repos) {
         $auditMethod = "API"
         Write-Host "  Using ADO REST API (repo is $($repo.SizeMB) MB — skipping clone)" -ForegroundColor Gray
 
-        $apiResult    = Get-RepoSizeViaApi -repo $repo -adoOrg $adoOrg -adoProj $adoProj -apiHeaders $apiHeaders
+        $apiResult    = Get-RepoSizeViaApi -repo $repo -ADO_Org $ADO_Org -adoProj $adoProj -apiHeaders $apiHeaders
         $maxBlobSize  = $apiResult.MaxBlobMB
         $largestBlobs = $apiResult.LargestBlobs
     }
@@ -152,7 +152,7 @@ foreach ($repo in $repos) {
         }
         catch {
             Write-Warning "  Clone failed for $($repo.Name): $_ — falling back to API"
-            $apiResult    = Get-RepoSizeViaApi -repo $repo -adoOrg $adoOrg -adoProj $adoProj -apiHeaders $apiHeaders
+            $apiResult    = Get-RepoSizeViaApi -repo $repo -ADO_Org $ADO_Org -adoProj $adoProj -apiHeaders $apiHeaders
             $maxBlobSize  = $apiResult.MaxBlobMB
             $largestBlobs = $apiResult.LargestBlobs
             $auditMethod  = "API-fallback"
@@ -256,3 +256,4 @@ if ($blocked) {
 
 Write-Host "`nReport saved: $jsonOut"
 Write-Host "Next step: Run 01-discover\scan-secrets.ps1 to check for exposed credentials."
+
