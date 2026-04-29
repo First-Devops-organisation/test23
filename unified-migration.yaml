@@ -396,21 +396,9 @@ stages:
               tabName: "Secret Scan Report"
 
       - job: ScanSecretsBatch
-        displayName: "1.3 Scan Secrets (Batch Matrix)"
+        displayName: "1.3 Scan Secrets (Batch)"
         dependsOn: DiscoverAndAudit
         condition: and(succeeded(), eq('${{ parameters.SkipSecretScan }}', false), eq('${{ parameters.MigrationMode }}', 'Batch'))
-        strategy:
-          maxParallel: 3
-          matrix:
-            Batch0:
-              BATCH_INDEX: 0
-              BATCH_TOTAL: 3
-            Batch1:
-              BATCH_INDEX: 1
-              BATCH_TOTAL: 3
-            Batch2:
-              BATCH_INDEX: 2
-              BATCH_TOTAL: 3
         steps:
           - task: DownloadPipelineArtifact@2
             displayName: "Download Discovery Inventory"
@@ -434,7 +422,6 @@ stages:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
               arguments: >-
                 -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
-                -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)
                 -BatchName "${{ parameters.BatchName }}"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
@@ -445,9 +432,17 @@ stages:
             displayName: "Publish Scan Reports"
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-              artifact: "scan-reports-batch$(BATCH_INDEX)"
+              artifact: "scan-reports-batch"
               publishLocation: pipeline
             condition: always()
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Secret Scan Report"
+            condition: always()
+            continueOnError: true
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
+              tabName: "Secret Scan Report"
 
           - task: PublishHtmlReport@1
             displayName: "Show Secret Scan Report"
@@ -507,6 +502,24 @@ stages:
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Replace config tokens"
+            inputs:
+              targetType: inline
+              script: |
+                $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                $c   = Get-Content $cfg -Raw
+                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
+                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
+                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+                Set-Content -Path $cfg -Value $c
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT:  $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Migrate Single Repo"
@@ -577,18 +590,6 @@ stages:
       - job: MigrateBatchRepos
         displayName: "Migrate Batch"
         timeoutInMinutes: 480
-        strategy:
-          maxParallel: 3
-          matrix:
-            Batch0:
-              BATCH_INDEX: 0
-              BATCH_TOTAL: 3
-            Batch1:
-              BATCH_INDEX: 1
-              BATCH_TOTAL: 3
-            Batch2:
-              BATCH_INDEX: 2
-              BATCH_TOTAL: 3
         steps:
           - checkout: self
           - task: PowerShell@2
@@ -640,8 +641,6 @@ stages:
                     ConfigPath  = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
                     BatchName   = '${{ parameters.BatchName }}'
                     OutputDir   = '$(Build.SourcesDirectory)\repo-migration\output'
-                    BatchIndex  = $(BATCH_INDEX)
-                    BatchTotal  = $(BATCH_TOTAL)
                 }
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
                 if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
@@ -659,7 +658,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
-              artifact: "BatchMigrationLogs-$(BATCH_INDEX)"
+              artifact: "BatchMigrationLogs"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -667,7 +666,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-              artifact: "BatchMigrationReports-$(BATCH_INDEX)"
+              artifact: "BatchMigrationReports"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -675,7 +674,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\audit'
-              artifact: "BatchMigrationAudit-$(BATCH_INDEX)"
+              artifact: "BatchMigrationAudit"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -683,7 +682,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-              artifact: "BatchMigrationDashboards-$(BATCH_INDEX)"
+              artifact: "BatchMigrationDashboards"
               publishLocation: pipeline
 
           - task: PublishHtmlReport@1
@@ -712,116 +711,39 @@ stages:
     pool:
       vmImage: windows-latest
     jobs:
-      - job: ValidateRepos
-        displayName: "4.1 Validate Migrated Repos"
+  - stage: Validate
+    displayName: "4. Validate Migration"
+    dependsOn:
+      - MigrateSingle
+      - MigrateBatch
+    condition: |
+      and(
+        in('${{ parameters.migrationType }}', 'repo', 'both'),
+        eq('${{ parameters.RunValidation }}', true),
+        not(failed()),
+        not(canceled())
+      )
+    pool:
+      vmImage: windows-latest
+    jobs:
+      # ───────────────────────────────────────────────────────────────────────
+      # 4.1 VALIDATE SINGLE REPO
+      # ───────────────────────────────────────────────────────────────────────
+      - job: ValidateSingle
+        displayName: "4.1 Validate Single Repo"
+        condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Single'))
         steps:
           - checkout: self
           - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Reports"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationReports-0"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\reports-0'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Reports"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationReports-1"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\reports-1'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Reports"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationReports-2"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\reports-2'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Audit Data"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationAudit-0"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Audit Data"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationAudit-1"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Audit Data"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationAudit-2"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
             displayName: "Download Single Audit Data"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Single'))
             inputs:
               artifact: "MigrationAudit-${{ parameters.ADORepo }}"
               path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
-            continueOnError: true
-
           - task: DownloadPipelineArtifact@2
             displayName: "Download Single Dashboard"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Single'))
             inputs:
               artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
               path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Dashboards"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationDashboards-0"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Dashboards"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationDashboards-1"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-            continueOnError: true
-
-          - task: DownloadPipelineArtifact@2
-            displayName: "Download Batch Dashboards"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              artifact: "BatchMigrationDashboards-2"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-            continueOnError: true
-
-          - task: PowerShell@2
-            displayName: "Consolidate Batch Summaries"
-            condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
-            inputs:
-              targetType: inline
-              script: |
-                $merged = @()
-                0..2 | ForEach-Object {
-                    $p = "$(Build.SourcesDirectory)\repo-migration\output\reports-$_\batch-migration-summary.json"
-                    if (Test-Path $p) {
-                        $merged += Get-Content $p -Raw | ConvertFrom-Json
-                    }
-                }
-                $target = "$(Build.SourcesDirectory)\repo-migration\output\reports\batch-migration-summary.json"
-                New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
-                $merged | ConvertTo-Json -Depth 5 | Out-File $target -Encoding utf8
-                Write-Host "Consolidated $($merged.Count) repo results into $target"
-              pwsh: true
 
           - task: PowerShell@2
             displayName: "Replace config tokens"
@@ -842,7 +764,7 @@ stages:
               GH_PAT:  $(GH_PAT)
 
           - task: PowerShell@2
-            displayName: "Run Validation"
+            displayName: "Run Validation (Single)"
             inputs:
               targetType: inline
               script: |
@@ -851,25 +773,18 @@ stages:
                 $visibility = 'private'
                 if (Test-Path $cfgPath) {
                     $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
-                    if ($cfg.migration.targetRepoVisibility) {
-                        $visibility = $cfg.migration.targetRepoVisibility
-                    }
+                    if ($cfg.migration.targetRepoVisibility) { $visibility = $cfg.migration.targetRepoVisibility }
                 }
 
-                $params = @{
-                    ADOOrg             = '$(ADO_ORG)'
-                    ADOProject         = '$(ADO_PROJECT)'
-                    GHOrg              = '$(GH_ORG)'
-                    OutputDir          = '$(Build.SourcesDirectory)\repo-migration\output'
-                    ExpectedVisibility = $visibility
-                }
-                if ('${{ parameters.MigrationMode }}' -eq 'Single') {
-                    $params['GHRepo']  = '${{ parameters.GHRepo }}'.Trim()
-                    $params['ADORepo'] = '${{ parameters.ADORepo }}'.Trim()
-                    if ([string]::IsNullOrWhiteSpace($params['GHRepo'])) { $params['GHRepo'] = $params['ADORepo'] }
-                }
+                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
+                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
 
-                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' @params
+                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
+                    -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -GHOrg '$(GH_ORG)' `
+                    -ADORepo $adoRepo -GHRepo $ghRepo `
+                    -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
+                    -ExpectedVisibility $visibility
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -882,7 +797,106 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-              artifact: "ValidationReports"
+              artifact: "ValidationReports-Single"
+              publishLocation: pipeline
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Validation Report"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\validation-report.html'
+              tabName: "Validation Report"
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Migration Dashboard"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+              tabName: "Migration Report"
+
+          - task: PowerShell@2
+            displayName: "Publish Validation Summary to ADO Tab"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                $valSummary = "$(Build.SourcesDirectory)\repo-migration\output\reports\validation-summary.md"
+                if (Test-Path $valSummary) { Write-Host "##vso[task.uploadsummary]$valSummary" }
+              pwsh: true
+
+      # ───────────────────────────────────────────────────────────────────────
+      # 4.2 VALIDATE BATCH REPOS
+      # ───────────────────────────────────────────────────────────────────────
+      - job: ValidateBatch
+        displayName: "4.2 Validate Batch Repos"
+        condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'))
+        steps:
+          - checkout: self
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Reports"
+            inputs:
+              artifact: "BatchMigrationReports"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Audit Data"
+            inputs:
+              artifact: "BatchMigrationAudit"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Dashboards"
+            inputs:
+              artifact: "BatchMigrationDashboards"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+
+          - task: PowerShell@2
+            displayName: "Replace config tokens"
+            inputs:
+              targetType: inline
+              script: |
+                $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                $c   = Get-Content $cfg -Raw
+                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
+                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
+                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+                Set-Content -Path $cfg -Value $c
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT:  $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Run Validation (Batch)"
+            inputs:
+              targetType: inline
+              script: |
+                $cfgPath = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
+                $visibility = 'private'
+                if (Test-Path $cfgPath) {
+                    $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+                    if ($cfg.migration.targetRepoVisibility) { $visibility = $cfg.migration.targetRepoVisibility }
+                }
+
+                & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
+                    -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -GHOrg '$(GH_ORG)' `
+                    -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
+                    -ExpectedVisibility $visibility
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+            env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Validation Reports"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              artifact: "ValidationReports-Batch"
               publishLocation: pipeline
 
           - task: PublishHtmlReport@1
@@ -893,48 +907,23 @@ stages:
               tabName: "Validation Report"
 
           - task: PowerShell@2
-            displayName: "Prepare Migration Report for HTML Tab"
+            displayName: "Prepare Merged Migration Report"
             condition: always()
             inputs:
               targetType: inline
               script: |
                 $src = "$(Build.SourcesDirectory)\repo-migration\output\dashboard"
-                
-                # For Single mode: use parameters
-                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
-                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
-                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
-                $singleFile = "$src\$ghRepo\migration-report-$ghRepo.html"
-
-                if (Test-Path $singleFile) {
-                    Write-Host "Single mode — using: $singleFile"
-                    Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
-                }
-                else {
-                    # Batch mode or multi-VM — find all HTML files
-                    $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
-                    Write-Host "Found $($htmlFiles.Count) HTML file(s) in dashboard"
-                    if ($htmlFiles.Count -eq 1) {
-                        Write-Host "Using: $($htmlFiles[0].FullName)"
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$($htmlFiles[0].FullName)"
+                $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
+                if ($htmlFiles.Count -gt 0) {
+                    $dst = "$src\combined-migration-report.html"
+                    $combined = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Batch Migration Reports</title></head><body>"
+                    foreach ($f in $htmlFiles) {
+                        $content = Get-Content $f.FullName -Raw -Encoding utf8
+                        $content = $content -replace '<!DOCTYPE[^>]*>', '' -replace '</?html[^>]*>', '' -replace '<head>.*?</head>', '' -replace '</?body[^>]*>', ''
+                        $combined += "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>"
                     }
-                    elseif ($htmlFiles.Count -gt 1) {
-                        $dst = "$src\combined-migration-report.html"
-                        $combined = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>"
-                        foreach ($f in $htmlFiles) {
-                            $content = Get-Content $f.FullName -Raw -Encoding utf8
-                            $content = $content -replace '<!DOCTYPE[^>]*>', '' -replace '</?html[^>]*>', '' -replace '<head>.*?</head>', '' -replace '</?body[^>]*>', ''
-                            $combined += "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>"
-                            Write-Host "  Merged: $($f.Name)"
-                        }
-                        $combined += "</body></html>"
-                        $combined | Out-File $dst -Encoding utf8
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$dst"
-                    }
-                    else {
-                        Write-Warning "No migration HTML files found"
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]"
-                    }
+                    $combined += "</body></html>"
+                    $combined | Out-File $dst -Encoding utf8
                 }
               pwsh: true
 
@@ -942,7 +931,7 @@ stages:
             displayName: "Show Combined Migration Report"
             condition: always()
             inputs:
-              reportDir: '$(MIGRATION_REPORT_PATH)'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard\combined-migration-report.html'
               tabName: "Migration Report"
 
           - task: PowerShell@2
@@ -952,7 +941,5 @@ stages:
               targetType: inline
               script: |
                 $valSummary = "$(Build.SourcesDirectory)\repo-migration\output\reports\validation-summary.md"
-                if (Test-Path $valSummary) {
-                    Write-Host "##vso[task.uploadsummary]$valSummary"
-                }
+                if (Test-Path $valSummary) { Write-Host "##vso[task.uploadsummary]$valSummary" }
               pwsh: true
