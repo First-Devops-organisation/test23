@@ -185,7 +185,7 @@ stages:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
           - task: PowerShell@2
-            displayName: "Dry-Run pipelines"
+            displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
             inputs:
               filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
@@ -195,11 +195,14 @@ stages:
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
               pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
+              PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
+
           - task: PublishPipelineArtifact@1
             displayName: "Publish Dry-Run Output"
             condition: always()
@@ -244,11 +247,14 @@ stages:
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
               pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
+              PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
+
           - task: PublishPipelineArtifact@1
             displayName: "Publish Migration Output"
             condition: always()
@@ -256,7 +262,13 @@ stages:
               targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
               artifact: "pipeline-migrate"
               publishLocation: pipeline
-
+              
+          - task: PublishHtmlReport@1
+            displayName: "Migration Dashboard on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines/dashboard'
+              tabName: "Migration Dashboard"
   # ===========================================================================
   # REPO MIGRATION: STAGES SYNCED WITH azure-pipeline.yaml
   # ===========================================================================
@@ -441,15 +453,7 @@ stages:
             condition: always()
             continueOnError: true
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
-              tabName: "Secret Scan Report"
-
-          - task: PublishHtmlReport@1
-            displayName: "Show Secret Scan Report"
-            condition: always()
-            continueOnError: true
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report.html'
               tabName: "Secret Scan Report"
 
   - stage: ReviewGate
