@@ -444,7 +444,7 @@ stages:
   - stage: ReviewGate
     displayName: "2. Review Gate"
     dependsOn: Discover
-    condition: and(succeeded(), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
+    condition: and(not(failed()), not(canceled()), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     jobs:
       - job: ReviewGateJob
         displayName: "Gate: Review Discovery Findings"
@@ -464,7 +464,7 @@ stages:
   - stage: MigrateSingle
     displayName: "3a. Migrate (Single Repo)"
     dependsOn: ReviewGate
-    condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Single'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
+    condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Single'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     pool:
       vmImage: windows-latest
     jobs:
@@ -538,7 +538,7 @@ stages:
   - stage: MigrateBatch
     displayName: "3b. Migrate (Batch)"
     dependsOn: ReviewGate
-    condition: and(succeeded(), eq('${{ parameters.MigrationMode }}', 'Batch'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
+    condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Batch'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     pool:
       vmImage: windows-latest
     jobs:
