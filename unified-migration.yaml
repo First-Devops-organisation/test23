@@ -1,17 +1,18 @@
 trigger: none
 
 parameters:
-  - name: MigrationSelection
-    displayName: "Select Migration Type"
+  - name: migrationType
+    displayName: 'Migration Type'
     type: string
-    default: Both
+    default: 'both'
     values:
-      - Pipeline
-      - Repo
-      - Both
+      - pipeline
+      - repo
+      - both
+      - reclaim
 
-  - name: RepoMigrationMode
-    displayName: "Repo Migration Mode"
+  - name: MigrationMode
+    displayName: "Migration Mode"
     type: string
     default: Single
     values:
@@ -24,22 +25,27 @@ parameters:
     default: " "
 
   - name: GHRepo
-    displayName: "GitHub Repo name (Single mode only)"
+    displayName: "GitHub Repo name (Single mode only, defaults to ADORepo)"
     type: string
     default: " "
 
   - name: BatchName
-    displayName: "Batch name from config (Batch mode)"
+    displayName: "Batch name from config (Batch mode — leave blank for all)"
     type: string
     default: " "
 
-  - name: DryRun
-    displayName: "Dry Run (Repo migration)"
-    type: boolean
-    default: true
-
   - name: SkipAudit
-    displayName: "Skip branch-wise audit (Faster)"
+    displayName: "Skip branch-wise audit (faster, no file inventory)"
+    type: boolean
+    default: false
+
+  - name: SkipSecretScan
+    displayName: "Skip secret scanning (gitleaks)"
+    type: boolean
+    default: false
+
+  - name: DryRun
+    displayName: "Dry Run (print GEI commands, do not execute)"
     type: boolean
     default: false
 
@@ -48,6 +54,15 @@ parameters:
     type: boolean
     default: true
 
+  - name: ReclaimMode
+    displayName: "Reclaim Mannequins Mode"
+    type: string
+    default: Skip
+    values:
+      - DryRun
+      - Execute
+      - Skip
+
 variables:
   - group: pipeline-migration       # ADO_ORG, ADO_PROJECT, ADO_PAT, GH_PAT
   - group: repo-migration-discove   # ADO_ORG, ADO_PROJECT, ADO_PAT
@@ -55,23 +70,20 @@ variables:
 
 stages:
   # ===========================================================================
-  # STAGE 1 – DISCOVER
+  # PIPELINE MIGRATION: STAGE 1 – DISCOVER
   # ===========================================================================
-  - stage: Discover
-    displayName: "1. Discover & Audit"
+  - stage: PipelineDiscover
+    displayName: "1. Discover & Audit Pipelines"
+    condition: in('${{ parameters.migrationType }}', 'pipeline', 'both')
     jobs:
-      # --- Pipeline Discovery (Ubuntu) ---
       - job: AuditPipelines
         displayName: "1.1 Audit ADO Pipelines"
         pool:
           vmImage: ubuntu-latest
-        condition: |
-          or(
-            eq('${{ parameters.MigrationSelection }}', 'Pipeline'),
-            eq('${{ parameters.MigrationSelection }}', 'Both')
-          )
+        timeoutInMinutes: 60
         steps:
           - checkout: self
+            fetchDepth: 0
           - task: PowerShell@2
             displayName: 'Install required tooling'
             inputs:
@@ -100,6 +112,29 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
+            displayName: "List all ADO Pipeline IDs"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
+                -AdoProject "$(ADO_PROJECT)"
+                -Mode "list"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
+            env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Audit Artifact"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipeline-audit'
+              artifact: "pipeline-audit"
+              publishLocation: pipeline
+
+          - task: PowerShell@2
             displayName: "Parse config for pipeline conditions"
             name: checkConfig
             inputs:
@@ -108,35 +143,150 @@ stages:
                 $configPath = "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 $ids = ""
                 $mode = ""
+                $type = ""
                 if (Test-Path $configPath) {
                     $config = Get-Content $configPath -Raw | ConvertFrom-Json
                     if ($null -ne $config.PIPELINE_IDS) { $ids = ($config.PIPELINE_IDS -join ',') }
-                    $mode = if ($config.MIGRATE_MODE) { $config.MIGRATE_MODE } else { "dry-run" }
+                    if ($config.MIGRATE_MODE) { $mode = $config.MIGRATE_MODE }
+                    elseif ($config.MODE) { $mode = $config.MODE }
+                    if ($config.PIPELINE_TYPE) { $type = $config.PIPELINE_TYPE }
                 }
+                
+                # Default fallbacks
+                if (-not $mode) { $mode = "dry-run" }
+                if (-not $type) { $type = "build" }
+                
+                Write-Host "Resolved PIPELINE_IDS: $ids"
+                Write-Host "Resolved MIGRATE_MODE: $mode"
+                
                 Write-Host "##vso[task.setvariable variable=HAS_IDS;isOutput=true]$(if ($ids) { 'true' } else { 'false' })"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_IDS;isOutput=true]$ids"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_MODE;isOutput=true]$mode"
+                Write-Host "##vso[task.setvariable variable=RESOLVED_TYPE;isOutput=true]$type"
               pwsh: true
 
-          - task: PublishPipelineArtifact@1
-            displayName: "Publish Pipeline Audit Artifact"
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipeline-audit'
-              artifact: "pipeline-audit"
-              publishLocation: pipeline
-
-      # --- Repo Discovery (Windows) ---
-      - job: DiscoverAndAuditRepos
-        displayName: "1.2 Discover & Audit Repos"
+  # ===========================================================================
+  # PIPELINE MIGRATION: STAGE 2 – MIGRATE
+  # ===========================================================================
+  - stage: MigratePipeline
+    displayName: "2. Migrate Pipelines"
+    dependsOn: PipelineDiscover
+    condition: and(succeeded(), eq(dependencies.PipelineDiscover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'), in('${{ parameters.migrationType }}', 'pipeline', 'both'))
+    variables:
+      PIPELINE_IDS: $[ stageDependencies.PipelineDiscover.AuditPipelines.outputs['checkConfig.RESOLVED_IDS'] ]
+      MIGRATE_MODE: $[ stageDependencies.PipelineDiscover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'] ]
+      PIPELINE_TYPE: $[ stageDependencies.PipelineDiscover.AuditPipelines.outputs['checkConfig.RESOLVED_TYPE'] ]
+    jobs:
+      - job: DryRun
+        displayName: "2.1 Dry-Run Preview"
         pool:
-          vmImage: windows-latest
-        condition: |
-          or(
-            eq('${{ parameters.MigrationSelection }}', 'Repo'),
-            eq('${{ parameters.MigrationSelection }}', 'Both')
-          )
+          vmImage: ubuntu-latest
         steps:
           - checkout: self
+          - task: PowerShell@2
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: 'filePath'
+              filePath: 'pipeline-migration/01-prep/install-tools.ps1'
+              pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Dry-Run pipelines"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
+                -AdoProject "$(ADO_PROJECT)"
+                -PipelineId $(PIPELINE_IDS)
+                -PipelineType "$(PIPELINE_TYPE)"
+                -Mode "dry-run"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
+            env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Dry-Run Output"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
+              artifact: "pipeline-dry-run"
+              publishLocation: pipeline
+
+      - job: Migrate
+        displayName: "2.2 Migrate to GitHub"
+        dependsOn: DryRun
+        pool:
+          vmImage: ubuntu-latest
+        condition: and(succeeded(), eq(stageDependencies.PipelineDiscover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'], 'migrate'))
+        steps:
+          - checkout: self
+          - task: PowerShell@2
+            displayName: 'Install required tooling'
+            inputs:
+              targetType: 'filePath'
+              filePath: 'pipeline-migration/01-prep/install-tools.ps1'
+              pwsh: true
+            env:
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Migrate pipelines"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
+              arguments: >-
+                -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
+                -AdoProject "$(ADO_PROJECT)"
+                -PipelineId $(PIPELINE_IDS)
+                -PipelineType "$(PIPELINE_TYPE)"
+                -Mode "migrate"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
+            env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Migration Output"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
+              artifact: "pipeline-migrate"
+              publishLocation: pipeline
+
+  # ===========================================================================
+  # REPO MIGRATION: STAGE 1 – DISCOVER
+  # ===========================================================================
+  - stage: RepoDiscover
+    displayName: "1. Discover & Analyse"
+    condition: in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim')
+    pool:
+      vmImage: windows-latest
+    jobs:
+      - job: DiscoverAndAudit
+        displayName: "1.1 Discover Repos & Audit Sizes"
+        timeoutInMinutes: 60
+        steps:
+          - checkout: self
+          - task: PowerShell@2
+            displayName: "Install git-sizer"
+            inputs:
+              targetType: inline
+              script: |
+                Invoke-WebRequest -Uri "https://github.com/github/git-sizer/releases/download/v1.5.0/git-sizer-1.5.0-windows-amd64.zip" -OutFile git-sizer.zip
+                Expand-Archive -Path git-sizer.zip -DestinationPath "$env:AGENT_TOOLSDIRECTORY\git-sizer" -Force
+                Write-Host "##vso[task.prependpath]$env:AGENT_TOOLSDIRECTORY\git-sizer"
+              pwsh: true
+
           - task: PowerShell@2
             displayName: "Replace config tokens"
             inputs:
@@ -153,133 +303,115 @@ stages:
               pwsh: true
             env:
               ADO_PAT: $(ADO_PAT)
-              GH_PAT: $(GH_PAT)
-              GH_TOKEN: $(GH_PAT)
+              GH_PAT:  $(GH_PAT)
 
           - task: PowerShell@2
-            displayName: "Run Discovery & Audit"
+            displayName: "Ensure output directories"
             inputs:
               targetType: inline
               script: |
-                # Ensure output dirs
-                "reports","logs","audit","dashboard","tmp" | ForEach-Object {
+                "reports","logs","audit","dashboard","tmp\clones" | ForEach-Object {
                     New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\$_" -Force | Out-Null
                 }
-                # Run scripts
-                & '$(Build.SourcesDirectory)\repo-migration\01-discover\discover-repos.ps1' -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
-                
-                if (-not $([bool]${{ parameters.SkipAudit }})) {
-                    Write-Host "Running size audit..."
-                    & '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1' -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
-                } else {
-                    Write-Host "Skipping size audit as requested."
-                }
+              pwsh: true
+
+          - task: PowerShell@2
+            displayName: "1.1 Discover Repos"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\discover-repos.ps1'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+            condition: ne('${{ parameters.migrationType }}', 'reclaim')
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: PowerShell@2
+            displayName: "1.2 Audit Repo Sizes"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+            condition: and(ne('${{ parameters.migrationType }}', 'reclaim'), eq('${{ parameters.SkipAudit }}', false))
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Discovery Reports"
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              artifact: "discovery-reports"
+              publishLocation: pipeline
+            condition: always()
+
+      - job: ScanSecrets
+        displayName: "1.3 Scan Secrets (gitleaks)"
+        dependsOn: DiscoverAndAudit
+        condition: and(succeeded(), eq('${{ parameters.SkipSecretScan }}', false), ne('${{ parameters.migrationType }}', 'reclaim'))
+        steps:
+          - task: PowerShell@2
+            displayName: "Install gitleaks"
+            inputs:
+              targetType: inline
+              script: |
+                Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_windows_x64.zip" -OutFile gitleaks.zip
+                Expand-Archive -Path gitleaks.zip -DestinationPath "$env:AGENT_TOOLSDIRECTORY\gitleaks" -Force
+                Write-Host "##vso[task.prependpath]$env:AGENT_TOOLSDIRECTORY\gitleaks"
+              pwsh: true
+
+          - task: PowerShell@2
+            displayName: "1.3 Scan Secrets"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
+              arguments: >-
+                -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                -RepoName "${{ parameters.ADORepo }}"
+                -BatchName "${{ parameters.BatchName }}"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
-            displayName: "Publish Repo Discovery Reports"
+            displayName: "Publish Scan Reports"
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-              artifact: "repo-discovery-reports"
+              artifact: "scan-reports"
               publishLocation: pipeline
+            condition: always()
 
   # ===========================================================================
-  # STAGE 2 – REVIEW GATE
+  # REPO MIGRATION: STAGE 2 – REVIEW GATE
   # ===========================================================================
   - stage: ReviewGate
     displayName: "2. Review Gate"
-    dependsOn: Discover
+    dependsOn: RepoDiscover
+    condition: and(not(failed()), not(canceled()), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     jobs:
       - job: ReviewGateJob
-        displayName: "Gate: Review Findings"
+        displayName: "Gate: Review Discovery Findings"
         pool: server
         steps:
           - task: ManualValidation@0
             inputs:
               instructions: |
-                Please review the discovery results before approving the migration:
-
-                FOR PIPELINE MIGRATION:
-                - Check 'pipeline-audit' artifact for Action Importer reports.
-                - Verify 'pipeline-migration/config/migration-config.json' has the correct PIPELINE_IDS.
-
-                FOR REPO MIGRATION:
-                - Check 'repo-discovery-reports' for inventory and sizes.
-                - Repos > 40GB or files > 100MB may require manual handling.
-                - Verify 'repo-migration/config/repo-migration-config.json' batches.
-
-                Approve to proceed with the migration or Reject to stop.
+                Review the discovery artifacts before proceeding to migration.
+                Check: repo-inventory.json, repo-sizes.json, and secret-scan findings.
+                Approve to proceed to migration, or Reject to abort.
 
   # ===========================================================================
-  # STAGE 3 – MIGRATE
+  # REPO MIGRATION: STAGE 3A – SINGLE REPO MIGRATION
   # ===========================================================================
-  - stage: Migrate
-    displayName: "3. Migration"
+  - stage: MigrateSingle
+    displayName: "3a. Migrate (Single Repo)"
     dependsOn: ReviewGate
+    condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Single'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
+    pool:
+      vmImage: windows-latest
     jobs:
-      # --- Pipeline Migration (Ubuntu) ---
-      - job: MigratePipelines
-        displayName: "3.1 Migrate Pipelines"
-        pool:
-          vmImage: ubuntu-latest
-        condition: |
-          and(
-            succeeded(),
-            or(eq('${{ parameters.MigrationSelection }}', 'Pipeline'), eq('${{ parameters.MigrationSelection }}', 'Both')),
-            eq(dependencies.Discover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true')
-          )
-        variables:
-          PIPELINE_IDS: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_IDS'] ]
-          MIGRATE_MODE: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'] ]
-        steps:
-          - checkout: self
-          - task: PowerShell@2
-            displayName: 'Install required tooling'
-            inputs:
-              targetType: 'filePath'
-              filePath: 'pipeline-migration/01-prep/install-tools.ps1'
-              pwsh: true
-            env:
-              GH_PAT: $(GH_PAT)
-              GH_TOKEN: $(GH_PAT)
-
-          - task: PowerShell@2
-            displayName: "Run Migration"
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
-              arguments: >-
-                -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
-                -AdoProject "$(ADO_PROJECT)"
-                -PipelineId $(PIPELINE_IDS)
-                -Mode "$(MIGRATE_MODE)"
-              pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
-            env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PAT: $(ADO_PAT)
-              GH_PAT: $(GH_PAT)
-              GH_TOKEN: $(GH_PAT)
-
-          - task: PublishPipelineArtifact@1
-            displayName: "Publish Pipeline Migration Output"
-            inputs:
-              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
-              artifact: "pipeline-migration-output"
-              publishLocation: pipeline
-
-      # --- Repo Migration (Windows) ---
-      - job: MigrateRepos
-        displayName: "3.2 Migrate Repositories"
-        pool:
-          vmImage: windows-latest
-        condition: |
-          and(
-            succeeded(),
-            or(eq('${{ parameters.MigrationSelection }}', 'Repo'), eq('${{ parameters.MigrationSelection }}', 'Both'))
-          )
+      - job: MigrateSingleRepo
+        displayName: "Migrate ${{ parameters.ADORepo }}"
         steps:
           - checkout: self
           - task: PowerShell@2
@@ -301,35 +433,19 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
-            displayName: "Run Repo Migration"
+            displayName: "Migrate Single Repo"
             inputs:
               targetType: inline
               script: |
-                # Ensure output dirs
-                "reports","logs","audit","dashboard","tmp" | ForEach-Object {
-                    New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\$_" -Force | Out-Null
-                }
-                
-                if ('${{ parameters.RepoMigrationMode }}' -eq 'Single') {
-                    $adoRepo = '${{ parameters.ADORepo }}'.Trim()
-                    $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
-                    if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
-                    
-                    & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-single.ps1' `
-                        -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -ADORepo $adoRepo `
-                        -GHOrg '$(GH_ORG)' -GHRepo $ghRepo `
-                        -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
-                        -DryRun $([bool]${{ parameters.DryRun }}) `
-                        -SkipAudit $([bool]${{ parameters.SkipAudit }})
-                } else {
-                    & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-batch.ps1' `
-                        -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -GHOrg '$(GH_ORG)' `
-                        -ConfigPath '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json' `
-                        -BatchName '${{ parameters.BatchName }}' `
-                        -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
-                        -DryRun $([bool]${{ parameters.DryRun }}) `
-                        -SkipAudit $([bool]${{ parameters.SkipAudit }})
-                }
+                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
+                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+                & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-single.ps1' `
+                    -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -ADORepo $adoRepo `
+                    -GHOrg '$(GH_ORG)' -GHRepo $ghRepo `
+                    -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
+                    -DryRun $([bool]${{ parameters.DryRun }}) `
+                    -SkipAudit $([bool]${{ parameters.SkipAudit }})
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -338,31 +454,96 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
-            displayName: "Publish Repo Migration Output"
+            displayName: "Publish Migration Logs"
+            condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)\repo-migration\output'
-              artifact: "repo-migration-output"
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
+              artifact: "MigrationLogs-${{ parameters.ADORepo }}"
               publishLocation: pipeline
 
   # ===========================================================================
-  # STAGE 4 – VALIDATE
+  # REPO MIGRATION: STAGE 3B – BATCH REPO MIGRATION
+  # ===========================================================================
+  - stage: MigrateBatch
+    displayName: "3b. Migrate (Batch)"
+    dependsOn: ReviewGate
+    condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Batch'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
+    pool:
+      vmImage: windows-latest
+    jobs:
+      - job: MigrateBatchRepos
+        displayName: "Migrate Batch"
+        steps:
+          - checkout: self
+          - task: PowerShell@2
+            displayName: "Install GitHub CLI + ado2gh"
+            inputs:
+              targetType: inline
+              script: |
+                $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
+                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
+                    Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
+                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
+                    Write-Host "##vso[task.prependpath]$ghBin"
+                }
+                $env:GH_TOKEN = "$(GH_PAT)"
+                gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+              pwsh: true
+            env:
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Migrate Batch Repos"
+            inputs:
+              targetType: inline
+              script: |
+                & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-batch.ps1' `
+                    -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -GHOrg '$(GH_ORG)' `
+                    -ConfigPath '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json' `
+                    -BatchName '${{ parameters.BatchName }}' `
+                    -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
+                    -DryRun $([bool]${{ parameters.DryRun }}) `
+                    -SkipAudit $([bool]${{ parameters.SkipAudit }})
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+            env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Batch Migration Logs"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
+              artifact: "BatchMigrationLogs"
+              publishLocation: pipeline
+
+  # ===========================================================================
+  # REPO MIGRATION: STAGE 4 – VALIDATE
   # ===========================================================================
   - stage: Validate
-    displayName: "4. Validation"
-    dependsOn: Migrate
+    displayName: "4. Validate Migration"
+    dependsOn:
+      - MigrateSingle
+      - MigrateBatch
     condition: |
       and(
-        succeeded(),
+        in('${{ parameters.migrationType }}', 'repo', 'both'),
         eq('${{ parameters.RunValidation }}', true),
-        or(eq('${{ parameters.MigrationSelection }}', 'Repo'), eq('${{ parameters.MigrationSelection }}', 'Both'))
+        or(
+          eq(dependencies.MigrateSingle.result, 'Succeeded'),
+          eq(dependencies.MigrateSingle.result, 'SucceededWithIssues'),
+          eq(dependencies.MigrateBatch.result, 'Succeeded'),
+          eq(dependencies.MigrateBatch.result, 'SucceededWithIssues')
+        )
       )
+    pool:
+      vmImage: windows-latest
     jobs:
       - job: ValidateRepos
         displayName: "4.1 Validate Migrated Repos"
-        pool:
-          vmImage: windows-latest
-        condition: |
-          or(eq('${{ parameters.MigrationSelection }}', 'Repo'), eq('${{ parameters.MigrationSelection }}', 'Both'))
         steps:
           - checkout: self
           - task: PowerShell@2
@@ -378,4 +559,119 @@ stages:
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Validation Reports"
+            condition: always()
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              artifact: "ValidationReports"
+              publishLocation: pipeline
+
+  # ===========================================================================
+  # REPO MIGRATION: STAGE 5 – LIST MANNEQUINS
+  # ===========================================================================
+  - stage: ListMannequins
+    displayName: "5. List Mannequins"
+    dependsOn:
+      - RepoDiscover
+      - Validate
+    condition: |
+      and(
+        not(failed()),
+        in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim'),
+        ne('${{ parameters.ReclaimMode }}', 'Skip')
+      )
+    pool:
+      vmImage: windows-latest
+    jobs:
+      - job: ListAndPreview
+        displayName: "List Mannequins"
+        steps:
+          - checkout: self
+          - task: PowerShell@2
+            displayName: "Install GitHub CLI + GEI"
+            inputs:
+              targetType: inline
+              script: |
+                $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
+                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
+                    Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
+                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
+                    Write-Host "##vso[task.prependpath]$ghBin"
+                }
+                $env:GH_TOKEN = "$(GH_PAT)"
+                gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+              pwsh: true
+            env:
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PowerShell@2
+            displayName: "Generate Mannequin CSV"
+            inputs:
+              targetType: inline
+              script: |
+                New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\reports" -Force | Out-Null
+                $ghOrg = '$(GH_ORG)'
+                $csv = "$(Build.SourcesDirectory)\repo-migration\output\reports\mannequins.csv"
+                gh ado2gh generate-mannequin-csv --github-org $ghOrg --output $csv
+              pwsh: true
+            env:
+              GH_TOKEN: $(GH_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Mannequin Report"
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              artifact: "MannequinReports"
+              publishLocation: pipeline
+
+  # ===========================================================================
+  # REPO MIGRATION: STAGE 6 – RECLAIM REVIEW
+  # ===========================================================================
+  - stage: ReclaimReviewGate
+    displayName: "6. Review Mannequin Mappings"
+    dependsOn: ListMannequins
+    condition: and(succeeded(), eq('${{ parameters.ReclaimMode }}', 'Execute'))
+    jobs:
+      - job: ReviewMappings
+        displayName: "Gate: Review Mannequin Mappings"
+        pool: server
+        steps:
+          - task: ManualValidation@0
+            inputs:
+              instructions: "Review the mannequin mapping preview. Approve to send reclaim invitations."
+
+  # ===========================================================================
+  # REPO MIGRATION: STAGE 7 – RECLAIM MANNEQUINS
+  # ===========================================================================
+  - stage: ReclaimMannequins
+    displayName: "7. Reclaim Mannequins"
+    dependsOn: ReclaimReviewGate
+    condition: succeeded()
+    pool:
+      vmImage: windows-latest
+    jobs:
+      - job: Reclaim
+        displayName: "Send Reclaim Invitations"
+        steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: "MannequinReports"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+
+          - task: PowerShell@2
+            displayName: "Reclaim Mannequins"
+            inputs:
+              targetType: inline
+              script: |
+                $ghOrg = '$(GH_ORG)'
+                $reclaimCsv = "$(Build.SourcesDirectory)\repo-migration\output\reports\reclaim-input.csv"
+                if (Test-Path $reclaimCsv) {
+                    gh ado2gh reclaim-mannequin --github-org $ghOrg --csv $reclaimCsv --force
+                }
+              pwsh: true
+            env:
               GH_TOKEN: $(GH_PAT)
