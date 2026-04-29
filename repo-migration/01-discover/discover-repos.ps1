@@ -14,6 +14,7 @@
     Path to repo-migration-config.json
 #>
 [CmdletBinding()]
+param(
     [Parameter(Mandatory = $false)]
     [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json",
 
