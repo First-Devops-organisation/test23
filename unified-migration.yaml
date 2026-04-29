@@ -349,6 +349,18 @@ stages:
         displayName: "1.3 Scan Secrets (gitleaks)"
         dependsOn: DiscoverAndAudit
         condition: and(succeeded(), eq('${{ parameters.SkipSecretScan }}', false), ne('${{ parameters.migrationType }}', 'reclaim'))
+        strategy:
+          maxParallel: 3
+          matrix:
+            Batch0:
+              BATCH_INDEX: 0
+              BATCH_TOTAL: 3
+            Batch1:
+              BATCH_INDEX: 1
+              BATCH_TOTAL: 3
+            Batch2:
+              BATCH_INDEX: 2
+              BATCH_TOTAL: 3
         steps:
           - task: PowerShell@2
             displayName: "Install gitleaks"
@@ -366,6 +378,7 @@ stages:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
               arguments: >-
                 -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)
                 -RepoName "${{ parameters.ADORepo }}"
                 -BatchName "${{ parameters.BatchName }}"
               pwsh: true
