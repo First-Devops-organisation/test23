@@ -41,7 +41,7 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [],
+  "PIPELINE_IDS": [1166],
   "PIPELINE_REPO_MAP": {},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "",
