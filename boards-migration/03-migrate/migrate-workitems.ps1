@@ -112,6 +112,7 @@ if ($ghProjNum) {
     $severityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Severity" -and $_.options }
     $storyPtsField  = $fields | Where-Object { $_.name -eq "Story Points" }
     $adoIdField     = $fields | Where-Object { $_.name -eq "ADO ID" }
+    $valueAreaField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Value Area" }
 
     # Priority field - find it (built-in OR custom) and read its actual options
     $priorityField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Priority" }
@@ -157,6 +158,7 @@ if ($ghProjNum) {
     if ($severityField)  { Write-Log -Message "Field 'Severity': $($severityField.options.Count) options" -Level "INFO" }
     if ($storyPtsField)  { Write-Log -Message "Field 'Story Points': ready (number)" -Level "INFO" }
     if ($adoIdField)     { Write-Log -Message "Field 'ADO ID': ready (number)" -Level "INFO" }
+    if ($valueAreaField) { Write-Log -Message "Field 'Value Area': $($valueAreaField.options.Count) options" -Level "INFO" }
     if ($sizeField)      { Write-Log -Message "Field 'Size': $($sizeField.options.Count) options" -Level "INFO" }
     if ($estimateField)  { Write-Log -Message "Field 'Estimate': ready (number)" -Level "INFO" }
     if ($iterationField) { Write-Log -Message "Field 'Iteration': ready" -Level "INFO" }
@@ -438,12 +440,16 @@ foreach ($item in $sortedItems) {
 
                 # --- Field: Story Points (only from StoryPoints, NOT Effort) ---
                 $sp = $item.fields.'Microsoft.VSTS.Scheduling.StoryPoints'
-                if ($sp -and [double]$sp -gt 0) {
+                $effortVal = $item.fields.'Microsoft.VSTS.Scheduling.Effort'
+                Write-Log -Message "  ADO fields: StoryPoints='$sp' Effort='$effortVal'" -Level "DEBUG"
+                if ($sp -ne $null -and $sp -ne '' -and [double]$sp -gt 0) {
                     if ($storyPtsField) {
                         Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
                             -FieldId $storyPtsField.id -Value ([double]$sp) -Pat $ghPat
-                        Write-Log -Message "  Story Points: $sp" -Level "DEBUG"
+                        Write-Log -Message "  Story Points SET: $sp" -Level "INFO"
                     }
+                } else {
+                    Write-Log -Message "  Story Points SKIPPED (no value in ADO)" -Level "DEBUG"
                 }
 
                 # --- Field: ADO ID ---
@@ -453,6 +459,18 @@ foreach ($item in $sortedItems) {
                     Write-Log -Message "  ADO ID: $adoId" -Level "DEBUG"
                 }
 
+                # --- Field: Value Area (Business / Architectural) ---
+                $adoValueArea = $item.fields.'Microsoft.VSTS.Common.ValueArea'
+                if ($adoValueArea -and $valueAreaField -and $valueAreaField.options) {
+                    $vaOpt = $valueAreaField.options | Where-Object { $_.name -eq $adoValueArea }
+                    if ($vaOpt) {
+                        Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
+                            -FieldId $valueAreaField.id -OptionId $vaOpt.id -Pat $ghPat
+                        Write-Log -Message "  Value Area: '$adoValueArea'" -Level "INFO"
+                    } else {
+                        Write-Log -Message "  Value Area '$adoValueArea' not in GitHub options" -Level "WARN"
+                    }
+                }
 
 
             } catch {

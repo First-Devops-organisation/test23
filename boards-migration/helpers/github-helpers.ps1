@@ -202,7 +202,8 @@ function Ensure-GhProjectCustomFields {
         [bool]$CreatePriority = $true,
         [bool]$CreateSeverity = $true,
         [bool]$CreateStoryPoints = $true,
-        [bool]$CreateAdoId = $true
+        [bool]$CreateAdoId = $true,
+        [bool]$CreateValueArea = $true
     )
 
     $fields = Get-GhProjectFields -ProjectId $ProjectId -Pat $Pat
@@ -283,6 +284,22 @@ function Ensure-GhProjectCustomFields {
         } else {
             $result["adoId"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
                 -FieldName "ADO ID" -DataType "NUMBER"
+        }
+    }
+
+    # --- Value Area (Business / Architectural) ---
+    if ($CreateValueArea) {
+        $existing = Find-Field "Value Area"
+        if ($existing) {
+            Write-Log -Message "Field 'Value Area' already exists" -Level "INFO"
+            $result["valueArea"] = $existing
+        } else {
+            $opts = @(
+                @{ name = "Business"; color = "BLUE" },
+                @{ name = "Architectural"; color = "PURPLE" }
+            )
+            $result["valueArea"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
+                -FieldName "Value Area" -DataType "SINGLE_SELECT" -Options $opts
         }
     }
 
