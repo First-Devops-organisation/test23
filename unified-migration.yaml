@@ -87,7 +87,7 @@ stages:
           - task: PowerShell@2
             displayName: "Run audit-pipelines.ps1"
             inputs:
-              filePath: '$(Build.SourcesDirectory)\pipeline-migration\00-discovery\audit-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/00-discovery/audit-pipelines.ps1'
               arguments: >-
                 -AdoOrg "$(ADO_ORG)"
                 -AdoProject "$(ADO_PROJECT)"
@@ -95,7 +95,7 @@ stages:
                 -GitHubPat "$(GH_PAT)"
                 -OutputDir "output/pipeline-audit"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)\pipeline-migration'
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
@@ -104,13 +104,13 @@ stages:
           - task: PowerShell@2
             displayName: "List all ADO Pipeline IDs"
             inputs:
-              filePath: '$(Build.SourcesDirectory)\pipeline-migration\02-migrate\migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -Mode "list"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)\pipeline-migration'
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
@@ -128,7 +128,7 @@ stages:
             displayName: "1. Pipeline Audit Summary"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipeline-audit\dashboard\index.html'
+              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipeline-audit/dashboard/index.html'
               tabName: "1. Pipeline Audit Summary"
 
           - task: PowerShell@2
@@ -137,7 +137,7 @@ stages:
             inputs:
               targetType: 'inline'
               script: |
-                $configPath = "$(Build.SourcesDirectory)\pipeline-migration\config\migration-config.json"
+                $configPath = "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 $ids = ""
                 $mode = ""
                 $type = ""
@@ -205,7 +205,7 @@ stages:
           - task: PowerShell@2
             displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
             inputs:
-              filePath: '$(Build.SourcesDirectory)\pipeline-migration\02-migrate\migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
@@ -213,7 +213,7 @@ stages:
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)\pipeline-migration'
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
@@ -235,7 +235,7 @@ stages:
             condition: always()
             continueOnError: true
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipelines\index.html'
+              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines/index.html'
               tabName: "2. Pipeline Dry-Run Preview"
 
       - job: Migrate
@@ -259,7 +259,7 @@ stages:
           - task: PowerShell@2
             displayName: "Migrate pipelines: $(PIPELINE_IDS)"
             inputs:
-              filePath: '$(Build.SourcesDirectory)\pipeline-migration\02-migrate\migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
@@ -267,7 +267,7 @@ stages:
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)\pipeline-migration'
+              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
@@ -280,7 +280,7 @@ stages:
             displayName: "Publish Migration Output"
             condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)\pipeline-migration\output\pipelines'
+              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
               artifact: "pipeline-migrate"
               publishLocation: pipeline
               
@@ -288,7 +288,7 @@ stages:
             displayName: "3. Pipeline Migration Result"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipelines\dashboard\index.html'
+              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines/dashboard/index.html'
               tabName: "3. Pipeline Migration Result"
   # ===========================================================================
   # REPO MIGRATION: STAGES SYNCED WITH azure-pipeline.yaml
@@ -722,9 +722,9 @@ stages:
     dependsOn:
       - MigrateSingle
       - MigrateBatch
+      - MigratePipeline
     condition: |
       and(
-        in('${{ parameters.migrationType }}', 'repo', 'both'),
         eq('${{ parameters.RunValidation }}', true),
         not(failed()),
         not(canceled())
@@ -742,11 +742,13 @@ stages:
           - checkout: self
           - task: DownloadPipelineArtifact@2
             displayName: "Download Single Audit Data"
+            continueOnError: true
             inputs:
               artifact: "MigrationAudit-${{ parameters.ADORepo }}"
               path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
           - task: DownloadPipelineArtifact@2
             displayName: "Download Single Dashboard"
+            continueOnError: true
             inputs:
               artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
               path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
@@ -840,18 +842,21 @@ stages:
           - checkout: self
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Reports"
+            continueOnError: true
             inputs:
               artifact: "BatchMigrationReports"
               path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Audit Data"
+            continueOnError: true
             inputs:
               artifact: "BatchMigrationAudit"
               path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Dashboards"
+            continueOnError: true
             inputs:
               artifact: "BatchMigrationDashboards"
               path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
