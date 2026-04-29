@@ -45,6 +45,6 @@
   "PIPELINE_REPO_MAP": {},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "",
-  "GH_REPO": "Appinsight",
+  "GH_REPO": "",
   "REUSABLE_PIPELINE_IDS": []
 }
