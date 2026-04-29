@@ -42,8 +42,8 @@
     }
   ],
   "PIPELINE_IDS": [1166],
-  "PIPELINE_REPO_MAP": {},
+  "PIPELINE_REPO_MAP": {"1166": "NodeJS"},
   "PIPELINE_TYPE": "build",
-  "MIGRATE_MODE": "",
+  "MIGRATE_MODE": "migrate",
   "GH_REPO": "Appinsight"
 }
