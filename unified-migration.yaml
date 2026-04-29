@@ -330,10 +330,59 @@ stages:
               reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\repo-inventory.html'
               tabName: "Discovery Report"
 
-      - job: ScanSecrets
-        displayName: "1.3 Scan Secrets (gitleaks)"
+      - job: ScanSecretsSingle
+        displayName: "1.3 Scan Secrets (Single Repo)"
         dependsOn: DiscoverAndAudit
-        condition: and(succeeded(), eq('${{ parameters.SkipSecretScan }}', false))
+        condition: and(succeeded(), eq('${{ parameters.SkipSecretScan }}', false), eq('${{ parameters.MigrationMode }}', 'Single'))
+        steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Discovery Inventory"
+            inputs:
+              artifact: "discovery-reports"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+
+          - task: PowerShell@2
+            displayName: "Install gitleaks"
+            inputs:
+              targetType: inline
+              script: |
+                Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_windows_x64.zip" -OutFile gitleaks.zip
+                Expand-Archive -Path gitleaks.zip -DestinationPath "$env:AGENT_TOOLSDIRECTORY\gitleaks" -Force
+                Write-Host "##vso[task.prependpath]$env:AGENT_TOOLSDIRECTORY\gitleaks"
+              pwsh: true
+
+          - task: PowerShell@2
+            displayName: "1.3 Scan Secrets"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
+              arguments: >-
+                -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                -RepoName "${{ parameters.ADORepo }}"
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+            env:
+              ADO_PAT: $(ADO_PAT)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Scan Reports"
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              artifact: "scan-reports-single"
+              publishLocation: pipeline
+            condition: always()
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Secret Scan Report"
+            condition: always()
+            continueOnError: true
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report.html'
+              tabName: "Secret Scan Report"
+
+      - job: ScanSecretsBatch
+        displayName: "1.3 Scan Secrets (Batch Matrix)"
+        dependsOn: DiscoverAndAudit
+        condition: and(succeeded(), eq('${{ parameters.SkipSecretScan }}', false), eq('${{ parameters.MigrationMode }}', 'Batch'))
         strategy:
           maxParallel: 3
           matrix:
@@ -370,7 +419,6 @@ stages:
               arguments: >-
                 -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)
-                -RepoName "${{ parameters.ADORepo }}"
                 -BatchName "${{ parameters.BatchName }}"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
@@ -386,7 +434,7 @@ stages:
             condition: always()
 
           - task: PublishHtmlReport@1
-            displayName: "Show Secret Scan Report on Pipeline Tab"
+            displayName: "Show Secret Scan Report"
             condition: always()
             continueOnError: true
             inputs:
@@ -394,7 +442,7 @@ stages:
               tabName: "Secret Scan Report"
 
   # ===========================================================================
-  # REPO MIGRATION: STAGE 2 – REVIEW GATE
+  # REPO MIGRATION: STAGE 2 – REVIEW GaATE
   # ===========================================================================
   - stage: ReviewGate
     displayName: "2. Review Gate"
