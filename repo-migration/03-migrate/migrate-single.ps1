@@ -97,6 +97,7 @@ $auditData = @{
     PRClosed      = "N/A"; DefaultBranch = "N/A"
     LatestHash    = "N/A"
 }
+$missingInGH = @()
 
 # ── Output directories ───────────────────────────────────────────────────────
 $reportDir  = "$OutputDir\reports"
@@ -813,8 +814,11 @@ $html += "</div><div class='pr-pills' style='margin-top:14px;'><span class='pr-p
 # Key branches
 $html += "<div class='card'><h2>&#x1F511; Key Branches</h2><table><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:right;'>Commits</th></tr></thead><tbody>$topBranchHtml</tbody></table></div>" + $nl
 # All branches
-$totalBranchCount = $branchCount + $missingInGH.Count
-$branchSummary = if ($missingInGH.Count -gt 0) { "$totalBranchCount — $branchCount in GitHub, $($missingInGH.Count) missing from ADO" } else { "$branchCount" }
+$bCountInt = if ($branchCount -match '^\d+$') { [int]$branchCount } else { 0 }
+$mCountInt = if ($missingInGH.Count -gt 0) { $missingInGH.Count } else { 0 }
+$totalBranchCount = $bCountInt + $mCountInt
+
+$branchSummary = if ($mCountInt -gt 0) { "$totalBranchCount — $branchCount in GitHub, $mCountInt missing from ADO" } else { "$branchCount" }
 $html += "<div class='card'><h2>&#x1F33F; All Branches ($branchSummary)</h2><details><summary>Click to expand all branches</summary><table style='margin-top:10px;'><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:center;'>Status</th></tr></thead><tbody>$allBranchHtml</tbody></table></details></div>" + $nl
 # Audit & Artifacts
 $html += "<div class='card'><h2>&#x1F4E6; Audit &amp; Artifacts</h2>" + $nl
