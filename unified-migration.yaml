@@ -620,6 +620,8 @@ stages:
               pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Generate Mannequin CSV"
@@ -687,4 +689,6 @@ stages:
                 }
               pwsh: true
             env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
