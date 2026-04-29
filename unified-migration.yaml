@@ -586,7 +586,7 @@ stages:
   # REPO MIGRATION: STAGE 5 – LIST MANNEQUINS
   # ===========================================================================
   - stage: ListMannequins
-    displayName: "5. List Mannequins"
+    displayName: "5. List Mannequins & Preview Mappings"
     dependsOn: RepoDiscover
     condition: |
       and(
@@ -599,37 +599,137 @@ stages:
       vmImage: windows-latest
     jobs:
       - job: ListAndPreview
-        displayName: "List Mannequins"
+        displayName: "List Mannequins in GitHub Org"
+        timeoutInMinutes: 30
         steps:
           - checkout: self
           - task: PowerShell@2
-            displayName: "Install GitHub CLI + GEI"
+            displayName: "Install GitHub CLI + GEI extension"
             inputs:
               targetType: inline
               script: |
                 $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
                 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+                    Write-Host "Installing GitHub CLI..."
                     Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_windows_amd64.zip" -OutFile gh.zip
                     Expand-Archive -Path gh.zip -DestinationPath $ghDir -Force
                     $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter gh.exe | Select-Object -First 1).DirectoryName
                     Write-Host "##vso[task.prependpath]$ghBin"
+                    $env:PATH = "$ghBin;$env:PATH"
                 }
+                gh --version
                 $env:GH_TOKEN = "$(GH_PAT)"
+                gh auth status
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+                gh extension list
               pwsh: true
             env:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
-            displayName: "Generate Mannequin CSV"
+            displayName: "Ensure output directories"
             inputs:
               targetType: inline
               script: |
-                New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\reports" -Force | Out-Null
-                $ghOrg = '$(GH_ORG)'
-                $csv = "$(Build.SourcesDirectory)\repo-migration\output\reports\mannequins.csv"
-                gh ado2gh generate-mannequin-csv --github-org $ghOrg --output $csv
+                "reports" | ForEach-Object {
+                    New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)\repo-migration\output\$_" -Force | Out-Null
+                }
+              pwsh: true
+
+          - task: PowerShell@2
+            displayName: "List Mannequins & Preview Mappings"
+            inputs:
+              targetType: inline
+              script: |
+                $ghOrg     = '$(GH_ORG)'
+                $reportDir = '$(Build.SourcesDirectory)\repo-migration\output\reports'
+                Write-Host "=== Fetching Mannequins from $ghOrg ===" -ForegroundColor Cyan
+                $mannequinCsv = "$reportDir\mannequins.csv"
+                gh ado2gh generate-mannequin-csv --github-org $ghOrg --output $mannequinCsv 2>&1 | ForEach-Object { Write-Host "  $_" }
+                Write-Host "`n=== Raw Mannequin CSV Check ==="
+                if (Test-Path $mannequinCsv) {
+                    Get-Content $mannequinCsv -TotalCount 3 | Write-Host
+                } else {
+                    Write-Warning "File not generated: $mannequinCsv"
+                }
+                Write-Host "==============================="
+                $mannequins = @(Import-Csv $mannequinCsv -Header "m_user","m_id","m_target" | Select-Object -Skip 1)
+                Write-Host "`n  Total mannequins found: $($mannequins.Count)"
+                $mappingPath = '$(Build.SourcesDirectory)\repo-migration\config\user-mappings.csv'
+                if (-not (Test-Path $mappingPath)) {
+                    Write-Warning "user-mappings.csv not found at $mappingPath"
+                    $mappings = @()
+                } else {
+                    $rawMappings = Get-Content $mappingPath
+                    $firstDataLine = 0
+                    for ($i=0; $i -lt $rawMappings.Count; $i++) {
+                        if (-not [string]::IsNullOrWhiteSpace($rawMappings[$i])) {
+                            $firstDataLine = $i
+                            break
+                        }
+                    }
+                    $mappings = $rawMappings | Select-Object -Skip $firstDataLine | ConvertFrom-Csv
+                    Write-Host "  User mappings loaded: $($mappings.Count)"
+                }
+                $preview = @()
+                foreach ($m in $mannequins) {
+                    $login = if ($m.m_user) { $m.m_user.Trim() } else { "" }
+                    $mId   = if ($m.m_id) { $m.m_id.Trim() } else { "" }
+                    if ([string]::IsNullOrWhiteSpace($login)) { continue }
+                    $match = $mappings | Where-Object {
+                        ([string]::IsNullOrEmpty($_.ADOEmail) ? $false : ($_.ADOEmail.Trim() -eq $login)) -or
+                        ([string]::IsNullOrEmpty($_.ADOUsername) ? $false : ($_.ADOUsername.Trim() -eq $login)) -or
+                        ([string]::IsNullOrEmpty($_.ADODisplayName) ? $false : ($_.ADODisplayName.Trim() -eq $login)) -or
+                        ([string]::IsNullOrEmpty($_.ADOEmail) ? $false : ($_.ADOEmail.Split('@')[0].Trim() -eq $login))
+                    } | Select-Object -First 1
+                    $preview += [PSCustomObject]@{
+                        Mannequin    = $login
+                        MannequinId  = $mId
+                        MappedTo     = if ($match) { $match.GitHubUsername } else { "*** NO MAPPING ***" }
+                        MatchedBy    = if ($match) {
+                            if ($match.ADOEmail.Trim() -eq $login) { "ADOEmail" }
+                            elseif ($match.ADOUsername.Trim() -eq $login) { "ADOUsername" }
+                            elseif ($match.ADODisplayName.Trim() -eq $login) { "ADODisplayName" }
+                            else { "EmailPrefix" }
+                        } else { "-" }
+                    }
+                }
+                Write-Host "`n=== Mapping Preview ===" -ForegroundColor Cyan
+                Write-Host ("-" * 90)
+                Write-Host ("{0,-30} {1,-25} {2,-15}" -f "Mannequin", "Mapped To", "Matched By")
+                Write-Host ("-" * 90)
+                foreach ($p in $preview) {
+                    $color = if ($p.MappedTo -eq "*** NO MAPPING ***") { "Red" } else { "Green" }
+                    Write-Host ("{0,-30} {1,-25} {2,-15}" -f $p.Mannequin, $p.MappedTo, $p.MatchedBy) -ForegroundColor $color
+                }
+                Write-Host ("-" * 90)
+                $preview | Export-Csv "$reportDir\mannequin-mapping-preview.csv" -NoTypeInformation -Encoding utf8
+                $reclaimRows = @()
+                foreach ($p in $preview) {
+                    if ($p.MappedTo -ne "*** NO MAPPING ***") {
+                        $reclaimRows += [PSCustomObject]@{
+                            'mannequin-user' = $p.Mannequin
+                            'mannequin-id'   = $p.MannequinId
+                            'target-user'    = $p.MappedTo
+                        }
+                    }
+                }
+                if ($reclaimRows.Count -gt 0) {
+                    $csvLines = @("mannequin-user,mannequin-id,target-user")
+                    foreach ($r in $reclaimRows) {
+                        $csvLines += "$($r.'mannequin-user'),$($r.'mannequin-id'),$($r.'target-user')"
+                    }
+                    $csvLines | Out-File "$reportDir\reclaim-input.csv" -Encoding utf8
+                }
+                $md  = "# Mannequin Reclaim Preview`n`n"
+                $md += "| Mannequin | Mapped To | Matched By |`n|---|---|---|`n"
+                foreach ($p in $preview) {
+                    $status = if ($p.MappedTo -eq "*** NO MAPPING ***") { "❌ $($p.MappedTo)" } else { "✅ $($p.MappedTo)" }
+                    $md += "| $($p.Mannequin) | $status | $($p.MatchedBy) |`n"
+                }
+                $md | Out-File "$reportDir\mannequin-preview.md" -Encoding utf8
+                Write-Host "##vso[task.uploadsummary]$reportDir\mannequin-preview.md"
               pwsh: true
             env:
               GH_PAT: $(GH_PAT)
@@ -641,6 +741,7 @@ stages:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
               artifact: "MannequinReports"
               publishLocation: pipeline
+            condition: always()
 
   # ===========================================================================
   # REPO MIGRATION: STAGE 6 – RECLAIM REVIEW
@@ -661,10 +762,15 @@ stages:
       - job: ReviewMappings
         displayName: "Gate: Review Mannequin Mappings"
         pool: server
+        timeoutInMinutes: 4320
         steps:
           - task: ManualValidation@0
+            timeoutInMinutes: 4320
             inputs:
-              instructions: "Review the mannequin mapping preview. Approve to send reclaim invitations."
+              instructions: |
+                Review the mannequin mapping preview in the pipeline summary tab.
+                Approve to send reclaim invitations, or Reject to abort.
+              onTimeout: reject
 
   # ===========================================================================
   # REPO MIGRATION: STAGE 7 – RECLAIM MANNEQUINS
@@ -687,16 +793,17 @@ stages:
             inputs:
               artifact: "MannequinReports"
               path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-
           - task: PowerShell@2
             displayName: "Reclaim Mannequins"
             inputs:
               targetType: inline
               script: |
                 $ghOrg = '$(GH_ORG)'
-                $reclaimCsv = "$(Build.SourcesDirectory)\repo-migration\output\reports\reclaim-input.csv"
-                if (Test-Path $reclaimCsv) {
+                $reclaimCsv = Get-ChildItem -Path "$(Build.SourcesDirectory)\repo-migration\output" -Recurse -Filter "reclaim-input.csv" | Select-Object -ExpandProperty FullName -First 1
+                if ($reclaimCsv -and (Test-Path $reclaimCsv)) {
                     gh ado2gh reclaim-mannequin --github-org $ghOrg --csv $reclaimCsv --force
+                } else {
+                    Write-Warning "No reclaim-input.csv found."
                 }
               pwsh: true
             env:
