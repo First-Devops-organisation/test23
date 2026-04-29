@@ -18,16 +18,6 @@ parameters:
       - Single
       - Batch
 
-  - name: ADORepo
-    displayName: "ADO Repo name (Single mode only)"
-    type: string
-    default: " "
-
-  - name: GHRepo
-    displayName: "GitHub Repo name (Single mode only, defaults to ADORepo)"
-    type: string
-    default: " "
-
   - name: BatchName
     displayName: "Batch name from config (Batch mode — leave blank for all)"
     type: string
@@ -54,10 +44,7 @@ parameters:
     default: true
 
 variables:
-  #- group: pipeline-migration       # ADO_ORG, ADO_PROJECT, ADO_PAT, GH_PAT
-  #- group: repo-migration-discove   # ADO_ORG, ADO_PROJECT, ADO_PAT
-  #- group: repo-migration-migrate   # GH_ORG, GH_PAT
-  - group: ankit-adotogit
+   - group: ankit-adotogit
 
 stages:
   # ===========================================================================
@@ -325,7 +312,11 @@ stages:
             displayName: "1.1 Discover Repos"
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\discover-repos.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
+              arguments: >-
+                -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                -RepoName "$(ADO_Repo)"
+                -BatchName "${{ parameters.BatchName }}"
+                -MigrationMode "${{ parameters.MigrationMode }}"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -337,7 +328,11 @@ stages:
             displayName: "1.2 Audit Repo Sizes"
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
+              arguments: >-
+                -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                -RepoName "$(ADO_Repo)"
+                -BatchName "${{ parameters.BatchName }}"
+                -MigrationMode "${{ parameters.MigrationMode }}"
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             condition: eq('${{ parameters.SkipAudit }}', false)

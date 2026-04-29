@@ -12,9 +12,17 @@
     Path to repo-migration-config.json
 #>
 [CmdletBinding()]
-param(
     [Parameter(Mandatory = $false)]
-    [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json"
+    [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json",
+
+    [Parameter(Mandatory = $false)]
+    [string]$RepoName = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$BatchName = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$MigrationMode = "Batch"
 )
 
 Set-StrictMode -Version Latest
@@ -41,6 +49,23 @@ if (-not (Test-Path $inventoryPath)) {
     Write-Error "repo-inventory.json not found. Run 01-discover\discover-repos.ps1 first."
 }
 $repos = Get-Content $inventoryPath -Raw | ConvertFrom-Json
+
+# ── Filtering logic ──────────────────────────────────────────────────────────
+if ($MigrationMode -eq 'Single' -and -not [string]::IsNullOrWhiteSpace($RepoName)) {
+    $rName = $RepoName.Trim()
+    $repos = @($repos | Where-Object { $_.Name -eq $rName })
+    Write-Host "Filtering for single repo: $rName (Found: $($repos.Count))" -ForegroundColor Cyan
+} elseif ($MigrationMode -eq 'Batch' -and -not [string]::IsNullOrWhiteSpace($BatchName)) {
+    $bName = $BatchName.Trim()
+    $batch = $config.batches | Where-Object { $_.name -eq $bName }
+    if ($batch) {
+        $batchRepos = $batch.repos
+        $repos = @($repos | Where-Object { $_.Name -in $batchRepos })
+        Write-Host "Filtering for batch: $bName (Found: $($repos.Count) of $($batchRepos.Count) repos)" -ForegroundColor Cyan
+    } else {
+        Write-Warning "Batch '$bName' not found in config. Auditing all inventory repos."
+    }
+}
 
 $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }

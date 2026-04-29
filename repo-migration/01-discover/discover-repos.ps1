@@ -14,9 +14,17 @@
     Path to repo-migration-config.json
 #>
 [CmdletBinding()]
-param(
     [Parameter(Mandatory = $false)]
-    [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json"
+    [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json",
+
+    [Parameter(Mandatory = $false)]
+    [string]$RepoName = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$BatchName = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$MigrationMode = "Batch"
 )
 
 Set-StrictMode -Version Latest
@@ -92,6 +100,23 @@ if (-not $response.PSObject.Properties['value']) {
 }
 
 $repoList = $response.value
+
+# ── Filtering logic ──────────────────────────────────────────────────────────
+if ($MigrationMode -eq 'Single' -and -not [string]::IsNullOrWhiteSpace($RepoName)) {
+    $rName = $RepoName.Trim()
+    $repoList = @($repoList | Where-Object { $_.name -eq $rName })
+    Write-Host "Filtering for single repo: $rName (Found: $($repoList.Count))" -ForegroundColor Cyan
+} elseif ($MigrationMode -eq 'Batch' -and -not [string]::IsNullOrWhiteSpace($BatchName)) {
+    $bName = $BatchName.Trim()
+    $batch = $config.batches | Where-Object { $_.name -eq $bName }
+    if ($batch) {
+        $batchRepos = $batch.repos
+        $repoList = @($repoList | Where-Object { $_.name -in $batchRepos })
+        Write-Host "Filtering for batch: $bName (Found: $($repoList.Count) of $($batchRepos.Count) repos)" -ForegroundColor Cyan
+    } else {
+        Write-Warning "Batch '$bName' not found in config. Discovering all repos."
+    }
+}
 $throttleLimit = 10
 Write-Host "Enriching $($repoList.Count) repos (parallel, throttle=$throttleLimit)..." -ForegroundColor Cyan
 
