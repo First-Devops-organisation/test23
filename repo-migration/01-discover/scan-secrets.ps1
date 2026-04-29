@@ -415,6 +415,7 @@ $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 # ── Thread-safe collections for parallel execution ───────────────────────────
 $allFindings = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+$gitleaksConfigPath = "$PSScriptRoot\..\config\gitleaks-config.toml"
 
 # ── Parallel scan (full clone — complete history for 100% secret coverage) ───
 $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
@@ -449,10 +450,11 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         return
     }
 
-    # Run gitleaks
+    # Run gitleaks with custom config
     $exitCode = 0
     try {
-        $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
+        $gitleaksConfig = $using:gitleaksConfigPath
+        $output = & gitleaks detect --source $clonePath --config $gitleaksConfig --report-path $reportFile --report-format json --no-banner 2>&1
         $exitCode = $LASTEXITCODE
     }
     catch {

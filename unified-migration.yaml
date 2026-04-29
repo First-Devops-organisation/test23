@@ -541,7 +541,7 @@ stages:
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
                 if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
 
-                & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-single.ps1' @params
+                & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-single-secure.ps1' @params
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -645,7 +645,7 @@ stages:
                 if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
                 if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
 
-                & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-batch.ps1' @params
+                & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-batch-secure.ps1' @params
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
