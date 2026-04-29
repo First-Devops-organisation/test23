@@ -41,8 +41,8 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [1169],
-  "PIPELINE_REPO_MAP": {"1169": "NodeJS"},
+  "PIPELINE_IDS": [1158],
+  "PIPELINE_REPO_MAP": {"1158": "sample"},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "Appinsight"
