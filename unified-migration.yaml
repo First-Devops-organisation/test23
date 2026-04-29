@@ -38,6 +38,16 @@ parameters:
     type: boolean
     default: true
 
+  - name: SkipAudit
+    displayName: "Skip branch-wise audit (Faster)"
+    type: boolean
+    default: false
+
+  - name: RunValidation
+    displayName: "Run validation after migration"
+    type: boolean
+    default: true
+
 variables:
   - group: pipeline-migration       # ADO_ORG, ADO_PROJECT, ADO_PAT, GH_PAT
   - group: repo-migration-discove   # ADO_ORG, ADO_PROJECT, ADO_PAT
@@ -70,6 +80,7 @@ stages:
               pwsh: true
             env:
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Run audit-pipelines.ps1"
@@ -86,6 +97,7 @@ stages:
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Parse config for pipeline conditions"
@@ -141,7 +153,8 @@ stages:
               pwsh: true
             env:
               ADO_PAT: $(ADO_PAT)
-              GH_PAT:  $(GH_PAT)
+              GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Run Discovery & Audit"
@@ -154,7 +167,13 @@ stages:
                 }
                 # Run scripts
                 & '$(Build.SourcesDirectory)\repo-migration\01-discover\discover-repos.ps1' -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
-                & '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1' -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                
+                if (-not $([bool]${{ parameters.SkipAudit }})) {
+                    Write-Host "Running size audit..."
+                    & '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1' -ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                } else {
+                    Write-Host "Skipping size audit as requested."
+                }
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
@@ -213,6 +232,7 @@ stages:
               pwsh: true
             env:
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PowerShell@2
             displayName: "Run Migration"
@@ -229,6 +249,7 @@ stages:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Pipeline Migration Output"
@@ -286,20 +307,23 @@ stages:
                         -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -ADORepo $adoRepo `
                         -GHOrg '$(GH_ORG)' -GHRepo $ghRepo `
                         -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
-                        -DryRun $([bool]${{ parameters.DryRun }})
+                        -DryRun $([bool]${{ parameters.DryRun }}) `
+                        -SkipAudit $([bool]${{ parameters.SkipAudit }})
                 } else {
                     & '$(Build.SourcesDirectory)\repo-migration\03-migrate\migrate-batch.ps1' `
                         -ADOOrg '$(ADO_ORG)' -ADOProject '$(ADO_PROJECT)' -GHOrg '$(GH_ORG)' `
                         -ConfigPath '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json' `
                         -BatchName '${{ parameters.BatchName }}' `
                         -OutputDir '$(Build.SourcesDirectory)\repo-migration\output' `
-                        -DryRun $([bool]${{ parameters.DryRun }})
+                        -DryRun $([bool]${{ parameters.DryRun }}) `
+                        -SkipAudit $([bool]${{ parameters.SkipAudit }})
                 }
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Repo Migration Output"
@@ -314,7 +338,12 @@ stages:
   - stage: Validate
     displayName: "4. Validation"
     dependsOn: Migrate
-    condition: succeeded()
+    condition: |
+      and(
+        succeeded(),
+        eq('${{ parameters.RunValidation }}', true),
+        or(eq('${{ parameters.MigrationSelection }}', 'Repo'), eq('${{ parameters.MigrationSelection }}', 'Both'))
+      )
     jobs:
       - job: ValidateRepos
         displayName: "4.1 Validate Migrated Repos"
@@ -337,3 +366,4 @@ stages:
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
+              GH_TOKEN: $(GH_PAT)
