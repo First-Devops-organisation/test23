@@ -43,7 +43,7 @@ if ([string]::IsNullOrWhiteSpace($ADO_Org)) {
     Write-Error "Set the ADO_Org environment variable or update config.source.organization"
 }
 if ([string]::IsNullOrWhiteSpace($adoProj)) {
-    Write-Error "Set the ADO_PROJECT environment variable or update config.source.project"
+    Write-Error "Set the ADO_Project environment variable or update config.source.project"
 }
 if ([string]::IsNullOrWhiteSpace($adoPat)) {
     Write-Error "Set the ADO_PAT environment variable or update config.source.pat"

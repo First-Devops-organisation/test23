@@ -98,6 +98,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -113,6 +115,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -197,7 +201,8 @@ stages:
                 -Mode "dry-run"
               pwsh: true
             env:
-              ADO_ORG: $(ADO_Org)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -246,7 +251,8 @@ stages:
                 -Mode "migrate"
               pwsh: true
             env:
-              ADO_ORG: $(ADO_Org)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -300,6 +306,8 @@ stages:
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT:  $(GH_PAT)
 
@@ -321,6 +329,10 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PowerShell@2
@@ -332,6 +344,10 @@ stages:
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             condition: eq('${{ parameters.SkipAudit }}', false)
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -381,6 +397,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -430,6 +448,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -525,6 +545,8 @@ stages:
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT:  $(GH_PAT)
 
@@ -552,6 +574,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -636,6 +660,8 @@ stages:
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT:  $(GH_PAT)
 
@@ -659,6 +685,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -754,6 +782,8 @@ stages:
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT:  $(GH_PAT)
 
@@ -782,6 +812,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -862,6 +894,8 @@ stages:
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT:  $(GH_PAT)
 
@@ -884,6 +918,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
@@ -940,6 +976,8 @@ stages:
                 $valSummary = "$(Build.SourcesDirectory)\repo-migration\output\reports\validation-summary.md"
                 if (Test-Path $valSummary) { Write-Host "##vso[task.uploadsummary]$valSummary" }
               pwsh: true
+
+
 
 
 

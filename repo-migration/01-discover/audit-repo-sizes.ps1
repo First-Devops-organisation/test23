@@ -46,8 +46,15 @@ $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $conf
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
 # ── ADO API base + auth header ───────────────────────────────────────────────
-$ADO_Org  = $config.source.organization.TrimEnd('/')
-$adoProj = $config.source.project
+$ADO_Org  = if ($config.source.organization -match '^\$\(') { $env:ADO_Org } else { $config.source.organization }
+$adoProj = if ($config.source.project      -match '^\$\(') { $env:ADO_Project } else { $config.source.project }
+$adoPat  = if ($config.source.pat           -match '^\$\(') { $env:ADO_PAT } else { $config.source.pat }
+
+$ADO_Org = ($ADO_Org ?? '').TrimEnd('/')
+if ($ADO_Org -and $ADO_Org -notmatch '^https?://') {
+    $ADO_Org = "https://dev.azure.com/$ADO_Org"
+}
+
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $apiHeaders = @{ Authorization = "Basic $base64Auth" }
 
