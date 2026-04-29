@@ -63,7 +63,8 @@ stages:
   # ===========================================================================
   # PIPELINE MIGRATION: STAGE 1 – DISCOVER
   # ===========================================================================
-  - stage: PipelineDiscover`r`n    displayName: "Pipeline: 1. Discover & Audit"
+  - stage: PipelineDiscover
+    displayName: "Pipeline: 1. Discover & Audit"
     condition: in('${{ parameters.migrationType }}', 'pipeline', 'both')
     jobs:
       - job: AuditPipelines
@@ -160,7 +161,8 @@ stages:
   # ===========================================================================
   # PIPELINE MIGRATION: STAGE 2 – MIGRATE
   # ===========================================================================
-  - stage: MigratePipeline`r`n    displayName: "Pipeline: 2. Migrate"
+  - stage: MigratePipeline
+    displayName: "Pipeline: 2. Migrate"
     dependsOn: PipelineDiscover
     condition: and(not(failed()), eq(dependencies.PipelineDiscover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'), in('${{ parameters.migrationType }}', 'pipeline', 'both'))
     variables:
@@ -259,7 +261,8 @@ stages:
   # ===========================================================================
   # REPO MIGRATION: STAGES SYNCED WITH azure-pipeline.yaml
   # ===========================================================================
-  - stage: Discover`r`n    displayName: "Repo: 1. Discover & Scan Secrets"
+  - stage: Discover
+    displayName: "Repo: 1. Discover & Scan Secrets"
     condition: in('${{ parameters.migrationType }}', 'repo', 'both')
     pool:
       vmImage: windows-latest
@@ -453,7 +456,8 @@ stages:
               reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
               tabName: "Secret Scan Report"
 
-  - stage: ReviewGate`r`n    displayName: "Repo: 2. Review Gate"
+  - stage: ReviewGate
+    displayName: "Repo: 2. Review Gate"
     dependsOn: Discover
     condition: and(not(failed()), not(canceled()), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     jobs:
@@ -472,7 +476,8 @@ stages:
                 Approve to proceed to migration, or Reject to abort.
               onTimeout: reject
 
-  - stage: MigrateSingle`r`n    displayName: "Repo: 3a. Scrub & Migrate (Single)"
+  - stage: MigrateSingle
+    displayName: "Repo: 3a. Scrub & Migrate (Single)"
     dependsOn: ReviewGate
     condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Single'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     pool:
@@ -582,7 +587,8 @@ stages:
               reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
               tabName: "Migration Report"
 
-  - stage: MigrateBatch`r`n    displayName: "Repo: 3b. Scrub & Migrate (Batch)"
+  - stage: MigrateBatch
+    displayName: "Repo: 3b. Scrub & Migrate (Batch)"
     dependsOn: ReviewGate
     condition: and(not(failed()), not(canceled()), eq('${{ parameters.MigrationMode }}', 'Batch'), or(eq('${{ parameters.migrationType }}', 'repo'), eq('${{ parameters.migrationType }}', 'both')))
     pool:
@@ -696,7 +702,8 @@ stages:
               reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
               tabName: "Migration Report"
 
-  - stage: Validate`r`n    displayName: "Repo: 4. Validate Migration"
+  - stage: Validate
+    displayName: "Repo: 4. Validate Migration"
     dependsOn:
       - MigrateSingle
       - MigrateBatch
@@ -933,6 +940,7 @@ stages:
                 $valSummary = "$(Build.SourcesDirectory)\repo-migration\output\reports\validation-summary.md"
                 if (Test-Path $valSummary) { Write-Host "##vso[task.uploadsummary]$valSummary" }
               pwsh: true
+
 
 
 
