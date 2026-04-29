@@ -284,12 +284,12 @@ stages:
               artifact: "pipeline-migrate"
               publishLocation: pipeline
               
-          - task: PublishHtmlReport@1
-            displayName: "3. Pipeline Migration Result"
-            condition: always()
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines/dashboard/index.html'
-              tabName: "3. Pipeline Migration Result"
+          # - task: PublishHtmlReport@1
+          #   displayName: "3. Pipeline Migration Result"
+          #   condition: always()
+          #   inputs:
+          #     reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines/dashboard/index.html'
+          #     tabName: "3. Pipeline Migration Result"
   # ===========================================================================
   # REPO MIGRATION: STAGES SYNCED WITH azure-pipeline.yaml
   # ===========================================================================
