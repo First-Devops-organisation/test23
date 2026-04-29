@@ -141,14 +141,8 @@ stages:
                     elseif ($config.MODE) { $mode = $config.MODE }
                     if ($config.PIPELINE_TYPE) { $type = $config.PIPELINE_TYPE }
                 }
-                
-                # Default fallbacks
                 if (-not $mode) { $mode = "dry-run" }
                 if (-not $type) { $type = "build" }
-                
-                Write-Host "Resolved PIPELINE_IDS: $ids"
-                Write-Host "Resolved MIGRATE_MODE: $mode"
-                
                 Write-Host "##vso[task.setvariable variable=HAS_IDS;isOutput=true]$(if ($ids) { 'true' } else { 'false' })"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_IDS;isOutput=true]$ids"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_MODE;isOutput=true]$mode"
@@ -182,7 +176,6 @@ stages:
             env:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
-
           - task: PowerShell@2
             displayName: "Dry-Run pipelines"
             inputs:
@@ -194,13 +187,11 @@ stages:
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
-
           - task: PublishPipelineArtifact@1
             displayName: "Publish Dry-Run Output"
             condition: always()
@@ -226,7 +217,6 @@ stages:
             env:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
-
           - task: PowerShell@2
             displayName: "Migrate pipelines"
             inputs:
@@ -238,13 +228,11 @@ stages:
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
-
           - task: PublishPipelineArtifact@1
             displayName: "Publish Migration Output"
             condition: always()
@@ -334,6 +322,14 @@ stages:
               publishLocation: pipeline
             condition: always()
 
+          - task: PublishHtmlReport@1
+            displayName: "Show Discovery Report on Pipeline Tab"
+            condition: always()
+            continueOnError: true
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\repo-inventory.html'
+              tabName: "Discovery Report"
+
       - job: ScanSecrets
         displayName: "1.3 Scan Secrets (gitleaks)"
         dependsOn: DiscoverAndAudit
@@ -351,6 +347,12 @@ stages:
               BATCH_INDEX: 2
               BATCH_TOTAL: 3
         steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Discovery Inventory"
+            inputs:
+              artifact: "discovery-reports"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+
           - task: PowerShell@2
             displayName: "Install gitleaks"
             inputs:
@@ -379,9 +381,17 @@ stages:
             displayName: "Publish Scan Reports"
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
-              artifact: "scan-reports"
+              artifact: "scan-reports-batch$(BATCH_INDEX)"
               publishLocation: pipeline
             condition: always()
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Secret Scan Report on Pipeline Tab"
+            condition: always()
+            continueOnError: true
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
+              tabName: "Secret Scan Report"
 
   # ===========================================================================
   # REPO MIGRATION: STAGE 2 – REVIEW GATE
@@ -429,6 +439,7 @@ stages:
                     Write-Host "##vso[task.prependpath]$ghBin"
                 }
                 $env:GH_TOKEN = "$(GH_PAT)"
+                echo "$(GH_PAT)" | gh auth login --with-token
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
               pwsh: true
             env:
@@ -463,6 +474,13 @@ stages:
               artifact: "MigrationLogs-${{ parameters.ADORepo }}"
               publishLocation: pipeline
 
+          - task: PublishHtmlReport@1
+            displayName: "Show Migration Report on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+              tabName: "Migration Report"
+
   # ===========================================================================
   # REPO MIGRATION: STAGE 3B – BATCH REPO MIGRATION
   # ===========================================================================
@@ -490,6 +508,7 @@ stages:
                     Write-Host "##vso[task.prependpath]$ghBin"
                 }
                 $env:GH_TOKEN = "$(GH_PAT)"
+                echo "$(GH_PAT)" | gh auth login --with-token
                 gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
               pwsh: true
             env:
@@ -522,6 +541,13 @@ stages:
               artifact: "BatchMigrationLogs"
               publishLocation: pipeline
 
+          - task: PublishHtmlReport@1
+            displayName: "Show Batch Migration Report on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+              tabName: "Migration Report"
+
   # ===========================================================================
   # REPO MIGRATION: STAGE 4 – VALIDATE
   # ===========================================================================
@@ -549,6 +575,24 @@ stages:
         steps:
           - checkout: self
           - task: PowerShell@2
+            displayName: "Replace config tokens"
+            inputs:
+              targetType: inline
+              script: |
+                $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+                $c   = Get-Content $cfg -Raw
+                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
+                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
+                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+                Set-Content -Path $cfg -Value $c
+              pwsh: true
+            env:
+              ADO_PAT: $(ADO_PAT)
+              GH_PAT:  $(GH_PAT)
+
+          - task: PowerShell@2
             displayName: "Run Validation"
             inputs:
               targetType: inline
@@ -570,3 +614,22 @@ stages:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
               artifact: "ValidationReports"
               publishLocation: pipeline
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Validation Report on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\validation-report.html'
+              tabName: "Validation Report"
+
+          - task: PowerShell@2
+            displayName: "Publish Validation Summary to ADO Tab"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                $valSummary = "$(Build.SourcesDirectory)\repo-migration\output\reports\validation-summary.md"
+                if (Test-Path $valSummary) {
+                    Write-Host "##vso[task.uploadsummary]$valSummary"
+                }
+              pwsh: true
