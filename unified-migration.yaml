@@ -331,8 +331,6 @@ stages:
             env:
               ADO_Org: $(ADO_Org)
               ADO_Project: $(ADO_Project)
-              ADO_Org: $(ADO_Org)
-              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PowerShell@2
@@ -344,8 +342,6 @@ stages:
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             condition: eq('${{ parameters.SkipAudit }}', false)
             env:
-              ADO_Org: $(ADO_Org)
-              ADO_Project: $(ADO_Project)
               ADO_Org: $(ADO_Org)
               ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
@@ -976,6 +972,8 @@ stages:
                 $valSummary = "$(Build.SourcesDirectory)\repo-migration\output\reports\validation-summary.md"
                 if (Test-Path $valSummary) { Write-Host "##vso[task.uploadsummary]$valSummary" }
               pwsh: true
+
+
 
 
 
