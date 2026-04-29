@@ -199,7 +199,19 @@ stages:
         steps:
           - task: ManualValidation@0
             inputs:
-              instructions: "Review the discovery artifacts before proceeding. Approve to migrate pipelines/repos."
+              instructions: |
+                Please review the discovery results before approving the migration:
+
+                FOR PIPELINE MIGRATION:
+                - Check 'pipeline-audit' artifact for Action Importer reports.
+                - Verify 'pipeline-migration/config/migration-config.json' has the correct PIPELINE_IDS.
+
+                FOR REPO MIGRATION:
+                - Check 'repo-discovery-reports' for inventory and sizes.
+                - Repos > 40GB or files > 100MB may require manual handling.
+                - Verify 'repo-migration/config/repo-migration-config.json' batches.
+
+                Approve to proceed with the migration or Reject to stop.
 
   # ===========================================================================
   # STAGE 3 – MIGRATE
