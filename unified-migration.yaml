@@ -65,11 +65,11 @@ stages:
   - stage: PipelineDiscover
     displayName: "1. Discover & Audit Pipelines"
     condition: in('${{ parameters.migrationType }}', 'pipeline', 'both')
+    pool:
+      vmImage: windows-latest
     jobs:
       - job: AuditPipelines
         displayName: "1.1 Audit ADO Pipelines"
-        pool:
-          vmImage: ubuntu-latest
         timeoutInMinutes: 60
         steps:
           - checkout: self
@@ -87,7 +87,7 @@ stages:
           - task: PowerShell@2
             displayName: "Run audit-pipelines.ps1"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/pipeline-migration/00-discovery/audit-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)\pipeline-migration\00-discovery\audit-pipelines.ps1'
               arguments: >-
                 -AdoOrg "$(ADO_ORG)"
                 -AdoProject "$(ADO_PROJECT)"
@@ -95,7 +95,7 @@ stages:
                 -GitHubPat "$(GH_PAT)"
                 -OutputDir "output/pipeline-audit"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
+              workingDirectory: '$(Build.SourcesDirectory)\pipeline-migration'
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
@@ -104,13 +104,13 @@ stages:
           - task: PowerShell@2
             displayName: "List all ADO Pipeline IDs"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)\pipeline-migration\02-migrate\migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
                 -Mode "list"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
+              workingDirectory: '$(Build.SourcesDirectory)\pipeline-migration'
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
@@ -124,13 +124,20 @@ stages:
               artifact: "pipeline-audit"
               publishLocation: pipeline
 
+          - task: PublishHtmlReport@1
+            displayName: "Audit Dashboard on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipeline-audit\dashboard'
+              tabName: "Pipeline Audit Dashboard"
+
           - task: PowerShell@2
             displayName: "Parse config for pipeline conditions"
             name: checkConfig
             inputs:
               targetType: 'inline'
               script: |
-                $configPath = "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
+                $configPath = "$(Build.SourcesDirectory)\pipeline-migration\config\migration-config.json"
                 $ids = ""
                 $mode = ""
                 $type = ""
@@ -141,21 +148,31 @@ stages:
                     elseif ($config.MODE) { $mode = $config.MODE }
                     if ($config.PIPELINE_TYPE) { $type = $config.PIPELINE_TYPE }
                 }
-                if (-not $mode) { $mode = "dry-run" }
+                
+                # If config doesn't have it, fallback to env (var group)
+                $literalIds = '$' + '(PIPELINE_IDS)'
+                $literalMode = '$' + '(MIGRATE_MODE)'
+                $literalType = '$' + '(PIPELINE_TYPE)'
+                
+                $macroIds = '$(PIPELINE_IDS)'
+                $macroMode = '$(MIGRATE_MODE)'
+                $macroType = '$(PIPELINE_TYPE)'
+                
+                if (-not $ids -and $macroIds -ne $literalIds) { $ids = $macroIds }
+                if (-not $mode -and $macroMode -ne $literalMode) { $mode = $macroMode }
+                if (-not $type -and $macroType -ne $literalType) { $type = $macroType }
+                if (-not $mode) { $mode = "dry-run" } # Default is dry-run if left totally blank
                 if (-not $type) { $type = "build" }
+                
+                Write-Host "Resolved PIPELINE_IDS: $ids"
+                Write-Host "Resolved MIGRATE_MODE: $mode"
+                Write-Host "Resolved PIPELINE_TYPE: $type"
+                
                 Write-Host "##vso[task.setvariable variable=HAS_IDS;isOutput=true]$(if ($ids) { 'true' } else { 'false' })"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_IDS;isOutput=true]$ids"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_MODE;isOutput=true]$mode"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_TYPE;isOutput=true]$type"
               pwsh: true
-
-          - task: PublishHtmlReport@1
-            displayName: "Show Pipeline Audit Report"
-            condition: always()
-            continueOnError: true
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipeline-audit'
-              tabName: "Pipeline Audit"
 
   # ===========================================================================
   # PIPELINE MIGRATION: STAGE 2 – MIGRATE
@@ -172,9 +189,10 @@ stages:
       - job: DryRun
         displayName: "2.1 Dry-Run Preview"
         pool:
-          vmImage: ubuntu-latest
+          vmImage: windows-latest
         steps:
           - checkout: self
+            fetchDepth: 0
           - task: PowerShell@2
             displayName: 'Install required tooling'
             inputs:
@@ -187,7 +205,7 @@ stages:
           - task: PowerShell@2
             displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)\pipeline-migration\02-migrate\migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
@@ -195,12 +213,13 @@ stages:
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "dry-run"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
+              workingDirectory: '$(Build.SourcesDirectory)\pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
+              GH_REPO: $(GH_REPO)
               PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
 
           - task: PublishPipelineArtifact@1
@@ -223,10 +242,11 @@ stages:
         displayName: "2.2 Migrate to GitHub"
         dependsOn: DryRun
         pool:
-          vmImage: ubuntu-latest
+          vmImage: windows-latest
         condition: and(succeeded(), eq(stageDependencies.PipelineDiscover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'], 'migrate'))
         steps:
           - checkout: self
+            fetchDepth: 0
           - task: PowerShell@2
             displayName: 'Install required tooling'
             inputs:
@@ -237,9 +257,9 @@ stages:
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
           - task: PowerShell@2
-            displayName: "Migrate pipelines"
+            displayName: "Migrate pipelines: $(PIPELINE_IDS)"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/pipeline-migration/02-migrate/migrate-pipelines.ps1'
+              filePath: '$(Build.SourcesDirectory)\pipeline-migration\02-migrate\migrate-pipelines.ps1'
               arguments: >-
                 -ConfigFile "$(Build.SourcesDirectory)/pipeline-migration/config/migration-config.json"
                 -AdoProject "$(ADO_PROJECT)"
@@ -247,19 +267,20 @@ stages:
                 -PipelineType "$(PIPELINE_TYPE)"
                 -Mode "migrate"
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)/pipeline-migration'
+              workingDirectory: '$(Build.SourcesDirectory)\pipeline-migration'
             env:
               ADO_ORG: $(ADO_ORG)
               ADO_PAT: $(ADO_PAT)
               GH_PAT: $(GH_PAT)
               GH_TOKEN: $(GH_PAT)
+              GH_REPO: $(GH_REPO)
               PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Migration Output"
             condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines'
+              targetPath: '$(Build.SourcesDirectory)\pipeline-migration\output\pipelines'
               artifact: "pipeline-migrate"
               publishLocation: pipeline
               
@@ -267,7 +288,7 @@ stages:
             displayName: "Migration Dashboard on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(Build.SourcesDirectory)/pipeline-migration/output/pipelines/dashboard'
+              reportDir: '$(Build.SourcesDirectory)\pipeline-migration\output\pipelines\dashboard'
               tabName: "Migration Dashboard"
   # ===========================================================================
   # REPO MIGRATION: STAGES SYNCED WITH azure-pipeline.yaml
