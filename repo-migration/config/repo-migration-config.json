@@ -1,0 +1,42 @@
+
+{
+  "source": {
+    "type": "AzureDevOps",
+    "organization": "$(ADO_ORG)",
+    "project": "$(ADO_PROJECT)",
+    "pat": "$(ADO_PAT)"
+  },
+  "target": {
+    "organization": "$(GH_ORG)",
+    "pat": "$(GH_PAT)"
+  },
+  "migration": {
+    "cloneTempDir": "./tmp/clones",
+    "targetRepoVisibility": "private",
+    "lockSourceRepo": false,
+    "retryCount": 3,
+    "retryDelaySeconds": 30
+  },
+  "batches": [
+    {
+      "name": "batch-1-pilot",
+      "scheduledDate": "2026-04-15",
+      "repos": [
+        "SSPM",
+         "Advanced-Security"
+        
+      ]
+    }
+  ],
+  "exclusions": {
+    "repos": [
+      "old-archived-repo",
+      "test-throwaway-repo"
+    ],
+    "branches": []
+  },
+  "output": {
+    "reportDir": "./output/reports",
+    "logDir": "./output/logs"
+  }
+}
