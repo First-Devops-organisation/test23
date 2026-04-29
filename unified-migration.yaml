@@ -587,12 +587,11 @@ stages:
   # ===========================================================================
   - stage: ListMannequins
     displayName: "5. List Mannequins"
-    dependsOn:
-      - RepoDiscover
-      - Validate
+    dependsOn: RepoDiscover
     condition: |
       and(
         not(failed()),
+        not(canceled()),
         in('${{ parameters.migrationType }}', 'repo', 'both', 'reclaim'),
         ne('${{ parameters.ReclaimMode }}', 'Skip')
       )
@@ -649,7 +648,15 @@ stages:
   - stage: ReclaimReviewGate
     displayName: "6. Review Mannequin Mappings"
     dependsOn: ListMannequins
-    condition: and(succeeded(), eq('${{ parameters.ReclaimMode }}', 'Execute'))
+    condition: |
+      and(
+        not(failed()),
+        not(canceled()),
+        or(
+          eq('${{ parameters.ReclaimMode }}', 'Execute'),
+          eq('${{ parameters.migrationType }}', 'reclaim')
+        )
+      )
     jobs:
       - job: ReviewMappings
         displayName: "Gate: Review Mannequin Mappings"
@@ -665,7 +672,11 @@ stages:
   - stage: ReclaimMannequins
     displayName: "7. Reclaim Mannequins"
     dependsOn: ReclaimReviewGate
-    condition: succeeded()
+    condition: |
+      and(
+        not(failed()),
+        not(canceled())
+      )
     pool:
       vmImage: windows-latest
     jobs:
