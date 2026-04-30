@@ -33,7 +33,9 @@
 param(
     [Parameter(Mandatory = $true)]  [string]$ADOOrg,
     [Parameter(Mandatory = $true)]  [string]$ADOProject,
-    [Parameter(Mandatory = $true)]  [string]$ADORepo,
+    [Parameter(Mandatory = $false)] 
+    [AllowEmptyString()]
+    [string]$ADORepo,
     [Parameter(Mandatory = $true)]  [string]$GHOrg,
     [Parameter(Mandatory = $false)] [string]$GHRepo     = $ADORepo,
     [Parameter(Mandatory = $false)] [string]$OutputDir  = "$PSScriptRoot\..\output",
@@ -50,8 +52,27 @@ $ErrorActionPreference = "Stop"
 # ── Trim whitespace from all string parameters ─────────────────────────────────────────────
 $ADOOrg    = $ADOOrg.Trim()
 $ADOProject = $ADOProject.Trim()
-$ADORepo   = $ADORepo.Trim()
 $GHOrg     = $GHOrg.Trim()
+
+# ── Fallback: if ADORepo is empty, try to read from config.json ───────────────
+if ([string]::IsNullOrWhiteSpace($ADORepo)) {
+    Write-Host "  ADORepo parameter is empty — checking config.json..."
+    $cfgPath = "$PSScriptRoot\..\config\repo-migration-config.json"
+    if (Test-Path $cfgPath) {
+        $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+        if ($cfg.migration -and $cfg.migration.singleRepo) {
+            $ADORepo = $cfg.migration.singleRepo.Trim()
+            Write-Host "  Found default repo in config: $ADORepo" -ForegroundColor Green
+        }
+    }
+}
+
+# Now we can trim ADORepo (if we found it or it was passed)
+if ([string]::IsNullOrWhiteSpace($ADORepo)) {
+    Write-Error "ADORepo name is required. Provide it as a parameter or set 'migration.singleRepo' in config.json."
+}
+$ADORepo = $ADORepo.Trim()
+
 $GHRepo    = $GHRepo.Trim()
 
 # ── Fallback: if GHRepo is empty after trimming, default to ADORepo ──────────
@@ -174,91 +195,101 @@ elseif ($DryRun) {
     $migState | Out-File $stateFile -Encoding utf8
 }
 else {
-    Write-Host "`n[Step 3] Migrating repo..." -ForegroundColor Cyan
+    Write-Host "`n[Step 3] Migrating repo (with up to 3 retries for network issues)..." -ForegroundColor Cyan
     $env:ADO_PAT  = $adoPat
     $env:GH_PAT   = $ghPat
-    $migState = "PENDING"
-    $migState | Out-File $stateFile -Encoding utf8
+    
+    # --- START SMART RETRY LOGIC ---
+    $maxAttempts = 3
+    $success = $false
 
-    Write-Host "  State: EXPORTING from ADO..."
-    $migState = "EXPORTING"
-    $migState | Out-File $stateFile -Encoding utf8
-
-    # GEI reads ADO_PAT and GH_PAT from environment variables automatically.
-    # Passing PATs as CLI args causes quoting issues when PATs contain +, =, / chars.
-    $migOutput = gh ado2gh migrate-repo `
-        --ado-org          $ADOOrg `
-        --ado-team-project $ADOProject `
-        --ado-repo         $ADORepo `
-        --github-org       $GHOrg `
-        --github-repo      $GHRepo `
-        --target-repo-visibility $TargetRepoVisibility 2>&1
-
-    $migOutput | ForEach-Object { Write-Host "  $_" }
-
-    # Parse migration log URL from GEI output (line like "Migration log available at https://...")
-    $logLine = $migOutput | Where-Object { $_ -match 'Migration log available at (https://\S+)' } | Select-Object -First 1
-    if ($logLine -and $logLine -match 'Migration log available at (https://\S+)') {
-        $migLogUrl = $Matches[1]
-        Write-Host "  Log URL captured: $migLogUrl"
-    }
-
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  State: COMPLETE" -ForegroundColor Green
-        $migState = "COMPLETE"
-        $migState | Out-File $stateFile -Encoding utf8
-    }
-    elseif (($migOutput -join "") -match "already been queued") {
-        Write-Host "  Migration already queued — polling until repo appears..." -ForegroundColor Yellow
-        $migState = "WAITING"
-        $migState | Out-File $stateFile -Encoding utf8
-        $found = $false
-        for ($w = 1; $w -le 30; $w++) {
-            Start-Sleep -Seconds 60
-            Write-Host "  Poll $w/30..."
-            $ErrorActionPreference = 'SilentlyContinue'
-            $check = gh repo view "$GHOrg/$GHRepo" --json name 2>&1
-            $ErrorActionPreference = 'Stop'
-            if ($LASTEXITCODE -eq 0) { $found = $true; break }
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        # If this is a retry, wait before starting (Exponential Backoff)
+        if ($attempt -gt 1) {
+            $waitTime = $attempt * 60
+            Write-Host "  Waiting $($waitTime)s before retry attempt $attempt/$maxAttempts..." -ForegroundColor Yellow
+            Start-Sleep -Seconds $waitTime
         }
-        if ($found) {
+
+        Write-Host "  State: EXPORTING from ADO (Attempt $attempt)..."
+        $migState = "EXPORTING"
+        $migState | Out-File $stateFile -Encoding utf8
+
+        # Run the GEI migration command
+        $migOutput = gh ado2gh migrate-repo `
+            --ado-org          $ADOOrg `
+            --ado-team-project $ADOProject `
+            --ado-repo         $ADORepo `
+            --github-org       $GHOrg `
+            --github-repo      $GHRepo `
+            --target-repo-visibility $TargetRepoVisibility 2>&1
+
+        $migOutput | ForEach-Object { Write-Host "  $_" }
+
+        # Capture log URL from output for Step 5
+        $logLine = $migOutput | Where-Object { $_ -match 'Migration log available at (https://\S+)' } | Select-Object -First 1
+        if ($logLine -and $logLine -match 'Migration log available at (https://\S+)') {
+            $migLogUrl = $Matches[1]
+            Write-Host "  Log URL captured: $migLogUrl"
+        }
+
+        # Case 1: Success
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  State: COMPLETE" -ForegroundColor Green
             $migState = "COMPLETE"
             $migState | Out-File $stateFile -Encoding utf8
-            Write-Host "  State: COMPLETE (queued migration finished)" -ForegroundColor Green
+            $success = $true
+            break
         }
+        # Case 2: Already Queued (Handled by Polling)
+        elseif (($migOutput -join "") -match "already been queued") {
+            Write-Host "  Migration already queued — polling until repo appears..." -ForegroundColor Yellow
+            $migState = "WAITING"
+            $migState | Out-File $stateFile -Encoding utf8
+            $found = $false
+            for ($w = 1; $w -le 30; $w++) {
+                Start-Sleep -Seconds 60
+                Write-Host "  Poll $w/30..."
+                $ErrorActionPreference = 'SilentlyContinue'
+                $check = gh repo view "$GHOrg/$GHRepo" --json name 2>&1
+                $ErrorActionPreference = 'Stop'
+                if ($LASTEXITCODE -eq 0) { $found = $true; break }
+            }
+            if ($found) {
+                $migState = "COMPLETE"
+                $migState | Out-File $stateFile -Encoding utf8
+                Write-Host "  State: COMPLETE (queued migration finished)" -ForegroundColor Green
+                $success = $true
+            } else {
+                $migState = "FAILED"
+                $migState | Out-File $stateFile -Encoding utf8
+                Write-Warning "Migration did not complete within 30 minutes."
+            }
+            break # Exit the retry loop
+        }
+        # Case 3: Network Error (Trigger Retry)
+        elseif (($migOutput -join "") -match "timeout|network|connection reset|429|502") {
+            Write-Warning "  Network/Timeout error detected on attempt $attempt."
+            if ($attempt -eq $maxAttempts) {
+                $migState = "FAILED"
+                $migState | Out-File $stateFile -Encoding utf8
+                Write-Error "  Max retries reached. Migration failed due to network issues."
+            }
+        }
+        # Case 4: Permanent Error (Stop Immediately)
         else {
             $migState = "FAILED"
             $migState | Out-File $stateFile -Encoding utf8
-            Write-Warning "Migration did not complete within 30 minutes. Check GEI logs."
+            $outputStr = $migOutput -join ""
+            if ($outputStr -match 'lookup the Organization ID|Failed to lookup') {
+                Write-Warning "  Permanent error: Check GH_PAT scopes (repo, read:org)."
+            } else {
+                Write-Warning "  Permanent error detected (e.g. 401 or 404). No retry will be attempted."
+            }
+            break
         }
     }
-    else {
-        $migState = "FAILED"
-        $migState | Out-File $stateFile -Encoding utf8
-        $outputStr = $migOutput -join "`n"
-        if ($outputStr -match 'lookup the Organization ID|Failed to lookup') {
-            Write-Warning @"
-Migration failed: GitHub could not resolve org '$GHOrg'.
-  ROOT CAUSE — GH_PAT is missing required scopes.
-  Required classic PAT scopes:
-    - repo          (Full control of private repositories)
-    - read:org      (Read org and team membership, org projects)
-  Note: Fine-grained PATs are NOT supported by gh ado2gh.
-  Fix: Go to github.com/settings/tokens → regenerate the classic PAT
-       with 'repo' and 'read:org' (or 'admin:org') scopes,
-       then update the GH_PAT value in the repo-migration-migrate variable group.
-"@
-        } else {
-            Write-Warning @"
-Migration failed (exit code $LASTEXITCODE). Common causes:
-  1. ADO_PAT scope: needs 'Code (Read)' + 'Identity (Read)' on the ADO organisation.
-  2. ADOOrg name mismatch: check the value in the repo-migration-discover variable group.
-     (Value must be bare org name e.g. 'YashTech-DevOps', not a full URL)
-  3. GHOrg name mismatch or GH_PAT lacks 'repo' + 'read:org' scopes.
-GEI output above should contain a more specific error message.
-"@
-        }
-    }
+    # --- END SMART RETRY LOGIC ---
 }
 
 # ════════════════════════════════════════════════════════════════════════════
