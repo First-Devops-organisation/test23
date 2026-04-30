@@ -1,27 +1,19 @@
 <#
 .SYNOPSIS
-    Scans all repos for exposed secrets using gitleaks (parallel).
+    Scans repos for exposed secrets using gitleaks + keyword pattern matching.
 .DESCRIPTION
     For each repo in repo-inventory.json:
-      - Full bare clone to temp dir (complete history for 100% coverage)
-      - Run gitleaks detect --source <path> --report-format json
-      - Collect findings into consolidated report
-    Uses ForEach-Object -Parallel for concurrent scanning.
-    Use -SizeFilter to run Small/Large repos in parallel jobs.
-    Use -BatchIndex/-BatchTotal with matrix strategy for multi-agent scanning.
-    Repos with findings MUST go through scrub-secrets.ps1 before migration.
+      1. Full clone (all branches, complete history)
+      2. Run gitleaks detect across all branches/history
+      3. Run keyword-based regex scan for common secret patterns
+         (key, password, token, secret, id, credential, etc.)
+      4. Consolidate into a detailed JSON with:
+         - SecretName, SecretValue, File, LineNumber, Branch, CommitID, RuleID
+      5. Publish JSON artifact for downstream scrubbing.
 .PARAMETER ConfigPath
     Path to repo-migration-config.json
-.PARAMETER SizeFilter
-    Filter repos by size: All (default), Small (< threshold), Large (>= threshold)
-.PARAMETER SizeThresholdMB
-    Size threshold in MB for Small/Large split (default: 1024 = 1 GB)
 .PARAMETER ThrottleLimit
-    Max parallel repo scans per agent (default: 5)
-.PARAMETER BatchIndex
-    Which batch this agent handles (0-based). Used with matrix strategy. Default: 0
-.PARAMETER BatchTotal
-    Total number of batches (agents). Set to 1 to disable batching. Default: 1
+    Max parallel repo scans (default: 5)
 #>
 [CmdletBinding()]
 param(
@@ -29,20 +21,7 @@ param(
     [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json",
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet('All', 'Small', 'Large')]
-    [string]$SizeFilter = 'All',
-
-    [Parameter(Mandatory = $false)]
-    [int]$SizeThresholdMB = 1024,
-
-    [Parameter(Mandatory = $false)]
-    [int]$ThrottleLimit = 5,
-
-    [Parameter(Mandatory = $false)]
-    [int]$BatchIndex = 0,
-
-    [Parameter(Mandatory = $false)]
-    [int]$BatchTotal = 1
+    [int]$ThrottleLimit = 5
 )
 
 Set-StrictMode -Version Latest
@@ -60,7 +39,7 @@ foreach ($d in @($reportDir, $logDir, $cloneDir)) {
 # ── Verify gitleaks ──────────────────────────────────────────────────────────
 $gl = Get-Command gitleaks -ErrorAction SilentlyContinue
 if (-not $gl) {
-    Write-Error "gitleaks not found. Install: https://github.com/gitleaks/gitleaks/releases or run 02-prep\install-tools.ps1"
+    Write-Error "gitleaks not found. Install: https://github.com/gitleaks/gitleaks/releases"
 }
 
 # ── Load inventory ───────────────────────────────────────────────────────────
@@ -73,58 +52,55 @@ $repos = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
 $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
-# Filter repos by size if requested (for parallel jobs)
-$totalCount = ($repos | Measure-Object).Count
-if ($SizeFilter -eq 'Small') {
-    $repos = @($repos | Where-Object { $_.SizeMB -lt $SizeThresholdMB })
-    Write-Host "Filter: Small repos only (< ${SizeThresholdMB} MB) — $($repos.Count) of $totalCount repos" -ForegroundColor Gray
-} elseif ($SizeFilter -eq 'Large') {
-    $repos = @($repos | Where-Object { $_.SizeMB -ge $SizeThresholdMB })
-    Write-Host "Filter: Large repos only (>= ${SizeThresholdMB} MB) — $($repos.Count) of $totalCount repos" -ForegroundColor Gray
-}
-
 # Skip empty repos
 $repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
-
-# Sort repos smallest-first so most repos complete quickly
 $repos = @($repos | Sort-Object { $_.SizeMB })
 
-# ── Batch splitting (for matrix strategy — multiple agents) ──────────────────
-if ($BatchTotal -gt 1) {
-    $batchedRepos = @()
-    for ($i = 0; $i -lt $repos.Count; $i++) {
-        if ($i % $BatchTotal -eq $BatchIndex) { $batchedRepos += $repos[$i] }
-    }
-    $repos = $batchedRepos
-    Write-Host "Batch $($BatchIndex + 1) of ${BatchTotal}: scanning $($repos.Count) repos on this agent" -ForegroundColor Cyan
-}
-
-# File suffix for parallel job output (avoids overwriting)
-$batchSuffix = if ($BatchTotal -gt 1) { "-batch$BatchIndex" } else { '' }
-$fileSuffix = if ($SizeFilter -ne 'All') { "-$($SizeFilter.ToLower())${batchSuffix}" } else { $batchSuffix }
-
-Write-Host "=== Scanning $($repos.Count) repos for secrets [$SizeFilter] (ThrottleLimit=$ThrottleLimit) ===" -ForegroundColor Cyan
+Write-Host "=== Scanning $($repos.Count) repos for secrets (ThrottleLimit=$ThrottleLimit) ===" -ForegroundColor Cyan
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-# ── Thread-safe collections for parallel execution ───────────────────────────
-$allFindings = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+# ── Thread-safe collections ──────────────────────────────────────────────────
+$allSecrets  = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 
-# ── Parallel scan (full clone — complete history for 100% secret coverage) ───
+# ── Keyword patterns for additional scanning ─────────────────────────────────
+# These catch secrets that gitleaks might miss — simple key=value assignments
+# with common secret-related keywords.
+$keywordPatternsRaw = @(
+    # Pattern: KEYWORD = "value" or KEYWORD: "value" or KEYWORD = 'value'
+    '(?i)(password|passwd|pwd)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(api[_-]?key|apikey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(secret[_-]?key|secretkey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(access[_-]?key|accesskey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(auth[_-]?token|authtoken)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(token)\s*[=:]\s*["\u0027]([^"\u0027\s]{8,})["\u0027]'
+    '(?i)(private[_-]?key|privatekey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(client[_-]?secret|clientsecret)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(connection[_-]?string|connectionstring)\s*[=:]\s*["\u0027]([^"\u0027\s]{8,})["\u0027]'
+    '(?i)(credential|cred)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(signing[_-]?key|signingkey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(encryption[_-]?key|encryptionkey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(db[_-]?password|dbpassword)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(smtp[_-]?password|smtppassword)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    '(?i)(bearer)\s+([A-Za-z0-9\-_\.]{20,})'
+)
+
+# ── Parallel scan ────────────────────────────────────────────────────────────
 $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
-    $repo      = $_
-    $cloneDir  = $using:cloneDir
-    $logDir    = $using:logDir
-    $adoPat    = $using:adoPat
-    $findings  = $using:allFindings
-    $summary   = $using:repoSummary
+    $repo     = $_
+    $cloneDir = $using:cloneDir
+    $logDir   = $using:logDir
+    $adoPat   = $using:adoPat
+    $secrets  = $using:allSecrets
+    $summary  = $using:repoSummary
+    $kwPatterns = $using:keywordPatternsRaw
 
-    $repoLabel  = "[$($repo.Project)] $($repo.Name)"
-    $clonePath  = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8)).git"
-    $reportFile = Join-Path $logDir "gitleaks-$($repo.Name).json"
+    $repoLabel = "[$($repo.Project)] $($repo.Name)"
+    $clonePath = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    $gitleaksReport = Join-Path $logDir "gitleaks-$($repo.Name).json"
 
-    # Clone — full bare clone with header auth; skip LFS (binaries can't contain text secrets)
+    # ── 1. Full clone (all branches, all history) ────────────────────────
     $cloneUrl   = $repo.RemoteUrl -replace '://[^@]+@', '://'
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("pat:${adoPat}"))
 
@@ -133,57 +109,193 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         Write-Host "  Cloning $repoLabel — full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
         $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth",
                        '-c', 'lfs.fetchexclude=*',
-                       'clone', '--bare', '--quiet', $cloneUrl, $clonePath)
-
+                       'clone', '--mirror', '--quiet', $cloneUrl, $clonePath)
         $cloneOutput = & git @cloneArgs 2>&1
         if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
     }
     catch {
         Write-Warning "  Clone failed for ${repoLabel}: $_"
-        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = -1; Status = "CLONE_FAILED" })
+        $summary.Add([PSCustomObject]@{
+            Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB
+            GitleaksFindings = 0; KeywordFindings = 0; TotalFindings = 0; Status = "CLONE_FAILED"
+        })
         return
     }
 
-    # Run gitleaks
-    $exitCode = 0
+    # ── 2. Get all branches ──────────────────────────────────────────────
+    $branches = @()
     try {
-        $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
-        $exitCode = $LASTEXITCODE
+        Push-Location $clonePath
+        $branchLines = & git branch -a 2>&1 | ForEach-Object { $_.Trim() -replace '^\*\s*', '' -replace '^remotes/origin/', '' }
+        $branches = @($branchLines | Where-Object { $_ -and $_ -notmatch 'HEAD' } | Select-Object -Unique)
+        Pop-Location
     }
     catch {
-        $exitCode = $LASTEXITCODE
+        $branches = @("main", "master")
+        if (Test-Path (Join-Path $clonePath "HEAD")) { Pop-Location }
     }
 
-    if ($exitCode -eq 0) {
-        Write-Host "  CLEAN — $repoLabel" -ForegroundColor Green
-        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = 0; Status = "CLEAN" })
-    }
-    elseif ($exitCode -eq 1 -and (Test-Path $reportFile)) {
-        $foundItems = Get-Content $reportFile -Raw | ConvertFrom-Json
-        $count = ($foundItems | Measure-Object).Count
-        Write-Warning "  SECRETS FOUND: $count finding(s) in $repoLabel"
+    Write-Host "  $repoLabel: Found $($branches.Count) branches" -ForegroundColor Gray
 
-        foreach ($f in $foundItems) {
-            $findings.Add([PSCustomObject]@{
-                Project   = $repo.Project
-                Repo      = $repo.Name
-                RuleID    = $f.RuleID
-                Match     = ($f.Match -replace '.', '*')   # Mask the actual secret
-                File      = $f.File
-                StartLine = $f.StartLine
-                Commit    = $f.Commit
-                Author    = $f.Author
-                Date      = $f.Date
+    # ── 3. Run gitleaks (scans entire history across all refs) ────────────
+    $gitleaksCount = 0
+    $gitleaksExitCode = 0
+    try {
+        $output = & gitleaks detect --source $clonePath --report-path $gitleaksReport --report-format json --no-banner 2>&1
+        $gitleaksExitCode = $LASTEXITCODE
+    }
+    catch {
+        $gitleaksExitCode = $LASTEXITCODE
+    }
+
+    if ($gitleaksExitCode -eq 1 -and (Test-Path $gitleaksReport)) {
+        $gitleaksFindings = @(Get-Content $gitleaksReport -Raw | ConvertFrom-Json)
+        $gitleaksCount = $gitleaksFindings.Count
+
+        foreach ($f in $gitleaksFindings) {
+            # Extract key name from the match context
+            $keyName = ""
+            if ($f.Match -match '(?i)([A-Z_][A-Z0-9_]*)\s*[=:]') {
+                $keyName = $Matches[1]
+            } else {
+                $keyName = $f.RuleID
+            }
+            $secretName = $keyName.ToUpper() -replace "[^A-Z0-9_]", "_"
+            if ([string]::IsNullOrWhiteSpace($secretName)) { $secretName = "SECRET" }
+            if ($secretName -match "^\d") { $secretName = "S_$secretName" }
+
+            # Determine branch from commit
+            $branchName = "unknown"
+            try {
+                Push-Location $clonePath
+                $brOut = & git branch --contains $f.Commit 2>&1 | Select-Object -First 1
+                if ($brOut) { $branchName = ($brOut.Trim() -replace '^\*\s*', '').Trim() }
+                Pop-Location
+            }
+            catch {
+                if (Test-Path (Join-Path $clonePath "HEAD")) { Pop-Location }
+            }
+
+            $secrets.Add([PSCustomObject]@{
+                Source       = "gitleaks"
+                Project      = $repo.Project
+                Repo         = $repo.Name
+                SecretName   = $secretName
+                SecretValue  = $f.Secret
+                RuleID       = $f.RuleID
+                File         = $f.File
+                LineNumber   = $f.StartLine
+                Branch       = $branchName
+                CommitID     = $f.Commit
+                Author       = $f.Author
+                Date         = $f.Date
+                Match        = $f.Match
+                Description  = $f.Description
             })
         }
-        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = $count; Status = "SECRETS_FOUND" })
+    }
+    elseif ($gitleaksExitCode -eq 0) {
+        Write-Host "  gitleaks CLEAN — $repoLabel" -ForegroundColor Green
     }
     else {
-        Write-Warning "  gitleaks returned exit code $exitCode for $repoLabel"
-        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = -1; Status = "SCAN_ERROR" })
+        Write-Warning "  gitleaks error (exit=$gitleaksExitCode) for $repoLabel"
     }
 
-    # Clean up clone immediately to free disk space
+    # ── 4. Keyword-based regex scan (per branch, per file) ───────────────
+    $keywordCount = 0
+
+    foreach ($branch in $branches) {
+        try {
+            Push-Location $clonePath
+            # List all tracked files on this branch
+            $fileList = & git ls-tree -r --name-only $branch 2>&1
+            if ($LASTEXITCODE -ne 0) { Pop-Location; continue }
+
+            foreach ($filePath in $fileList) {
+                # Skip binary-looking extensions
+                if ($filePath -match '\.(png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|zip|tar|gz|dll|exe|bin|pdf|mp4|mp3|wav)$') {
+                    continue
+                }
+
+                # Get file content from git
+                $fileContent = & git show "${branch}:${filePath}" 2>&1
+                if ($LASTEXITCODE -ne 0) { continue }
+
+                $lineNum = 0
+                foreach ($line in ($fileContent -split "`n")) {
+                    $lineNum++
+                    foreach ($pattern in $kwPatterns) {
+                        if ($line -match $pattern) {
+                            $keyName  = $Matches[1]
+                            $secretVal = $Matches[2]
+
+                            # Skip placeholders and short values
+                            $lowerVal = $secretVal.ToLower()
+                            $placeholders = @('changeme','password','secret','example','placeholder',
+                                'your-secret-here','your-password-here','your-token-here',
+                                'xxxxxxxx','test1234','abcdefgh','changeit','replace_me',
+                                'todo_replace','none','null','undefined','default','required',
+                                'optional','insert_here','change_me','xxx','yyy','zzz')
+                            if ($placeholders -contains $lowerVal) { continue }
+
+                            # Get the commit that last touched this line
+                            $commitId = "HEAD"
+                            try {
+                                $blameLine = & git blame -L "${lineNum},${lineNum}" "${branch}" -- $filePath 2>&1 | Select-Object -First 1
+                                if ($blameLine -match '^([0-9a-f]+)') {
+                                    $commitId = $Matches[1]
+                                }
+                            }
+                            catch { }
+
+                            $secretName = $keyName.ToUpper() -replace "[^A-Z0-9_]", "_"
+                            if ([string]::IsNullOrWhiteSpace($secretName)) { $secretName = "SECRET" }
+                            if ($secretName -match "^\d") { $secretName = "S_$secretName" }
+
+                            $keywordCount++
+                            $secrets.Add([PSCustomObject]@{
+                                Source       = "keyword-scan"
+                                Project      = $repo.Project
+                                Repo         = $repo.Name
+                                SecretName   = $secretName
+                                SecretValue  = $secretVal
+                                RuleID       = "keyword-$($keyName.ToLower())"
+                                File         = $filePath
+                                LineNumber   = $lineNum
+                                Branch       = $branch
+                                CommitID     = $commitId
+                                Author       = ""
+                                Date         = ""
+                                Match        = $line.Trim()
+                                Description  = "Keyword pattern match: $keyName"
+                            })
+                        }
+                    }
+                }
+            }
+            Pop-Location
+        }
+        catch {
+            Write-Warning "  Keyword scan failed for branch $branch in ${repoLabel}: $_"
+            if (Test-Path (Join-Path $clonePath "HEAD")) { Pop-Location }
+        }
+    }
+
+    # ── 5. Summary ───────────────────────────────────────────────────────
+    $totalFindings = $gitleaksCount + $keywordCount
+    $status = if ($totalFindings -gt 0) { "SECRETS_FOUND" } else { "CLEAN" }
+
+    if ($totalFindings -gt 0) {
+        Write-Warning "  SECRETS FOUND: $totalFindings ($gitleaksCount gitleaks + $keywordCount keyword) in $repoLabel"
+    }
+
+    $summary.Add([PSCustomObject]@{
+        Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB
+        GitleaksFindings = $gitleaksCount; KeywordFindings = $keywordCount
+        TotalFindings = $totalFindings; Status = $status
+    })
+
+    # Cleanup clone
     if (Test-Path $clonePath) {
         Remove-Item $clonePath -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -191,28 +303,68 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
 $stopwatch.Stop()
 
-# ── Final cleanup (safety net) ───────────────────────────────────────────────
+# ── Final cleanup ────────────────────────────────────────────────────────────
 if (Test-Path $cloneDir) { Remove-Item $cloneDir -Recurse -Force -ErrorAction SilentlyContinue }
 
-# ── Convert ConcurrentBag to arrays ─────────────────────────────────────────
+# ── Convert to arrays ────────────────────────────────────────────────────────
 $repoSummaryArr = @($repoSummary.ToArray())
-$allFindingsArr = @($allFindings.ToArray())
+$allSecretsArr  = @($allSecrets.ToArray())
 
-# ── Reports ──────────────────────────────────────────────────────────────────
-$summaryJson   = Join-Path $reportDir "secret-scan-summary${fileSuffix}.json"
-$findingsJson  = Join-Path $reportDir "secret-scan-findings${fileSuffix}.json"
+# ── Deduplicate secrets (same value in same file = keep one) ─────────────────
+$uniqueSecrets = @()
+$seenKeys = @{}
+foreach ($s in $allSecretsArr) {
+    $dedupKey = "$($s.Repo)|$($s.File)|$($s.LineNumber)|$($s.SecretValue)"
+    if (-not $seenKeys.ContainsKey($dedupKey)) {
+        $seenKeys[$dedupKey] = $true
+        $uniqueSecrets += $s
+    }
+}
+
+# ── Auto-increment duplicate secret names ────────────────────────────────────
+$nameCounter = @{}
+foreach ($s in $uniqueSecrets) {
+    $baseName = $s.SecretName
+    if ($nameCounter.ContainsKey($baseName)) {
+        $nameCounter[$baseName]++
+        $s.SecretName = "${baseName}_$($nameCounter[$baseName])"
+    } else {
+        $nameCounter[$baseName] = 1
+    }
+}
+
+# ── Save JSON reports ────────────────────────────────────────────────────────
+$summaryJson  = Join-Path $reportDir "secret-scan-summary.json"
+$findingsJson = Join-Path $reportDir "secret-scan-findings.json"
 
 $repoSummaryArr | ConvertTo-Json -Depth 3 | Out-File $summaryJson  -Encoding utf8
-$allFindingsArr | ConvertTo-Json -Depth 5 | Out-File $findingsJson -Encoding utf8
+$uniqueSecrets  | ConvertTo-Json -Depth 5 | Out-File $findingsJson -Encoding utf8
 
 # ── HTML Report ──────────────────────────────────────────────────────────────
-$htmlPath     = Join-Path $reportDir "secret-scan-report${fileSuffix}.html"
+$htmlPath     = Join-Path $reportDir "secret-scan-report.html"
 $cleanCount   = @($repoSummaryArr | Where-Object Status -eq 'CLEAN').Count
 $secretsCount = @($repoSummaryArr | Where-Object Status -eq 'SECRETS_FOUND').Count
 $errorCount   = @($repoSummaryArr | Where-Object Status -eq 'SCAN_ERROR').Count
 $failedCount  = @($repoSummaryArr | Where-Object Status -eq 'CLONE_FAILED').Count
 
-$tableRows = ($repoSummaryArr | Sort-Object Status, Name | ForEach-Object {
+$findingsTableRows = ""
+foreach ($s in ($uniqueSecrets | Sort-Object Repo, File, LineNumber)) {
+    $maskedVal = if ($s.SecretValue.Length -le 8) { "***" }
+                 else { $s.SecretValue.Substring(0, 3) + ("*" * [Math]::Max(1, $s.SecretValue.Length - 6)) + $s.SecretValue.Substring($s.SecretValue.Length - 3) }
+    $findingsTableRows += "<tr>"
+    $findingsTableRows += "<td>$([System.Net.WebUtility]::HtmlEncode($s.Repo))</td>"
+    $findingsTableRows += "<td>$([System.Net.WebUtility]::HtmlEncode($s.SecretName))</td>"
+    $findingsTableRows += "<td><code>$([System.Net.WebUtility]::HtmlEncode($maskedVal))</code></td>"
+    $findingsTableRows += "<td>$([System.Net.WebUtility]::HtmlEncode($s.File))</td>"
+    $findingsTableRows += "<td>$($s.LineNumber)</td>"
+    $findingsTableRows += "<td>$([System.Net.WebUtility]::HtmlEncode($s.Branch))</td>"
+    $findingsTableRows += "<td><code>$($s.CommitID.Substring(0, [Math]::Min(8, $s.CommitID.Length)))</code></td>"
+    $findingsTableRows += "<td>$([System.Net.WebUtility]::HtmlEncode($s.Source))</td>"
+    $findingsTableRows += "<td>$([System.Net.WebUtility]::HtmlEncode($s.RuleID))</td>"
+    $findingsTableRows += "</tr>`n"
+}
+
+$summaryTableRows = ($repoSummaryArr | Sort-Object Status, Name | ForEach-Object {
     $statusColor = switch ($_.Status) {
         'CLEAN'         { '#27ae60' }
         'SECRETS_FOUND' { '#e74c3c' }
@@ -220,53 +372,62 @@ $tableRows = ($repoSummaryArr | Sort-Object Status, Name | ForEach-Object {
         'CLONE_FAILED'  { '#95a5a6' }
         default         { '#333' }
     }
-    "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Project))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.Name))</td><td>$($_.SizeMB)</td><td>$($_.FindingsCount)</td><td style='color:$statusColor;font-weight:bold'>$($_.Status)</td></tr>"
+    "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Project))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.Name))</td><td>$($_.SizeMB)</td><td>$($_.GitleaksFindings)</td><td>$($_.KeywordFindings)</td><td>$($_.TotalFindings)</td><td style='color:$statusColor;font-weight:bold'>$($_.Status)</td></tr>"
 }) -join "`n"
 
 $html = @"
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Secret Scan Report [$SizeFilter]</title>
+<html><head><meta charset="utf-8"><title>Secret Scan Report</title>
 <style>
-  body { font-family: 'Segoe UI', sans-serif; margin: 20px; background: #f5f5f5; }
-  h1 { color: #2c3e50; } h2 { color: #34495e; }
+  body { font-family: 'Segoe UI', sans-serif; margin: 20px; background: #0d1117; color: #c9d1d9; }
+  h1 { color: #58a6ff; } h2 { color: #c9d1d9; margin-top: 24px; }
   .summary { display: flex; gap: 15px; margin: 15px 0; flex-wrap: wrap; }
-  .card { padding: 15px 25px; border-radius: 8px; color: #fff; font-size: 1.1em; min-width: 120px; }
+  .card { padding: 15px 25px; border-radius: 8px; color: #fff; font-size: 1.1em; min-width: 140px; }
   .card .num { font-size: 2em; font-weight: bold; }
-  table { border-collapse: collapse; width: 100%; background: #fff; margin-top: 10px; }
-  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
-  th { background: #2c3e50; color: #fff; }
-  tr:nth-child(even) { background: #f9f9f9; }
-  .elapsed { color: #7f8c8d; font-size: 0.9em; margin-top: 5px; }
+  table { border-collapse: collapse; width: 100%; background: #161b22; margin-top: 10px; border-radius: 8px; overflow: hidden; }
+  th { background: #1f2937; color: #58a6ff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { border-bottom: 1px solid #21262d; padding: 8px 12px; font-size: 14px; }
+  tr:hover { background: #1c2128; }
+  code { background: #1f2937; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #79c0ff; }
+  .elapsed { color: #8b949e; font-size: 0.9em; margin-top: 5px; }
+  .footer { text-align: center; padding: 20px; color: #484f58; font-size: 12px; }
 </style></head><body>
-<h1>Secret Scan Report [$SizeFilter]</h1>
-<p class="elapsed">Scanned $($repoSummaryArr.Count) repos in $($stopwatch.Elapsed.ToString('hh\:mm\:ss')) | ThrottleLimit=$ThrottleLimit | Full clone (complete history)</p>
+<h1>&#128270; Secret Scan Report</h1>
+<p class="elapsed">Scanned $($repoSummaryArr.Count) repos in $($stopwatch.Elapsed.ToString('hh\:mm\:ss')) | ThrottleLimit=$ThrottleLimit | Full clone (all branches, complete history)</p>
 <div class="summary">
   <div class="card" style="background:#27ae60"><div class="num">$cleanCount</div>Clean</div>
   <div class="card" style="background:#e74c3c"><div class="num">$secretsCount</div>Secrets Found</div>
   <div class="card" style="background:#f39c12"><div class="num">$errorCount</div>Errors</div>
   <div class="card" style="background:#95a5a6"><div class="num">$failedCount</div>Clone Failed</div>
+  <div class="card" style="background:#58a6ff"><div class="num">$($uniqueSecrets.Count)</div>Total Unique Secrets</div>
 </div>
-<h2>Repo Details</h2>
-<table><tr><th>Project</th><th>Repo</th><th>Size (MB)</th><th>Findings</th><th>Status</th></tr>
-$tableRows
+<h2>Repo Summary</h2>
+<table><tr><th>Project</th><th>Repo</th><th>Size (MB)</th><th>Gitleaks</th><th>Keyword</th><th>Total</th><th>Status</th></tr>
+$summaryTableRows
 </table>
+<h2>Secret Findings Detail</h2>
+<table><tr><th>Repo</th><th>Secret Name</th><th>Value (masked)</th><th>File</th><th>Line</th><th>Branch</th><th>Commit</th><th>Source</th><th>Rule</th></tr>
+$findingsTableRows
+</table>
+<div class="footer">Generated by ADO-to-GitHub Migration Accelerator | Secret values are stored in secret-scan-findings.json</div>
 </body></html>
 "@
 $html | Out-File $htmlPath -Encoding utf8
 
-Write-Host "`n=== Secret Scan Summary [$SizeFilter] ===" -ForegroundColor Green
+# ── Console Summary ──────────────────────────────────────────────────────────
+Write-Host "`n=== Secret Scan Summary ===" -ForegroundColor Green
 Write-Host "  Elapsed time        : $($stopwatch.Elapsed.ToString('hh\:mm\:ss'))"
 Write-Host "  Total repos scanned : $($repoSummaryArr.Count)"
 Write-Host "  Clean               : $cleanCount"
 Write-Host "  Secrets found       : $secretsCount"
 Write-Host "  Scan errors         : $errorCount"
 Write-Host "  Clone failed        : $failedCount"
-Write-Host "  Total findings      : $($allFindingsArr.Count)"
+Write-Host "  Total unique secrets: $($uniqueSecrets.Count)"
 
 $dirty = @($repoSummaryArr | Where-Object { $_.Status -eq 'SECRETS_FOUND' })
 if ($dirty) {
     Write-Host "`nRepos requiring secret scrubbing BEFORE migration:" -ForegroundColor Red
-    $dirty | Format-Table Name, FindingsCount -AutoSize
+    $dirty | Format-Table Name, GitleaksFindings, KeywordFindings, TotalFindings -AutoSize
     Write-Host "Run 02-prep\scrub-secrets.ps1 to clean these repos."
 }
 
@@ -274,4 +435,4 @@ Write-Host "`nReports saved:"
 Write-Host "  Summary  : $summaryJson"
 Write-Host "  Findings : $findingsJson"
 Write-Host "  HTML     : $htmlPath"
-Write-Host "`nNext step: Run 02-prep\install-tools.ps1, then 02-prep\scrub-secrets.ps1"
+Write-Host "`nNext step: Run 02-prep\scrub-secrets.ps1"
