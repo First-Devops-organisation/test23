@@ -42,7 +42,7 @@
     }
   ],
   "PIPELINE_IDS": [1175,934,930,1156],
-  "PIPELINE_REPO_MAP": {"1175": "dashboard-testing","934": "template","930": "test1","1156": "sample"},
+  "PIPELINE_REPO_MAP": {"1175": "dashboard-testing","934": "test1","1156": "test2"},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "",
