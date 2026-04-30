@@ -323,7 +323,13 @@ param(
     [int]$BatchIndex = 0,
 
     [Parameter(Mandatory = $false)]
-    [int]$BatchTotal = 1
+    [int]$BatchTotal = 1,
+
+    [Parameter(Mandatory = $false)]
+    [string]$MigrationMode = 'Batch',
+
+    [Parameter(Mandatory = $false)]
+    [string]$SingleRepoName = ''
 )
 
 Set-StrictMode -Version Latest
@@ -353,7 +359,10 @@ $repos = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
 
 # Filter repos to only those scheduled for migration
 $migratingRepos = @()
-if ($null -ne $config.batches) {
+if ($MigrationMode -ieq 'Single' -and -not [string]::IsNullOrWhiteSpace($SingleRepoName)) {
+    $migratingRepos += $SingleRepoName.Trim()
+    Write-Host "Filter: Single mode enabled. Scanning repo: $SingleRepoName" -ForegroundColor Gray
+} elseif ($null -ne $config.batches) {
     foreach ($batch in $config.batches) {
         if ($null -ne $batch.repos) {
             $migratingRepos += @($batch.repos)
@@ -363,9 +372,11 @@ if ($null -ne $config.batches) {
 
 if ($migratingRepos.Count -gt 0) {
     $repos = @($repos | Where-Object { $migratingRepos -contains $_.Name })
-    Write-Host "Filter: Only scanning $($repos.Count) repos scheduled for migration." -ForegroundColor Gray
+    if ($MigrationMode -ine 'Single') {
+        Write-Host "Filter: Only scanning $($repos.Count) repos scheduled for batch migration." -ForegroundColor Gray
+    }
 } else {
-    Write-Host "Filter: No repos explicitly scheduled for migration in config. Scanning all." -ForegroundColor Gray
+    Write-Host "Filter: No repos explicitly scheduled for migration. Scanning all." -ForegroundColor Gray
 }
 
 $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
@@ -573,4 +584,3 @@ Write-Host "  Summary  : $summaryJson"
 Write-Host "  Findings : $findingsJson"
 Write-Host "  HTML     : $htmlPath"
 Write-Host "`nNext step: Run 02-prep\install-tools.ps1, then 02-prep\scrub-secrets.ps1"
-
