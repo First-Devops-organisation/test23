@@ -101,6 +101,14 @@ if ($reposToScan.Count -eq 0) {
 }
 
 # ── Fetch repo metadata directly from ADO (Avoids stale inventory) ───────────
+$adoPat  = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
+$adoOrg  = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
+$adoProj = if ($config.source.project -match '^\$\(') { $env:ADO_PROJECT } else { $config.source.project }
+
+if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
+if ([string]::IsNullOrWhiteSpace($adoOrg)) { Write-Error "Set ADO_ORG environment variable" }
+if ([string]::IsNullOrWhiteSpace($adoProj)) { Write-Error "Set ADO_PROJECT environment variable" }
+
 Write-Host "Fetching metadata for $($reposToScan.Count) repos from Azure DevOps..." -ForegroundColor Cyan
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $headers = @{ Authorization = "Basic $base64Auth"; Accept = "application/json" }
