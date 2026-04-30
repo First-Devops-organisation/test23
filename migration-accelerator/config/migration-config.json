@@ -42,9 +42,9 @@
     }
   ],
   "PIPELINE_IDS": [],
-  "PIPELINE_REPO_MAP": {},
+  "PIPELINE_REPO_MAP": {"1172": "reusable_testing"},
   "PIPELINE_TYPE": "build",
-  "MIGRATE_MODE": "",
+  "MIGRATE_MODE": "build",
   "GH_REPO": "",
-  "REUSABLE_PIPELINE_IDS": []
+  "REUSABLE_PIPELINE_IDS": [1172]
 }
