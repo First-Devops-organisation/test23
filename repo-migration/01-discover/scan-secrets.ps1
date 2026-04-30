@@ -63,8 +63,12 @@ if (Test-Path $inventoryPath) {
     $repos = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
 } else {
     Write-Host "repo-inventory.json not found - fetching repos directly from ADO API..." -ForegroundColor Yellow
-    $adoOrg  = $config.source.organization
-    $adoProj = $config.source.project
+    $adoOrg  = if ($config.source.organization -eq '$(ADO_Org)') { $env:ADO_Org } else { $config.source.organization }
+    $adoProj = if ($config.source.project -eq '$(ADO_Project)') { $env:ADO_Project } else { $config.source.project }
+    
+    if ([string]::IsNullOrWhiteSpace($adoOrg)) { Write-Error "ADO Organization not found (config or environment)" }
+    if ([string]::IsNullOrWhiteSpace($adoProj)) { Write-Error "ADO Project not found (config or environment)" }
+
     # If org is just the name (e.g. "YashTech-DevOps"), prepend the base URL
     if ($adoOrg -and $adoOrg -notmatch '^https?://') {
         $adoOrg = "https://dev.azure.com/$adoOrg"
@@ -95,8 +99,8 @@ if (Test-Path $inventoryPath) {
     $repos | ConvertTo-Json -Depth 5 | Out-File $inventoryPath -Encoding utf8
 }
 
-# Skip empty repos
-$repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
+# Keep original list for filtering and error reporting
+$allRepos = $repos
 
 # Filter by RepoName if provided
 if (-not [string]::IsNullOrWhiteSpace($RepoName)) {
@@ -104,7 +108,21 @@ if (-not [string]::IsNullOrWhiteSpace($RepoName)) {
     Write-Host "Filtering scan to single repo: $trimmedRepo" -ForegroundColor Cyan
     $repos = @($repos | Where-Object { $_.Name -ieq $trimmedRepo })
     if ($repos.Count -eq 0) {
-        Write-Error "Repository '$trimmedRepo' not found in inventory or API response."
+        $available = ($allRepos | Select-Object -First 5 -ExpandProperty Name) -join ", "
+        Write-Error "Repository '$trimmedRepo' not found in ADO project inventory. Available repos (first 5): $available. Please check the name in your variable group."
+    }
+}
+
+# Keep a reference to original list for error reporting above
+# (I need to ensure $allRepos is defined)
+
+# Skip empty repos (but only if we didn't specifically target one)
+if ([string]::IsNullOrWhiteSpace($RepoName)) {
+    $beforeCount = $repos.Count
+    $repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
+    $afterCount = $repos.Count
+    if ($beforeCount -ne $afterCount) {
+        Write-Host "  Skipped $($beforeCount - $afterCount) empty repositories." -ForegroundColor Gray
     }
 }
 
