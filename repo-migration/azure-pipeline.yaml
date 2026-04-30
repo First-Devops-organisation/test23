@@ -67,14 +67,11 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
-                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
+                $c   = $c -replace '\$\(ADO_ORG\)',     ''
+                $c   = $c -replace '\$\(ADO_PROJECT\)', ''
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
-                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
-                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -108,8 +105,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
-              ADO_Org: $(ADO_Org)
-              ADO_Project: $(ADO_Project)
+              ADO_ORG: $(ADO_ORG)
+              ADO_PROJECT: $(ADO_PROJECT)
               ADO_PAT: $(ADO_PAT)
 
           - task: PowerShell@2
@@ -121,8 +118,8 @@ stages:
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             condition: eq('${{ parameters.SkipAudit }}', false)
             env:
-              ADO_Org: $(ADO_Org)
-              ADO_Project: $(ADO_Project)
+              ADO_ORG: $(ADO_ORG)
+              ADO_PROJECT: $(ADO_PROJECT)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -151,14 +148,11 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
-                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
+                $c   = $c -replace '\$\(ADO_ORG\)',     ''
+                $c   = $c -replace '\$\(ADO_PROJECT\)', ''
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
-                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
-                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -202,8 +196,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
-              ADO_Org: $(ADO_Org)
-              ADO_Project: $(ADO_Project)
+              ADO_ORG: $(ADO_ORG)
+              ADO_PROJECT: $(ADO_PROJECT)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -284,14 +278,11 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
-                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
+                $c   = $c -replace '\$\(ADO_ORG\)',     ''
+                $c   = $c -replace '\$\(ADO_PROJECT\)', ''
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
-                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
-                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -333,8 +324,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
-              ADO_Org: $(ADO_Org)
-              ADO_Project: $(ADO_Project)
+              ADO_ORG: $(ADO_ORG)
+              ADO_PROJECT: $(ADO_PROJECT)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -426,8 +417,8 @@ stages:
                 }
 
                 $params = @{
-                    ADOOrg     = '$(ADO_Org)'.Trim()
-                    ADOProject = '$(ADO_Project)'.Trim()
+                    ADOOrg     = ''.Trim()
+                    ADOProject = ''.Trim()
                     ADO_Repo    = $ADO_Repo
                     GHOrg      = '$(GitHub_Org)'.Trim()
                     GitHub_Repo     = $GitHub_Repo
@@ -550,14 +541,11 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
-                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
+                $c   = $c -replace '\$\(ADO_Org\)',     ''
+                $c   = $c -replace '\$\(ADO_Project\)', ''
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
-                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
-                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -589,8 +577,8 @@ stages:
               targetType: inline
               script: |
                 $params = @{
-                    ADOOrg      = '$(ADO_Org)'
-                    ADOProject  = '$(ADO_Project)'
+                    ADOOrg      = ''
+                    ADOProject  = ''
                     GHOrg       = '$(GitHub_Org)'
                     ConfigPath  = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
                     BatchName   = '${{ parameters.BatchName }}'
@@ -703,14 +691,11 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
-                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
+                $c   = $c -replace '\$\(ADO_Org\)',     ''
+                $c   = $c -replace '\$\(ADO_Project\)', ''
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
-                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
-                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -801,8 +786,8 @@ stages:
                 }
 
                 & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
-                    -ADOOrg     '$(ADO_Org)' `
-                    -ADOProject '$(ADO_Project)' `
+                    -ADOOrg     '' `
+                    -ADOProject '' `
                     -GHOrg      '$(GitHub_Org)' `
                     -GitHub_Repo     $GitHub_Repo `
                     -ADO_Repo    $ADO_Repo `
@@ -833,8 +818,8 @@ stages:
                 }
 
                 & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
-                    -ADOOrg     '$(ADO_Org)' `
-                    -ADOProject '$(ADO_Project)' `
+                    -ADOOrg     '' `
+                    -ADOProject '' `
                     -GHOrg      '$(GitHub_Org)' `
                     -OutputDir  '$(Build.SourcesDirectory)\repo-migration\output' `
                     -ExpectedVisibility $visibility
@@ -923,7 +908,6 @@ stages:
                     Write-Host "##vso[task.uploadsummary]$valSummary"
                 } else { Write-Warning "Validation summary not found: $valSummary" }
               pwsh: true
-
 
 
 
