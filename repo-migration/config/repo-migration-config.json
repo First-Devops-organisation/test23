@@ -22,8 +22,10 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
-        "migration_testing",
-         "CICD-ADO-Azure"
+        "dummy-secret",
+         "Advanced-Security",
+         "Azure-DevOpstemplate",
+         "trivy-ci-test"
         
       ]
     }
