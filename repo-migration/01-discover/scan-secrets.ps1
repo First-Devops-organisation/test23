@@ -42,15 +42,42 @@ if (-not $gl) {
     Write-Error "gitleaks not found. Install: https://github.com/gitleaks/gitleaks/releases"
 }
 
-# ------ Load inventory ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-$inventoryPath = Join-Path $reportDir "repo-inventory.json"
-if (-not (Test-Path $inventoryPath)) {
-    Write-Error "repo-inventory.json not found. Run 01-discover\discover-repos.ps1 first."
-}
-$repos = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
-
+# ------ Resolve PAT first (needed for both inventory load and API fallback) -----
 $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
+
+# ------ Load inventory (or fetch from API if discover-repos was skipped) --------
+$inventoryPath = Join-Path $reportDir "repo-inventory.json"
+if (Test-Path $inventoryPath) {
+    Write-Host "Loading repo inventory from $inventoryPath" -ForegroundColor Cyan
+    $repos = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
+} else {
+    Write-Host "repo-inventory.json not found - fetching repos directly from ADO API..." -ForegroundColor Yellow
+    $adoOrg  = $config.source.organization
+    $adoProj = $config.source.project
+    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":${adoPat}"))
+    $headers = @{
+        Authorization  = "Basic $base64Auth"
+        Accept         = "application/json"
+        "Content-Type" = "application/json"
+    }
+    $repoApiUrl = "${adoOrg}/${adoProj}/_apis/git/repositories?api-version=7.1"
+    $response = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get
+    $repos = @($response.value | ForEach-Object {
+        [PSCustomObject]@{
+            Project   = $adoProj
+            Name      = $_.name
+            Id        = $_.id
+            SizeMB    = [math]::Round($_.size / 1MB, 2)
+            SizeGB    = [math]::Round($_.size / 1GB, 2)
+            RemoteUrl = $_.remoteUrl
+            Url       = $_.webUrl
+        }
+    })
+    Write-Host "  Found $($repos.Count) repos from API" -ForegroundColor Green
+    # Save for downstream use
+    $repos | ConvertTo-Json -Depth 5 | Out-File $inventoryPath -Encoding utf8
+}
 
 # Skip empty repos
 $repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
