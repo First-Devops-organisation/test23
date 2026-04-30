@@ -65,8 +65,18 @@
   },
   "iterationPathMapping": {
     "YASH-DevOps-Serverless\\Sprint 1": "Sprint 1",
-    "YASH-DevOps-Serverless\\Sprint 2": "Sprint 2",
-    "YASH-DevOps-Serverless\\Sprint 3": "Sprint 3"
+    "YASH-DevOps-Serverless\\Serverless_S1": "Serverless S1",
+    "YASH-DevOps-Serverless\\Serverless_S2": "Serverless S2",
+    "YASH-DevOps-Serverless\\Serverless_S3": "Serverless S3",
+    "YASH-DevOps-Serverless\\Serverless_S4": "Serverless S4",
+    "YASH-DevOps-Serverless\\Serverless_S5": "Serverless S5",
+    "YASH-DevOps-Serverless\\Serverless_S6": "Serverless S6",
+    "YASH-DevOps-Serverless\\Serverless_S7": "Serverless S7",
+    "YASH-DevOps-Serverless\\Serverless_S8": "Serverless S8",
+    "YASH-DevOps-Serverless\\Serverless_S9": "Serverless S9",
+    "YASH-DevOps-Serverless\\Serverless_S10": "Serverless S10",
+    "YASH-DevOps-Serverless\\Serverless_S11": "Serverless S11",
+    "YASH-DevOps-Serverless\\S12": "S12"
   },
   "priorityMapping": {
     "1": "priority:critical",
