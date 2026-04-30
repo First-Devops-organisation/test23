@@ -412,8 +412,15 @@ stages:
             inputs:
               targetType: inline
               script: |
-                $ADO_Repo = '${{ parameters.ADO_Repo }}'.Trim()
-                $GitHub_Repo  = '${{ parameters.GitHub_Repo }}'.Trim()
+                $ADO_Repo = '$(ADO_Repo)'.Trim()
+                $GitHub_Repo  = '$(GitHub_Repo)'.Trim()
+                if ([string]::IsNullOrWhiteSpace($GitHub_Repo) -or $GitHub_Repo -eq '$(GitHub_Repo)') { $GitHub_Repo = $ADO_Repo }
+                if ([string]::IsNullOrWhiteSpace($ADO_Repo) -or $ADO_Repo -eq '$(ADO_Repo)') { 
+                    $ADO_Repo = '${{ parameters.ADO_Repo }}'.Trim() 
+                }
+                if ([string]::IsNullOrWhiteSpace($GitHub_Repo) -or $GitHub_Repo -eq '$(GitHub_Repo)') { 
+                    $GitHub_Repo = '${{ parameters.GitHub_Repo }}'.Trim() 
+                }
                 if ([string]::IsNullOrWhiteSpace($GitHub_Repo)) { $GitHub_Repo = $ADO_Repo }
 
                 # Read target visibility from config
@@ -485,11 +492,19 @@ stages:
 
           - task: PowerShell@2
             displayName: "Create GitHub Secrets"
+            condition: succeededOrFailed()
             inputs:
               targetType: inline
               script: |
-                $ADO_Repo = '${{ parameters.ADO_Repo }}'.Trim()
-                $GitHub_Repo  = '${{ parameters.GitHub_Repo }}'.Trim()
+                $ADO_Repo = '$(ADO_Repo)'.Trim()
+                $GitHub_Repo  = '$(GitHub_Repo)'.Trim()
+                if ([string]::IsNullOrWhiteSpace($GitHub_Repo) -or $GitHub_Repo -eq '$(GitHub_Repo)') { $GitHub_Repo = $ADO_Repo }
+                if ([string]::IsNullOrWhiteSpace($ADO_Repo) -or $ADO_Repo -eq '$(ADO_Repo)') { 
+                    $ADO_Repo = '${{ parameters.ADO_Repo }}'.Trim() 
+                }
+                if ([string]::IsNullOrWhiteSpace($GitHub_Repo) -or $GitHub_Repo -eq '$(GitHub_Repo)') { 
+                    $GitHub_Repo = '${{ parameters.GitHub_Repo }}'.Trim() 
+                }
                 if ([string]::IsNullOrWhiteSpace($GitHub_Repo)) { $GitHub_Repo = $ADO_Repo }
 
                 & '$(Build.SourcesDirectory)\repo-migration\03-migrate\create-github-secrets.ps1' `
