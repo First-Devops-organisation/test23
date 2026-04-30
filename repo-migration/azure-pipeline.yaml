@@ -232,7 +232,10 @@ stages:
             condition: and(always(), or(eq('${{ parameters.MigrationMode }}', 'Batch'), eq(variables['BATCH_INDEX'], '0')))
             continueOnError: true
             inputs:
-              reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
+              ${{ if eq(parameters.MigrationMode, 'Single') }}:
+                reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report.html'
+              ${{ else }}:
+                reportDir: '$(Build.SourcesDirectory)\repo-migration\output\reports\secret-scan-report-batch$(BATCH_INDEX).html'
               tabName: "Secret Scan Report"
   # ===========================================================================
   # STAGE 2 – REVIEW GATE  (human reviews discovery + scan before migrating)
