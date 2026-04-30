@@ -41,8 +41,8 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [801],
-  "PIPELINE_REPO_MAP": {"801": "sample"},
+  "PIPELINE_IDS": [801,1156,1158],
+  "PIPELINE_REPO_MAP": {"801": "sample","1156":"test1","1158": "test2"},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "Appinsight"
