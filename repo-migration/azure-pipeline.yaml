@@ -110,15 +110,15 @@ stages:
             env:
               ADO_PAT: $(ADO_PAT)
 
-          # - task: PowerShell@2
-          #   displayName: "1.2 Audit Repo Sizes"
-          #   inputs:
-          #     filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1'
-          #     arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
-          #     pwsh: true
-          #     workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
-          #   env:
-          #     ADO_PAT: $(ADO_PAT)
+          - task: PowerShell@2
+            displayName: "1.2 Audit Repo Sizes"
+            inputs:
+              filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
+              pwsh: true
+              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+            env:
+              ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Discovery Reports"
@@ -373,7 +373,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
-              artifact: "MigrationLogs-${{ parameters.ADORepo }}"
+              artifact: "MigrationLogs-Single"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -381,7 +381,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\audit'
-              artifact: "MigrationAudit-${{ parameters.ADORepo }}"
+              artifact: "MigrationAudit-Single"
               publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
@@ -389,7 +389,7 @@ stages:
             condition: always()
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
-              artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
+              artifact: "MigrationDashboard-Single"
               publishLocation: pipeline
 
           - task: PublishHtmlReport@1
@@ -580,8 +580,18 @@ stages:
             condition: eq('${{ parameters.MigrationMode }}', 'Single')
             continueOnError: true
             inputs:
-              artifact: "MigrationAudit-${{ parameters.ADORepo }}"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\audit'
+              buildType: 'current'
+              artifactName: "MigrationAudit-Single"
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\audit'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Migration Logs (Single)"
+            condition: eq('${{ parameters.MigrationMode }}', 'Single')
+            continueOnError: true
+            inputs:
+              buildType: 'current'
+              artifactName: "MigrationLogs-Single"
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Batch Audit Data"
@@ -605,8 +615,9 @@ stages:
             condition: eq('${{ parameters.MigrationMode }}', 'Single')
             continueOnError: true
             inputs:
-              artifact: "MigrationDashboard-${{ parameters.ADORepo }}"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
+              buildType: 'current'
+              artifactName: "MigrationDashboard-Single"
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Migration Dashboards (Batch)"
