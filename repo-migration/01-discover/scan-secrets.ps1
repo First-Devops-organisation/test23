@@ -511,8 +511,8 @@ $allFindingsArr = @($allFindings.ToArray())
 $summaryJson   = Join-Path $reportDir "secret-scan-summary${fileSuffix}.json"
 $findingsJson  = Join-Path $reportDir "secret-scan-findings${fileSuffix}.json"
 
-$repoSummaryArr | ConvertTo-Json -Depth 3 | Out-File $summaryJson  -Encoding utf8
-$allFindingsArr | ConvertTo-Json -Depth 5 | Out-File $findingsJson -Encoding utf8
+if ($repoSummaryArr.Count -gt 0) { $repoSummaryArr | ConvertTo-Json -Depth 3 | Out-File $summaryJson -Encoding utf8 } else { "[]" | Out-File $summaryJson -Encoding utf8 }
+if ($allFindingsArr.Count -gt 0) { $allFindingsArr | ConvertTo-Json -Depth 5 | Out-File $findingsJson -Encoding utf8 } else { "[]" | Out-File $findingsJson -Encoding utf8 }
 
 # ── HTML Report ──────────────────────────────────────────────────────────────
 $htmlPath     = Join-Path $reportDir "secret-scan-report${fileSuffix}.html"
