@@ -279,7 +279,10 @@ function Set-GhProjectItemFieldsBatch {
         $i++
         $valExpr = switch ($fu.type) {
             "select" { "singleSelectOptionId: `"$($fu.value)`"" }
-            "number" { "number: $($fu.value)" }
+            "number" { 
+                $numStr = [System.Convert]::ToDouble($fu.value).ToString([System.Globalization.CultureInfo]::InvariantCulture)
+                "number: $numStr" 
+            }
             "text"   {
                 $safe = "$($fu.value)" -replace '\\', '\\' -replace '"', '\"' -replace "`n", '\n' -replace "`r", ''
                 "text: `"$safe`""
