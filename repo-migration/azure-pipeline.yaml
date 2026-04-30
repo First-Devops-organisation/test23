@@ -609,6 +609,15 @@ stages:
               artifact: "BatchMigrationReports"
               path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
 
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Batch Logs"
+            condition: eq('${{ parameters.MigrationMode }}', 'Batch')
+            continueOnError: true
+            inputs:
+              buildType: 'current'
+              artifactName: "BatchMigrationLogs"
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\logs'
+              
           # Download migration dashboards for HTML tab
           - task: DownloadPipelineArtifact@2
             displayName: "Download Migration Dashboard (Single)"
