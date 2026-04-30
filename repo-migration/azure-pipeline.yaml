@@ -1,10 +1,10 @@
-trigger: none
+﻿trigger: none
 
 pool:
   vmImage: windows-latest
 
 # =============================================================================
-# PARAMETERS â€” choose at queue time
+# PARAMETERS Ã¢â‚¬â€ choose at queue time
 # =============================================================================
 parameters:
 
@@ -27,7 +27,7 @@ parameters:
     default: " "
 
   - name: BatchName
-    displayName: "Batch name from config (Batch mode â€” leave blank for all)"
+    displayName: "Batch name from config (Batch mode Ã¢â‚¬â€ leave blank for all)"
     type: string
     default: " "
 
@@ -51,7 +51,7 @@ variables:
 
 stages:
   # ===========================================================================
-  # STAGE 1 â€“ DISCOVER  (reuse existing scripts â€” already working)
+  # STAGE 1 Ã¢â‚¬â€œ DISCOVER  (reuse existing scripts Ã¢â‚¬â€ already working)
   # ===========================================================================
   - stage: Discover
     displayName: "1. Discover & Analyse"
@@ -67,11 +67,14 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
+                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
+                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -105,8 +108,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PROJECT: $(ADO_PROJECT)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PowerShell@2
@@ -118,8 +121,8 @@ stages:
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             condition: eq('${{ parameters.SkipAudit }}', false)
             env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PROJECT: $(ADO_PROJECT)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -148,11 +151,14 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
+                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
+                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -196,8 +202,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PROJECT: $(ADO_PROJECT)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -235,19 +241,19 @@ stages:
 
                 Download and check:
                   discovery-reports/repo-inventory.json
-                    â†’ confirm which repos to include / exclude
-                    â†’ update config/repo-migration-config.json batches and exclusions
+                    Ã¢â€ â€™ confirm which repos to include / exclude
+                    Ã¢â€ â€™ update config/repo-migration-config.json batches and exclusions
 
                   discovery-reports/repo-sizes.json
-                    â†’ any repo flagged OVER_LIMIT (> 40 GiB) must be remediated first
+                    Ã¢â€ â€™ any repo flagged OVER_LIMIT (> 40 GiB) must be remediated first
 
                   scan-reports-batch*/secret-scan-findings.json
-                    â†’ MANDATORY for regulated environment
-                    â†’ Critical/High findings must be remediated before migration
-                    â†’ if zero findings: safe to proceed
-                    â†’ if findings exist: scrub history first (scrub-secrets.ps1)
+                    Ã¢â€ â€™ MANDATORY for regulated environment
+                    Ã¢â€ â€™ Critical/High findings must be remediated before migration
+                    Ã¢â€ â€™ if zero findings: safe to proceed
+                    Ã¢â€ â€™ if findings exist: scrub history first (scrub-secrets.ps1)
 
-                Populate config/user-mappings.csv with ADOâ†’GitHub username mappings.
+                Populate config/user-mappings.csv with ADOÃ¢â€ â€™GitHub username mappings.
 
                 Approve to proceed to migration, or Reject to abort.
               onTimeout: reject
@@ -278,11 +284,14 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
+                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
+                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -324,8 +333,8 @@ stages:
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PROJECT: $(ADO_PROJECT)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
@@ -336,7 +345,7 @@ stages:
               publishLocation: pipeline
             condition: always()
 
-  # STAGE 3A â€“ SINGLE REPO MIGRATION
+  # STAGE 3A Ã¢â‚¬â€œ SINGLE REPO MIGRATION
   # ===========================================================================
   - stage: MigrateSingle
     displayName: "3a. Migrate (Single Repo)"
@@ -353,7 +362,7 @@ stages:
             inputs:
               targetType: inline
               script: |
-                # Portable zip install â€” no elevation required on self-hosted agents
+                # Portable zip install Ã¢â‚¬â€ no elevation required on self-hosted agents
                 $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
                 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
                     Write-Host "Installing GitHub CLI (portable zip)..."
@@ -494,7 +503,7 @@ stages:
 
 
   # ===========================================================================
-  # STAGE 3B â€“ BATCH REPO MIGRATION
+  # STAGE 3B Ã¢â‚¬â€œ BATCH REPO MIGRATION
   # ===========================================================================
   - stage: MigrateBatch
     displayName: "3b. Migrate (Batch)"
@@ -511,7 +520,7 @@ stages:
             inputs:
               targetType: inline
               script: |
-                # Portable zip install â€” no elevation required on self-hosted agents
+                # Portable zip install Ã¢â‚¬â€ no elevation required on self-hosted agents
                 $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
                 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
                     Write-Host "Installing GitHub CLI (portable zip)..."
@@ -544,8 +553,11 @@ stages:
                 $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
                 $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
+                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
+                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -661,7 +673,7 @@ stages:
 
 
   # ===========================================================================
-  # STAGE 4 â€“ VALIDATE
+  # STAGE 4 Ã¢â‚¬â€œ VALIDATE
   # ===========================================================================
   - stage: Validate
     displayName: "4. Validate Migration"
@@ -694,8 +706,11 @@ stages:
                 $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
                 $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
+                $c   = $c -replace '\$\(GitHub_Org\)',   '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+                $c   = $c -replace '\$\(CLONE_TEMP_DIR\)', '$(CLONE_TEMP_DIR)'
+                $c   = $c -replace '\$\(LOG_DIR\)',        '$(LOG_DIR)'
+                $c   = $c -replace '\$\(REPORT_DIR\)',     '$(REPORT_DIR)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
             env:
@@ -763,7 +778,7 @@ stages:
               artifact: "BatchMigrationDashboards"
               path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
 
-          # Single mode â€” validate one repo
+          # Single mode Ã¢â‚¬â€ validate one repo
           - task: PowerShell@2
             displayName: "4.1 Validate Single Repo"
             condition: eq('${{ parameters.MigrationMode }}', 'Single')
@@ -799,7 +814,7 @@ stages:
               ADO_PAT: $(ADO_PAT)
               GH_PAT:  $(GH_PAT)
 
-          # Batch mode â€” validate all repos from batch summary
+          # Batch mode Ã¢â‚¬â€ validate all repos from batch summary
           - task: PowerShell@2
             displayName: "4.1 Validate Batch Repos"
             condition: eq('${{ parameters.MigrationMode }}', 'Batch')
@@ -859,11 +874,11 @@ stages:
                 $singleFile = "$src\$GitHub_Repo\migration-report-$GitHub_Repo.html"
 
                 if (Test-Path $singleFile) {
-                    Write-Host "Single mode â€” using: $singleFile"
+                    Write-Host "Single mode Ã¢â‚¬â€ using: $singleFile"
                     Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
                 }
                 else {
-                    # Batch mode or Single file not found â€” find all HTML files
+                    # Batch mode or Single file not found Ã¢â‚¬â€ find all HTML files
                     $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
                     Write-Host "Found $($htmlFiles.Count) HTML file(s) in dashboard"
                     if ($htmlFiles.Count -eq 1) {
@@ -908,6 +923,8 @@ stages:
                     Write-Host "##vso[task.uploadsummary]$valSummary"
                 } else { Write-Warning "Validation summary not found: $valSummary" }
               pwsh: true
+
+
 
 
 
