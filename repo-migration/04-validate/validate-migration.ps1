@@ -94,8 +94,11 @@ $repoList = @()   # array of @{ ADORepo; GHRepo }
 if ($GHRepo)  { $GHRepo  = $GHRepo.Trim() }
 if ($ADORepo) { $ADORepo = $ADORepo.Trim() }
 
-# ── Fallback: if GHRepo is empty, try reading from config.json ───────────────
-if ([string]::IsNullOrWhiteSpace($GHRepo)) {
+# ── Fallback: if GHRepo is empty, but we are running in Single mode ────────
+# In Batch mode from YAML, GHRepo and ADORepo are not passed at all.
+$isSingleMode = $PSBoundParameters.ContainsKey('GHRepo') -or $PSBoundParameters.ContainsKey('ADORepo')
+
+if ($isSingleMode -and [string]::IsNullOrWhiteSpace($GHRepo)) {
     Write-Host "  GHRepo parameter is empty — checking config.json..."
     if (Test-Path $configPath) {
         $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
@@ -106,7 +109,7 @@ if ([string]::IsNullOrWhiteSpace($GHRepo)) {
     }
 }
 
-if ([string]::IsNullOrWhiteSpace($GHRepo) -and -not [string]::IsNullOrWhiteSpace($ADORepo)) {
+if ($isSingleMode -and [string]::IsNullOrWhiteSpace($GHRepo) -and -not [string]::IsNullOrWhiteSpace($ADORepo)) {
     Write-Host "  GHRepo was still empty — defaulting to ADORepo: '$ADORepo'"
     $GHRepo = $ADORepo
 }
