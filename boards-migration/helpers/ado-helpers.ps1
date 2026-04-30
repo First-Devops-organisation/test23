@@ -73,9 +73,9 @@ function Get-AdoParentId {
         
         # Log if we couldn't find the parent but relations exist
         $allRels = ($WorkItemDetails.relations | ForEach-Object { $_.rel }) -join ', '
-        Write-Log -Message "  Get-AdoParentId: ADO#$($WorkItemDetails.id) has relations ($allRels) but no Parent link." -Level "WARN"
+        Write-Log -Message "  Get-AdoParentId: ADO#$($WorkItemDetails.id) has relations ($allRels) but no Parent link." -Level "DEBUG"
     } else {
-        Write-Log -Message "  Get-AdoParentId: No relations property found on ADO#$($WorkItemDetails.id)!" -Level "WARN"
+        Write-Log -Message "  Get-AdoParentId: No relations property found on ADO#$($WorkItemDetails.id)!" -Level "DEBUG"
     }
     return $null
 }
