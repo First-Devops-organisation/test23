@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Migrates a SINGLE repo from ADO to GitHub using GEI (gh ado2gh).
     Converted from yaml.yaml pipeline logic into a reusable PS1 script.
@@ -46,6 +46,28 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# --- Global reporting variables (initialized for strict mode) ---
+$branchCount    = 0
+$tagCount       = 0
+$commitCount    = 0
+$prCount        = 0
+$prOpen         = 0
+$prMerged       = 0
+$prClosed       = 0
+$missingInGH    = @()
+$extraInGH      = @()
+$defaultBranch  = "N/A"
+$topBranchHtml  = ""
+$allBranchHtml  = ""
+$phaseHtml      = ""
+$reasonText     = "N/A"
+$statusEmoji    = "&#x2139;&#xFE0F;"
+$statusText     = "Unknown"
+$statusBg       = "#f8f9fa"
+$statusColor    = "#6c757d"
+$migDate        = Get-Date -Format 'dd MMM yyyy · HH:mm'
+$branchCsvRows  = @()
 
 # â”€â”€ Trim whitespace from all string parameters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $ADOOrg    = $ADOOrg.Trim()
