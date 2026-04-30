@@ -71,7 +71,7 @@ stages:
                 $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
                 $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
@@ -147,7 +147,7 @@ stages:
                 $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
                 $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
@@ -272,7 +272,7 @@ stages:
                 $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
                 $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+                $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
                 Set-Content -Path $cfg -Value $c
               pwsh: true
@@ -459,13 +459,13 @@ stages:
             inputs:
               targetType: inline
               script: |
-                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
-                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
-                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+                $ADO_Repo = '${{ parameters.ADO_Repo }}'.Trim()
+                $GitHub_Repo  = '${{ parameters.GitHub_Repo }}'.Trim()
+                if ([string]::IsNullOrWhiteSpace($GitHub_Repo)) { $GitHub_Repo = $ADO_Repo }
 
                 & '$(Build.SourcesDirectory)\repo-migration\03-migrate\create-github-secrets.ps1' `
-                    -GitHubOrg '$(GH_ORG)' `
-                    -GitHubRepo $ghRepo `
+                    -GitHubOrg '$(GitHub_Org)' `
+                    -GitHubRepo $GitHub_Repo `
                     -ConfigPath '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
@@ -625,7 +625,7 @@ stages:
                 foreach ($repoName in $repos) {
                     Write-Host "Creating secrets for $repoName..."
                     & '$(Build.SourcesDirectory)\repo-migration\03-migrate\create-github-secrets.ps1' `
-                        -GitHubOrg '$(GH_ORG)' `
+                        -GitHubOrg '$(GitHub_Org)' `
                         -GitHubRepo $repoName `
                         -SecretValuesPath $secretValues
                 }
@@ -879,4 +879,5 @@ stages:
                     Write-Host "##vso[task.uploadsummary]$valSummary"
                 } else { Write-Warning "Validation summary not found: $valSummary" }
               pwsh: true
+
 
