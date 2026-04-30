@@ -144,7 +144,7 @@ function New-GhProjectCustomField {
         foreach ($opt in $Options) {
             $c = if ($opt.color) { $opt.color } else { $colors[$ci % $colors.Count] }
             $safeName = $opt.name -replace '"', '\"'
-            $optEntries += "{ name: `"$safeName`", color: $c }"
+            $optEntries += "{ name: `"$safeName`", color: $c, description: `"`" }"
             $ci++
         }
         $optionsLine = "singleSelectOptions: [$($optEntries -join ', ')]"
