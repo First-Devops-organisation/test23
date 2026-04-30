@@ -642,7 +642,7 @@ foreach ($item in $sortedItems) {
     }
 
     # --- Save progress ---
-    $migrationLog["$adoId"] = $adoToGhMap[$adoId]
+    $migrationLog["$adoId"] = $adoToGhMap["$adoId"]
     $migrationLog | ConvertTo-Json -Depth 10 | Set-Content -Path $migLogPath -Encoding UTF8
 
     Start-Sleep -Milliseconds $rateLimitMs
