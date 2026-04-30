@@ -19,8 +19,8 @@ $scriptRoot = Split-Path $PSScriptRoot -Parent
 $config = Read-JsonConfig -Path $ConfigPath
 $adoOrg = $config.source.organization
 $adoProject = $config.source.project
-$ghOrg = $config.target.githubOrg
-$ghRepo = $config.target.githubRepo
+$ghOrg = $config.target.organization
+$ghRepo = $config.target.repository
 
 $adoPat = if ($config.source.pat -match '^\$\(') { $env:ADO_PAT } else { $config.source.pat }
 $ghPat  = if ($config.target.pat -match '^\$\(') { $env:GH_PAT } else { $config.target.pat }
