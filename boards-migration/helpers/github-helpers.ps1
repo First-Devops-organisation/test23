@@ -234,7 +234,7 @@ mutation {
 # --- Set a text custom field value ---
 function Set-GhProjectItemTextField {
     param([string]$ProjectId, [string]$ItemId, [string]$FieldId, [string]$Value, [string]$Pat)
-    $safeValue = $Value -replace '"', '\"' -replace "`n", '\n' -replace "`r", ''
+    $safeValue = $Value -replace '\\', '\\' -replace '"', '\"' -replace "`n", '\n' -replace "`r", ''
     $mutation = @"
 mutation {
   updateProjectV2ItemFieldValue(input: {
@@ -281,7 +281,7 @@ function Set-GhProjectItemFieldsBatch {
             "select" { "singleSelectOptionId: `"$($fu.value)`"" }
             "number" { "number: $($fu.value)" }
             "text"   {
-                $safe = "$($fu.value)" -replace '"', '\"' -replace "`n", '\n' -replace "`r", ''
+                $safe = "$($fu.value)" -replace '\\', '\\' -replace '"', '\"' -replace "`n", '\n' -replace "`r", ''
                 "text: `"$safe`""
             }
             "date"   { "date: `"$($fu.value)`"" }
@@ -438,7 +438,7 @@ function Add-GhIssueComment {
 function Close-GhIssue {
     param([string]$Org, [string]$Repo, [int]$IssueNumber, [string]$Pat)
     $headers = Get-GhRestHeaders -Pat $Pat
-    $jsonBody = @{ state = "closed" } | ConvertTo-Json
+    $jsonBody = @{ state = "closed"; state_reason = "completed" } | ConvertTo-Json -Compress
     $uri = "https://api.github.com/repos/$Org/$Repo/issues/$IssueNumber"
     try {
         Invoke-RestMethod -Uri $uri -Method PATCH -Headers $headers -Body $jsonBody | Out-Null
