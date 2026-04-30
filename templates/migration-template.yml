@@ -1,0 +1,90 @@
+parameters:
+  - name: migrationScope
+    type: string
+  - name: executionMode
+    type: string
+  - name: batchName
+    type: string
+  - name: adoProject
+    type: string
+  - name: runSecretScan
+    type: boolean
+  - name: runValidation
+    type: boolean
+
+jobs:
+  - job: InstallTools
+    displayName: 'Install Migration Tooling'
+    steps:
+      - powershell: |
+          .\migration-accelerator\01-prep\install-tools.ps1
+        displayName: 'Install Required Tools'
+        env:
+          ADO_PAT: $(ADO_PAT)
+          GH_PAT: $(GH_PAT)
+
+  - job: Audit
+    displayName: 'Audit Repos and Pipelines'
+    dependsOn: InstallTools
+    steps:
+      - powershell: |
+          if ("${{ parameters.migrationScope }}" -ne "Pipeline Only") {
+            .\repo-migration\01-discover\discover-repos.ps1 -ConfigPath .\repo-migration\config\repo-migration-config.json
+            .\repo-migration\01-discover\audit-repo-sizes.ps1 -ConfigPath .\repo-migration\config\repo-migration-config.json
+          }
+          
+          if ("${{ parameters.migrationScope }}" -ne "Repo Only") {
+            $config = Get-Content .\migration-accelerator\config\migration-config.json | ConvertFrom-Json
+            $adoOrg = $config.source.organization -replace "https://dev.azure.com/", ""
+            
+            .\migration-accelerator\00-discovery\audit-pipelines.ps1 `
+              -AdoOrg $adoOrg `
+              -AdoPat $(ADO_PAT) `
+              -GitHubPat $(GH_PAT)
+          }
+
+          if ("${{ parameters.runSecretScan }}" -eq "True") {
+            .\repo-migration\01-discover\scan-secrets.ps1 -ConfigPath .\repo-migration\config\repo-migration-config.json
+          }
+        displayName: 'Run Discovery Scripts'
+        env:
+          ADO_PAT: $(ADO_PAT)
+          GH_PAT: $(GH_PAT)
+
+  - job: Migrate
+    displayName: 'Run Migration'
+    dependsOn: Audit
+    steps:
+      - powershell: |
+          if ("${{ parameters.migrationScope }}" -ne "Pipeline Only") {
+            $params = @{ 
+              ConfigPath = ".\repo-migration\config\repo-migration-config.json"
+              BatchName = "${{ parameters.batchName }}"
+            }
+            if ("${{ parameters.executionMode }}" -eq "dry-run") { $params.DryRun = $true }
+            .\repo-migration\03-migrate\migrate-repos.ps1 @params
+          }
+
+          if ("${{ parameters.migrationScope }}" -ne "Repo Only") {
+            .\migration-accelerator\02-migrate\migrate-pipelines.ps1 `
+              -ConfigFile .\migration-accelerator\config\migration-config.json `
+              -AdoProject "${{ parameters.adoProject }}" `
+              -Mode "${{ parameters.executionMode }}"
+          }
+        displayName: 'Execute Migration'
+        env:
+          ADO_PAT: $(ADO_PAT)
+          GH_PAT: $(GH_PAT)
+
+  - job: Validate
+    displayName: 'Validate and Reclaim'
+    dependsOn: Migrate
+    condition: and(succeeded(), ne('${{ parameters.executionMode }}', 'dry-run'), eq('${{ parameters.runValidation }}', 'True'))
+    steps:
+      - powershell: |
+          .\repo-migration\04-validate\validate-repos.ps1 -ConfigPath .\repo-migration\config\repo-migration-config.json
+          .\repo-migration\04-validate\reclaim-mannequins.ps1 -ConfigPath .\repo-migration\config\repo-migration-config.json
+        displayName: 'Post-Migration Steps'
+        env:
+          ADO_PAT: $(ADO_PAT)
+          GH_PAT: $(GH_PAT)
