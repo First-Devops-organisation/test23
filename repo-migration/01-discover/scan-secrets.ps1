@@ -48,6 +48,7 @@ param(
     [string]$MigrationMode = 'Batch',
 
     [Parameter(Mandatory = $false)]
+    [AllowEmptyString()]
     [string]$SingleRepoName = ''
 )
 
@@ -99,7 +100,10 @@ elseif ($null -ne $config.batches) {
 }
 
 if ($migratingRepos.Count -gt 0) {
+    Write-Host "  [DEBUG] Config migrating list: $($migratingRepos -join ', ')" -ForegroundColor Gray
+    $reposBefore = $repos.Count
     $repos = @($repos | Where-Object { $migratingRepos -contains $_.Name })
+    Write-Host "  [DEBUG] Matched $($repos.Count) out of $reposBefore repos from ADO against the config list." -ForegroundColor Gray
     if ($MigrationMode -ine 'Single') {
         Write-Host "Filter: Only scanning $($repos.Count) repos scheduled for batch migration." -ForegroundColor Gray
     }
