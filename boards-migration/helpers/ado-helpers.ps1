@@ -248,3 +248,46 @@ function Convert-AdoHtmlToMarkdown {
     $md = $md -replace "(\r?\n){3,}", "`n`n"
     return $md.Trim()
 }
+
+# Converts ADO Test Case Steps XML to Markdown table
+function Convert-TestStepsToMarkdown {
+    param([string]$StepsXml)
+    if ([string]::IsNullOrEmpty($StepsXml)) { return "" }
+
+    try {
+        [xml]$xml = $StepsXml
+        $steps = $xml.steps.step
+        if (-not $steps -or $steps.Count -eq 0) { return "" }
+
+        $md = "## Test Steps`n`n"
+        $md += "| # | Action | Expected Result |`n"
+        $md += "|:--:|--------|----------------|`n"
+
+        $stepNum = 1
+        foreach ($step in $steps) {
+            # ADO stores steps as parameterizedString elements
+            $action = ""
+            $expected = ""
+            if ($step.parameterizedString) {
+                $strings = @($step.parameterizedString)
+                if ($strings.Count -ge 1) { $action = $strings[0].InnerText }
+                if ($strings.Count -ge 2) { $expected = $strings[1].InnerText }
+            }
+            # Strip HTML tags from step text
+            $action   = $action -replace '<[^>]+>', '' -replace '&nbsp;', ' ' -replace '&amp;', '&'
+            $expected = $expected -replace '<[^>]+>', '' -replace '&nbsp;', ' ' -replace '&amp;', '&'
+            # Escape pipe characters for markdown table
+            $action   = $action -replace '\|', '\|'
+            $expected = $expected -replace '\|', '\|'
+
+            if ($action.Trim()) {
+                $md += "| $stepNum | $($action.Trim()) | $($expected.Trim()) |`n"
+                $stepNum++
+            }
+        }
+        return $md
+    } catch {
+        Write-Log -Message "Failed to parse test steps XML: $_" -Level "WARN"
+        return "> _Test steps could not be parsed. Raw XML preserved in ADO._`n"
+    }
+}

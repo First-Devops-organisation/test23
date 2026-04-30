@@ -29,6 +29,8 @@
     "rateLimitDelayMs": 1000,
     "retryCount": 3,
     "retryDelaySeconds": 10,
+    "graphqlDelayMs": 500,
+    "maxRequestsPerMinute": 25,
     "inviteCollaborators": false
   },
   "filters": {
@@ -36,13 +38,20 @@
       "Epic",
       "Feature",
       "User Story",
+      "Product Backlog Item",
       "Task",
       "Bug",
+      "Change Request",
       "Issue",
       "Impediment",
+      "UAT Review",
+      "Analysis",
+      "Idea",
       "Test Plan",
       "Test Suite",
-      "Test Case"
+      "Test Case",
+      "Shared Steps",
+      "Shared Parameter"
     ],
     "excludeStates": [],
     "excludeTags": [],

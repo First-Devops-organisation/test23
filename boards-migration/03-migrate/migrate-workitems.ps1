@@ -157,11 +157,39 @@ if ($ghProjNum) {
     if ($adoStatusField) { Write-Log -Message "Field 'ADO Status': $($adoStatusField.options.Count) options" -Level "INFO" }
     if ($severityField)  { Write-Log -Message "Field 'Severity': $($severityField.options.Count) options" -Level "INFO" }
     if ($storyPtsField)  { Write-Log -Message "Field 'Story Points': ready (number)" -Level "INFO" }
-    if ($adoIdField)     { Write-Log -Message "Field 'ADO ID': ready (number)" -Level "INFO" }
+    if ($adoIdField)     { Write-Log -Message "Field 'ADO ID': ready" -Level "INFO" }
     if ($valueAreaField) { Write-Log -Message "Field 'Value Area': $($valueAreaField.options.Count) options" -Level "INFO" }
     if ($sizeField)      { Write-Log -Message "Field 'Size': $($sizeField.options.Count) options" -Level "INFO" }
     if ($estimateField)  { Write-Log -Message "Field 'Estimate': ready (number)" -Level "INFO" }
     if ($iterationField) { Write-Log -Message "Field 'Iteration': ready" -Level "INFO" }
+
+    # --- Discover ALL 20 custom fields from Master Plan ---
+    $activityField       = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Activity" }
+    $envField            = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Current Environment" }
+    $itemCategoryField   = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Item Category" }
+    $itemSubCatField     = $fields | Where-Object { $_.name -eq "Item SubCategory" }
+    $origEstimateField   = $fields | Where-Object { $_.name -eq "Original Estimate (hrs)" }
+    $completedWorkField  = $fields | Where-Object { $_.name -eq "Completed Work (hrs)" }
+    $remainingWorkField  = $fields | Where-Object { $_.name -eq "Remaining Work (hrs)" }
+    $riskField           = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Risk" }
+    $tShirtField         = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "T-Shirt Size" }
+    $areaPathTextField   = $fields | Where-Object { $_.name -eq "Area Path" }
+    $iterPathTextField   = $fields | Where-Object { $_.name -eq "Iteration Path" }
+    $startDateField      = $fields | Where-Object { $_.name -eq "Start Date" }
+    $targetDateField     = $fields | Where-Object { $_.name -eq "Target Date" }
+    $valueStreamField    = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Value Stream" }
+
+    # Log new field discovery
+    $newFields = @($activityField, $envField, $itemCategoryField, $itemSubCatField,
+        $origEstimateField, $completedWorkField, $remainingWorkField, $riskField,
+        $tShirtField, $areaPathTextField, $iterPathTextField, $startDateField,
+        $targetDateField, $valueStreamField)
+    $discoveredCount = ($newFields | Where-Object { $_ }).Count
+    Write-Log -Message "Extended fields discovered: $discoveredCount of 14" -Level "INFO"
+
+    # Load field mappings config if available
+    $fieldMappingsPath = Join-Path $scriptRoot "config\field-mappings.json"
+    $fieldMappings = if (Test-Path $fieldMappingsPath) { Read-JsonConfig -Path $fieldMappingsPath } else { $null }
 }
 
 # --- Ensure repo has at least one commit (required for image/attachment uploads) ---
@@ -280,6 +308,15 @@ foreach ($item in $sortedItems) {
         $body += "`n`n"
     }
 
+    # Test Steps (Test Case / Shared Steps)
+    if ($typeConfig -and $typeConfig.includeFields.testSteps -and $item.fields.'Microsoft.VSTS.TCM.Steps') {
+        $testStepsMd = Convert-TestStepsToMarkdown -StepsXml $item.fields.'Microsoft.VSTS.TCM.Steps'
+        if ($testStepsMd) {
+            $body += $testStepsMd
+            $body += "`n`n"
+        }
+    }
+
     if ([string]::IsNullOrWhiteSpace($body)) {
         $body = "_No description provided in Azure DevOps._`n`n"
     }
@@ -396,80 +433,150 @@ foreach ($item in $sortedItems) {
                     }
                 }
 
-                # --- Custom Field: ADO Status (exact ADO state) ---
+                # --- BATCH: Collect all field updates and send in one GraphQL call ---
+                $fieldUpdates = @()
+
+                # Helper: find option by name in a select field
+                function Find-SelectOption($field, $value) {
+                    if (-not $field -or -not $field.options -or -not $value) { return $null }
+                    $opt = $field.options | Where-Object { $_.name -eq $value } | Select-Object -First 1
+                    if (-not $opt) { $opt = $field.options | Where-Object { $_.name -match [regex]::Escape($value) } | Select-Object -First 1 }
+                    return $opt
+                }
+
+                # ADO Status (exact ADO state)
                 if ($adoStatusField -and $state) {
-                    $adoOpt = $adoStatusField.options | Where-Object { $_.name -eq $state }
+                    $adoOpt = Find-SelectOption $adoStatusField $state
                     if ($adoOpt) {
-                        Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
-                            -FieldId $adoStatusField.id -OptionId $adoOpt.id -Pat $ghPat
-                        Write-Log -Message "  ADO Status: '$state'" -Level "DEBUG"
+                        $fieldUpdates += @{ fieldId = $adoStatusField.id; value = $adoOpt.id; type = "select" }
                     }
                 }
 
-                # --- Field: Priority (dynamic mapping) ---
+                # Priority (dynamic mapping)
                 if ($priorityField -and $priorityOptionMap.Count -gt 0) {
                     $adoPriority = $item.fields.'Microsoft.VSTS.Common.Priority'
                     if ($adoPriority) {
                         $priOpt = $priorityOptionMap[[int]$adoPriority]
-                        if ($priOpt) {
-                            Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
-                                -FieldId $priorityField.id -OptionId $priOpt.id -Pat $ghPat
-                            Write-Log -Message "  Priority: ADO $adoPriority -> '$($priOpt.name)'" -Level "DEBUG"
-                        } else {
-                            Write-Log -Message "  No priority mapping for ADO value: $adoPriority" -Level "WARN"
-                        }
+                        if ($priOpt) { $fieldUpdates += @{ fieldId = $priorityField.id; value = $priOpt.id; type = "select" } }
                     }
                 }
 
-                # --- Field: Severity (Bugs) ---
+                # Severity
                 if ($severityField) {
-                    $adoSeverity = $item.fields.'Microsoft.VSTS.Common.Severity'
-                    if ($adoSeverity) {
-                        # Try exact match first, then partial match
-                        $sevOpt = $severityField.options | Where-Object { $_.name -eq $adoSeverity } | Select-Object -First 1
-                        if (-not $sevOpt) {
-                            $sevOpt = $severityField.options | Where-Object { $_.name -match [regex]::Escape($adoSeverity) } | Select-Object -First 1
-                        }
-                        if ($sevOpt) {
-                            Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
-                                -FieldId $severityField.id -OptionId $sevOpt.id -Pat $ghPat
-                            Write-Log -Message "  Severity: '$adoSeverity'" -Level "DEBUG"
-                        }
-                    }
+                    $adoSev = $item.fields.'Microsoft.VSTS.Common.Severity'
+                    $sevOpt = Find-SelectOption $severityField $adoSev
+                    if ($sevOpt) { $fieldUpdates += @{ fieldId = $severityField.id; value = $sevOpt.id; type = "select" } }
                 }
 
-                # --- Field: Story Points (only from StoryPoints, NOT Effort) ---
+                # Story Points
                 $sp = $item.fields.'Microsoft.VSTS.Scheduling.StoryPoints'
-                $effortVal = $item.fields.'Microsoft.VSTS.Scheduling.Effort'
-                Write-Log -Message "  ADO fields: StoryPoints='$sp' Effort='$effortVal'" -Level "DEBUG"
-                if ($sp -ne $null -and $sp -ne '' -and [double]$sp -gt 0) {
-                    if ($storyPtsField) {
-                        Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
-                            -FieldId $storyPtsField.id -Value ([double]$sp) -Pat $ghPat
-                        Write-Log -Message "  Story Points SET: $sp" -Level "INFO"
-                    }
-                } else {
-                    Write-Log -Message "  Story Points SKIPPED (no value in ADO)" -Level "DEBUG"
+                if ($sp -ne $null -and $sp -ne '' -and [double]$sp -gt 0 -and $storyPtsField) {
+                    $fieldUpdates += @{ fieldId = $storyPtsField.id; value = [double]$sp; type = "number" }
                 }
 
-                # --- Field: ADO ID ---
+                # ADO ID (text)
                 if ($adoIdField) {
-                    Set-GhProjectItemNumberField -ProjectId $ghProjectId -ItemId $projectItemId `
-                        -FieldId $adoIdField.id -Value ([double]$adoId) -Pat $ghPat
-                    Write-Log -Message "  ADO ID: $adoId" -Level "DEBUG"
+                    $fieldUpdates += @{ fieldId = $adoIdField.id; value = "$adoId"; type = "text" }
                 }
 
-                # --- Field: Value Area (Business / Architectural) ---
+                # Value Area
                 $adoValueArea = $item.fields.'Microsoft.VSTS.Common.ValueArea'
-                if ($adoValueArea -and $valueAreaField -and $valueAreaField.options) {
-                    $vaOpt = $valueAreaField.options | Where-Object { $_.name -eq $adoValueArea }
-                    if ($vaOpt) {
-                        Set-GhProjectItemSelectField -ProjectId $ghProjectId -ItemId $projectItemId `
-                            -FieldId $valueAreaField.id -OptionId $vaOpt.id -Pat $ghPat
-                        Write-Log -Message "  Value Area: '$adoValueArea'" -Level "INFO"
-                    } else {
-                        Write-Log -Message "  Value Area '$adoValueArea' not in GitHub options" -Level "WARN"
-                    }
+                if ($adoValueArea -and $valueAreaField) {
+                    $vaOpt = Find-SelectOption $valueAreaField $adoValueArea
+                    if ($vaOpt) { $fieldUpdates += @{ fieldId = $valueAreaField.id; value = $vaOpt.id; type = "select" } }
+                }
+
+                # Activity
+                $adoActivity = $item.fields.'Microsoft.VSTS.Common.Activity'
+                if ($adoActivity -and $activityField) {
+                    $actOpt = Find-SelectOption $activityField $adoActivity
+                    if ($actOpt) { $fieldUpdates += @{ fieldId = $activityField.id; value = $actOpt.id; type = "select" } }
+                }
+
+                # Current Environment
+                $adoEnv = $item.fields.'Custom.CurrentEnvironment'
+                if ($adoEnv -and $envField) {
+                    $envOpt = Find-SelectOption $envField $adoEnv
+                    if ($envOpt) { $fieldUpdates += @{ fieldId = $envField.id; value = $envOpt.id; type = "select" } }
+                }
+
+                # Item Category
+                $adoCat = $item.fields.'Custom.ItemCategory'
+                if ($adoCat -and $itemCategoryField) {
+                    $catOpt = Find-SelectOption $itemCategoryField $adoCat
+                    if ($catOpt) { $fieldUpdates += @{ fieldId = $itemCategoryField.id; value = $catOpt.id; type = "select" } }
+                }
+
+                # Item SubCategory (text)
+                $adoSubCat = $item.fields.'Custom.ItemSubCategory'
+                if ($adoSubCat -and $itemSubCatField) {
+                    $fieldUpdates += @{ fieldId = $itemSubCatField.id; value = "$adoSubCat"; type = "text" }
+                }
+
+                # Original Estimate / Completed Work / Remaining Work
+                $origEst = $item.fields.'Microsoft.VSTS.Scheduling.OriginalEstimate'
+                if ($origEst -ne $null -and $origEst -ne '' -and $origEstimateField) {
+                    $fieldUpdates += @{ fieldId = $origEstimateField.id; value = [double]$origEst; type = "number" }
+                }
+                $compWork = $item.fields.'Microsoft.VSTS.Scheduling.CompletedWork'
+                if ($compWork -ne $null -and $compWork -ne '' -and $completedWorkField) {
+                    $fieldUpdates += @{ fieldId = $completedWorkField.id; value = [double]$compWork; type = "number" }
+                }
+                $remWork = $item.fields.'Microsoft.VSTS.Scheduling.RemainingWork'
+                if ($remWork -ne $null -and $remWork -ne '' -and $remainingWorkField) {
+                    $fieldUpdates += @{ fieldId = $remainingWorkField.id; value = [double]$remWork; type = "number" }
+                }
+
+                # Risk
+                $adoRisk = $item.fields.'Microsoft.VSTS.Common.Risk'
+                if ($adoRisk -and $riskField) {
+                    $riskOpt = Find-SelectOption $riskField $adoRisk
+                    if ($riskOpt) { $fieldUpdates += @{ fieldId = $riskField.id; value = $riskOpt.id; type = "select" } }
+                }
+
+                # T-Shirt Size
+                $adoTShirt = $item.fields.'Custom.TShirtSize'
+                if ($adoTShirt -and $tShirtField) {
+                    $tsOpt = Find-SelectOption $tShirtField $adoTShirt
+                    if ($tsOpt) { $fieldUpdates += @{ fieldId = $tShirtField.id; value = $tsOpt.id; type = "select" } }
+                }
+
+                # Area Path (text)
+                $adoAreaPath = $item.fields.'System.AreaPath'
+                if ($adoAreaPath -and $areaPathTextField) {
+                    $fieldUpdates += @{ fieldId = $areaPathTextField.id; value = "$adoAreaPath"; type = "text" }
+                }
+
+                # Iteration Path (text)
+                $adoIterPath = $item.fields.'System.IterationPath'
+                if ($adoIterPath -and $iterPathTextField) {
+                    $fieldUpdates += @{ fieldId = $iterPathTextField.id; value = "$adoIterPath"; type = "text" }
+                }
+
+                # Start Date / Target Date (text as ISO date)
+                $adoStartDate = $item.fields.'Microsoft.VSTS.Scheduling.StartDate'
+                if ($adoStartDate -and $startDateField) {
+                    $dateStr = try { (Get-Date $adoStartDate -Format "yyyy-MM-dd") } catch { "$adoStartDate" }
+                    $fieldUpdates += @{ fieldId = $startDateField.id; value = $dateStr; type = "text" }
+                }
+                $adoTargetDate = $item.fields.'Microsoft.VSTS.Scheduling.TargetDate'
+                if ($adoTargetDate -and $targetDateField) {
+                    $dateStr = try { (Get-Date $adoTargetDate -Format "yyyy-MM-dd") } catch { "$adoTargetDate" }
+                    $fieldUpdates += @{ fieldId = $targetDateField.id; value = $dateStr; type = "text" }
+                }
+
+                # Value Stream
+                $adoVS = $item.fields.'Custom.ValueStream'
+                if ($adoVS -and $valueStreamField) {
+                    $vsOpt = Find-SelectOption $valueStreamField $adoVS
+                    if ($vsOpt) { $fieldUpdates += @{ fieldId = $valueStreamField.id; value = $vsOpt.id; type = "select" } }
+                }
+
+                # --- Execute batch mutation (all fields in ONE GraphQL call) ---
+                if ($fieldUpdates.Count -gt 0) {
+                    Set-GhProjectItemFieldsBatch -ProjectId $ghProjectId -ItemId $projectItemId `
+                        -FieldUpdates $fieldUpdates -Pat $ghPat
+                    Write-Log -Message "  Batch updated $($fieldUpdates.Count) fields" -Level "INFO"
                 }
 
 

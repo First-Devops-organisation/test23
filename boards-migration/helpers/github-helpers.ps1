@@ -13,22 +13,49 @@ function Get-GhGraphQLHeaders {
     return @{ Authorization = "bearer $Pat"; "Content-Type" = "application/json" }
 }
 
-# --- Invoke GraphQL with retry and rate-limit handling ---
+# --- Invoke GraphQL with retry, rate-limit, and secondary abuse-detection handling ---
 function Invoke-GhGraphQL {
-    param([string]$Query, [string]$Pat, [int]$RetryCount = 3)
+    param([string]$Query, [string]$Pat, [int]$RetryCount = 5)
     $headers = Get-GhGraphQLHeaders -Pat $Pat
     $body = @{ query = $Query } | ConvertTo-Json -Depth 10
     for ($i = 1; $i -le $RetryCount; $i++) {
         try {
-            $resp = Invoke-RestMethod -Method POST -Uri "https://api.github.com/graphql" -Headers $headers -Body $body
-            if ($resp.errors) {
-                Write-Log -Message "GraphQL errors: $($resp.errors | ConvertTo-Json -Compress)" -Level "WARN"
+            $resp = Invoke-WebRequest -Method POST -Uri "https://api.github.com/graphql" `
+                -Headers $headers -Body $body -UseBasicParsing
+            # Check remaining rate limit from response headers
+            $remaining = $resp.Headers["X-RateLimit-Remaining"]
+            if ($remaining -and [int]$remaining -lt 100) {
+                $resetEpoch = [int]$resp.Headers["X-RateLimit-Reset"]
+                $nowEpoch = [int](Get-Date -UFormat %s)
+                $waitSec = $resetEpoch - $nowEpoch
+                if ($waitSec -gt 0 -and $waitSec -lt 3600) {
+                    Write-Log -Message "Rate limit low ($remaining remaining). Sleeping ${waitSec}s" -Level "WARN"
+                    Start-Sleep -Seconds ($waitSec + 5)
+                }
             }
-            return $resp
+            $json = $resp.Content | ConvertFrom-Json
+            if ($json.errors) {
+                Write-Log -Message "GraphQL errors: $($json.errors | ConvertTo-Json -Compress)" -Level "WARN"
+            }
+            return $json
         } catch {
+            $statusCode = $null
+            if ($_.Exception.Response) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+            }
+            # Secondary rate limit / abuse detection (403 or 429)
+            if ($statusCode -eq 403 -or $statusCode -eq 429) {
+                $retryAfter = $null
+                try { $retryAfter = $_.Exception.Response.Headers["Retry-After"] } catch { }
+                $waitSec = if ($retryAfter) { [int]$retryAfter + 5 }
+                           else { [math]::Pow(2, $i) * 30 }
+                Write-Log -Message "Secondary rate limit (HTTP $statusCode). Waiting ${waitSec}s (attempt $i)" -Level "WARN"
+                Start-Sleep -Seconds ([math]::Min($waitSec, 900))
+                continue
+            }
             if ($i -eq $RetryCount) { throw }
             $wait = [math]::Pow(2, $i) * 1000
-            Write-Log -Message "GraphQL request failed (attempt $i/$RetryCount), retrying in $($wait/1000)s..." -Level "WARN"
+            Write-Log -Message "GraphQL failed (attempt $i/$RetryCount), retrying in $($wait/1000)s..." -Level "WARN"
             Start-Sleep -Milliseconds $wait
         }
     }
@@ -191,118 +218,157 @@ mutation {
     Invoke-GhGraphQL -Query $mutation -Pat $Pat | Out-Null
 }
 
-# --- Ensure all required custom fields exist in the GitHub Project ---
+# --- Set a text custom field value ---
+function Set-GhProjectItemTextField {
+    param([string]$ProjectId, [string]$ItemId, [string]$FieldId, [string]$Value, [string]$Pat)
+    $safeValue = $Value -replace '"', '\"' -replace "`n", '\n' -replace "`r", ''
+    $mutation = @"
+mutation {
+  updateProjectV2ItemFieldValue(input: {
+    projectId: "$ProjectId", itemId: "$ItemId", fieldId: "$FieldId",
+    value: { text: "$safeValue" }
+  }) { projectV2Item { id } }
+}
+"@
+    Invoke-GhGraphQL -Query $mutation -Pat $Pat | Out-Null
+}
+
+# --- Set a date custom field value (ISO 8601: yyyy-MM-dd) ---
+function Set-GhProjectItemDateField {
+    param([string]$ProjectId, [string]$ItemId, [string]$FieldId, [string]$Value, [string]$Pat)
+    $mutation = @"
+mutation {
+  updateProjectV2ItemFieldValue(input: {
+    projectId: "$ProjectId", itemId: "$ItemId", fieldId: "$FieldId",
+    value: { date: "$Value" }
+  }) { projectV2Item { id } }
+}
+"@
+    Invoke-GhGraphQL -Query $mutation -Pat $Pat | Out-Null
+}
+
+# --- BATCH: Set multiple custom fields in a single GraphQL call ---
+# Reduces 20 individual mutations to 1 call (~95% rate limit savings)
+# Each $FieldUpdates entry: @{ fieldId; value; type = "select"|"number"|"text"|"date" }
+function Set-GhProjectItemFieldsBatch {
+    param(
+        [string]$ProjectId,
+        [string]$ItemId,
+        [hashtable[]]$FieldUpdates,
+        [string]$Pat
+    )
+    if (-not $FieldUpdates -or $FieldUpdates.Count -eq 0) { return }
+
+    $aliases = @()
+    $i = 0
+    foreach ($fu in $FieldUpdates) {
+        if (-not $fu.fieldId -or -not $fu.type) { continue }
+        $i++
+        $valExpr = switch ($fu.type) {
+            "select" { "singleSelectOptionId: `"$($fu.value)`"" }
+            "number" { "number: $($fu.value)" }
+            "text"   {
+                $safe = "$($fu.value)" -replace '"', '\"' -replace "`n", '\n' -replace "`r", ''
+                "text: `"$safe`""
+            }
+            "date"   { "date: `"$($fu.value)`"" }
+            default  { "text: `"$($fu.value)`"" }
+        }
+        $aliases += "  f${i}: updateProjectV2ItemFieldValue(input: { projectId: `"$ProjectId`", itemId: `"$ItemId`", fieldId: `"$($fu.fieldId)`", value: { $valExpr } }) { projectV2Item { id } }"
+    }
+    if ($aliases.Count -eq 0) { return }
+
+    $mutation = "mutation {`n$($aliases -join "`n")`n}"
+    $resp = Invoke-GhGraphQL -Query $mutation -Pat $Pat
+    if ($resp.errors) {
+        Write-Log -Message "Batch field update errors: $($resp.errors | ConvertTo-Json -Compress)" -Level "WARN"
+    }
+}
 # Returns a hashtable of field definitions with their IDs and options
+# Creates ALL 20 fields from the Master Plan Section 3.2
 function Ensure-GhProjectCustomFields {
     param(
         [string]$ProjectId,
         [string]$Pat,
         [string[]]$RequiredStates,
-        [bool]$CreateAdoStatus = $true,
-        [bool]$CreatePriority = $true,
-        [bool]$CreateSeverity = $true,
-        [bool]$CreateStoryPoints = $true,
-        [bool]$CreateAdoId = $true,
-        [bool]$CreateValueArea = $true
+        [hashtable]$FieldConfig = @{}
     )
-
     $fields = Get-GhProjectFields -ProjectId $ProjectId -Pat $Pat
     $result = @{}
-
-    # Helper: check if field exists by name
-    function Find-Field($name) {
-        return $fields | Where-Object { $_.name -eq $name }
-    }
-
-    # --- ADO Status (exact state from ADO) ---
-    if ($CreateAdoStatus -and $RequiredStates.Count -gt 0) {
-        $existing = Find-Field "ADO Status"
+    function Find-Field($name) { return $fields | Where-Object { $_.name -eq $name } }
+    function Ensure-Field {
+        param([string]$Key, [string]$Name, [string]$DataType, [hashtable[]]$Opts = @())
+        $existing = Find-Field $Name
         if ($existing) {
-            Write-Log -Message "Field 'ADO Status' already exists" -Level "INFO"
-            $result["adoStatus"] = $existing
+            Write-Log -Message "Field '$Name' exists" -Level "INFO"; $result[$Key] = $existing
         } else {
-            $opts = @($RequiredStates | ForEach-Object { @{ name = $_ } })
-            $result["adoStatus"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
-                -FieldName "ADO Status" -DataType "SINGLE_SELECT" -Options $opts
+            if ($DataType -eq "SINGLE_SELECT" -and $Opts.Count -gt 0) {
+                $result[$Key] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat -FieldName $Name -DataType $DataType -Options $Opts
+            } else {
+                $result[$Key] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat -FieldName $Name -DataType $DataType
+            }
+            Start-Sleep -Milliseconds 500
         }
     }
-
-    # --- Priority (P1-P4) ---
-    if ($CreatePriority) {
-        $existing = Find-Field "Priority"
-        if ($existing) {
-            Write-Log -Message "Field 'Priority' already exists" -Level "INFO"
-            $result["priority"] = $existing
-        } else {
-            $opts = @(
-                @{ name = "P1 - Critical"; color = "RED" },
-                @{ name = "P2 - High"; color = "ORANGE" },
-                @{ name = "P3 - Medium"; color = "YELLOW" },
-                @{ name = "P4 - Low"; color = "GREEN" }
-            )
-            $result["priority"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
-                -FieldName "Priority" -DataType "SINGLE_SELECT" -Options $opts
-        }
+    # 1. ADO Status
+    if ($RequiredStates.Count -gt 0) {
+        Ensure-Field -Key "adoStatus" -Name "ADO Status" -DataType "SINGLE_SELECT" -Opts @($RequiredStates | ForEach-Object { @{ name = $_ } })
     }
+    # 2. Priority
+    Ensure-Field -Key "priority" -Name "Priority" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "P1 - Critical"; color = "RED" }, @{ name = "P2 - High"; color = "ORANGE" },
+        @{ name = "P3 - Medium"; color = "YELLOW" }, @{ name = "P4 - Low"; color = "GREEN" })
+    # 3. Severity
+    Ensure-Field -Key "severity" -Name "Severity" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "1 - Critical"; color = "RED" }, @{ name = "2 - High"; color = "ORANGE" },
+        @{ name = "3 - Medium"; color = "YELLOW" }, @{ name = "4 - Low"; color = "GREEN" })
+    # 4. Story Points
+    Ensure-Field -Key "storyPoints" -Name "Story Points" -DataType "NUMBER"
+    # 5. ADO ID (text for traceability)
+    Ensure-Field -Key "adoId" -Name "ADO ID" -DataType "TEXT"
+    # 6. Value Area
+    Ensure-Field -Key "valueArea" -Name "Value Area" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "Business"; color = "BLUE" }, @{ name = "Architectural"; color = "PURPLE" })
+    # 7. Activity
+    Ensure-Field -Key "activity" -Name "Activity" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "Deployment"; color = "BLUE" }, @{ name = "Design"; color = "PURPLE" },
+        @{ name = "Development"; color = "GREEN" }, @{ name = "Documentation"; color = "GRAY" },
+        @{ name = "Requirements"; color = "YELLOW" }, @{ name = "Testing"; color = "ORANGE" })
+    # 8. Current Environment
+    Ensure-Field -Key "currentEnvironment" -Name "Current Environment" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "DEV"; color = "BLUE" }, @{ name = "Local"; color = "GRAY" },
+        @{ name = "PROD"; color = "RED" }, @{ name = "QA"; color = "YELLOW" }, @{ name = "UAT"; color = "ORANGE" })
+    # 9. Item Category
+    Ensure-Field -Key "itemCategory" -Name "Item Category" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "PIM"; color = "PURPLE" }, @{ name = "Technical"; color = "BLUE" }, @{ name = "UX"; color = "GREEN" })
+    # 10. Item SubCategory
+    Ensure-Field -Key "itemSubCategory" -Name "Item SubCategory" -DataType "TEXT"
+    # 11-13. Work tracking numbers
+    Ensure-Field -Key "originalEstimate" -Name "Original Estimate (hrs)" -DataType "NUMBER"
+    Ensure-Field -Key "completedWork" -Name "Completed Work (hrs)" -DataType "NUMBER"
+    Ensure-Field -Key "remainingWork" -Name "Remaining Work (hrs)" -DataType "NUMBER"
+    # 14. Risk
+    Ensure-Field -Key "risk" -Name "Risk" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "1 - High"; color = "RED" }, @{ name = "2 - Medium"; color = "YELLOW" }, @{ name = "3 - Low"; color = "GREEN" })
+    # 15. T-Shirt Size
+    Ensure-Field -Key "tShirtSize" -Name "T-Shirt Size" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "XS"; color = "GRAY" }, @{ name = "S"; color = "BLUE" }, @{ name = "M"; color = "GREEN" },
+        @{ name = "L"; color = "YELLOW" }, @{ name = "XL"; color = "ORANGE" }, @{ name = "XXL"; color = "RED" })
+    # 16-17. Path text fields
+    Ensure-Field -Key "areaPathText" -Name "Area Path" -DataType "TEXT"
+    Ensure-Field -Key "iterationPathText" -Name "Iteration Path" -DataType "TEXT"
+    # 18-19. Dates (TEXT fallback — ProjectV2 DATE creation via API is limited)
+    Ensure-Field -Key "startDate" -Name "Start Date" -DataType "TEXT"
+    Ensure-Field -Key "targetDate" -Name "Target Date" -DataType "TEXT"
+    # 20. Value Stream (DistEcom-specific)
+    Ensure-Field -Key "valueStream" -Name "Value Stream" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "Architecture"; color = "PURPLE" }, @{ name = "Business"; color = "BLUE" },
+        @{ name = "Business Request"; color = "BLUE" }, @{ name = "Compliance"; color = "RED" },
+        @{ name = "Functional"; color = "GREEN" }, @{ name = "Idea"; color = "YELLOW" },
+        @{ name = "Operational"; color = "ORANGE" }, @{ name = "Release Management"; color = "GRAY" },
+        @{ name = "User Experience"; color = "PINK" })
 
-    # --- Severity (for Bugs) ---
-    if ($CreateSeverity) {
-        $existing = Find-Field "Severity"
-        if ($existing) {
-            Write-Log -Message "Field 'Severity' already exists" -Level "INFO"
-            $result["severity"] = $existing
-        } else {
-            $opts = @(
-                @{ name = "1 - Critical"; color = "RED" },
-                @{ name = "2 - High"; color = "ORANGE" },
-                @{ name = "3 - Medium"; color = "YELLOW" },
-                @{ name = "4 - Low"; color = "GREEN" }
-            )
-            $result["severity"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
-                -FieldName "Severity" -DataType "SINGLE_SELECT" -Options $opts
-        }
-    }
-
-    # --- Story Points ---
-    if ($CreateStoryPoints) {
-        $existing = Find-Field "Story Points"
-        if ($existing) {
-            Write-Log -Message "Field 'Story Points' already exists" -Level "INFO"
-            $result["storyPoints"] = $existing
-        } else {
-            $result["storyPoints"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
-                -FieldName "Story Points" -DataType "NUMBER"
-        }
-    }
-
-    # --- ADO ID ---
-    if ($CreateAdoId) {
-        $existing = Find-Field "ADO ID"
-        if ($existing) {
-            Write-Log -Message "Field 'ADO ID' already exists" -Level "INFO"
-            $result["adoId"] = $existing
-        } else {
-            $result["adoId"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
-                -FieldName "ADO ID" -DataType "NUMBER"
-        }
-    }
-
-    # --- Value Area (Business / Architectural) ---
-    if ($CreateValueArea) {
-        $existing = Find-Field "Value Area"
-        if ($existing) {
-            Write-Log -Message "Field 'Value Area' already exists" -Level "INFO"
-            $result["valueArea"] = $existing
-        } else {
-            $opts = @(
-                @{ name = "Business"; color = "BLUE" },
-                @{ name = "Architectural"; color = "PURPLE" }
-            )
-            $result["valueArea"] = New-GhProjectCustomField -ProjectId $ProjectId -Pat $Pat `
-                -FieldName "Value Area" -DataType "SINGLE_SELECT" -Options $opts
-        }
-    }
-
+    Write-Log -Message "Custom fields complete: $($result.Count) fields ready" -Level "SUCCESS"
     return $result
 }
 

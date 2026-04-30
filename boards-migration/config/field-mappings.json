@@ -1,0 +1,140 @@
+{
+  "_comment": "Maps ADO field reference names to GitHub ProjectV2 field names and types. Used by migration scripts to dynamically set all custom fields.",
+  "fields": {
+    "Microsoft.VSTS.Common.Priority": {
+      "githubFieldName": "Priority",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "1": "P1 - Critical",
+        "2": "P2 - High",
+        "3": "P3 - Medium",
+        "4": "P4 - Low"
+      }
+    },
+    "Microsoft.VSTS.Common.Severity": {
+      "githubFieldName": "Severity",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "1 - Critical": "1 - Critical",
+        "2 - High": "2 - High",
+        "3 - Medium": "3 - Medium",
+        "4 - Low": "4 - Low"
+      }
+    },
+    "Microsoft.VSTS.Scheduling.StoryPoints": {
+      "githubFieldName": "Story Points",
+      "githubFieldType": "NUMBER"
+    },
+    "Microsoft.VSTS.Common.ValueArea": {
+      "githubFieldName": "Value Area",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "Business": "Business",
+        "Architectural": "Architectural"
+      }
+    },
+    "Microsoft.VSTS.Common.Activity": {
+      "githubFieldName": "Activity",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "Deployment": "Deployment",
+        "Design": "Design",
+        "Development": "Development",
+        "Documentation": "Documentation",
+        "Requirements": "Requirements",
+        "Testing": "Testing"
+      }
+    },
+    "Custom.CurrentEnvironment": {
+      "githubFieldName": "Current Environment",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "DEV": "DEV",
+        "Local": "Local",
+        "PROD": "PROD",
+        "QA": "QA",
+        "UAT": "UAT"
+      }
+    },
+    "Custom.ItemCategory": {
+      "githubFieldName": "Item Category",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "PIM": "PIM",
+        "Technical": "Technical",
+        "UX": "UX"
+      }
+    },
+    "Custom.ItemSubCategory": {
+      "githubFieldName": "Item SubCategory",
+      "githubFieldType": "TEXT"
+    },
+    "Microsoft.VSTS.Scheduling.OriginalEstimate": {
+      "githubFieldName": "Original Estimate (hrs)",
+      "githubFieldType": "NUMBER"
+    },
+    "Microsoft.VSTS.Scheduling.CompletedWork": {
+      "githubFieldName": "Completed Work (hrs)",
+      "githubFieldType": "NUMBER"
+    },
+    "Microsoft.VSTS.Scheduling.RemainingWork": {
+      "githubFieldName": "Remaining Work (hrs)",
+      "githubFieldType": "NUMBER"
+    },
+    "Microsoft.VSTS.Common.Risk": {
+      "githubFieldName": "Risk",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "1 - High": "1 - High",
+        "2 - Medium": "2 - Medium",
+        "3 - Low": "3 - Low"
+      }
+    },
+    "Custom.TShirtSize": {
+      "githubFieldName": "T-Shirt Size",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "XS": "XS", "S": "S", "M": "M",
+        "L": "L", "XL": "XL", "XXL": "XXL"
+      }
+    },
+    "System.AreaPath": {
+      "githubFieldName": "Area Path",
+      "githubFieldType": "TEXT"
+    },
+    "System.IterationPath": {
+      "githubFieldName": "Iteration Path",
+      "githubFieldType": "TEXT"
+    },
+    "Microsoft.VSTS.Scheduling.StartDate": {
+      "githubFieldName": "Start Date",
+      "githubFieldType": "TEXT",
+      "_comment": "Stored as ISO date string yyyy-MM-dd"
+    },
+    "Microsoft.VSTS.Scheduling.TargetDate": {
+      "githubFieldName": "Target Date",
+      "githubFieldType": "TEXT",
+      "_comment": "Stored as ISO date string yyyy-MM-dd"
+    },
+    "Custom.ValueStream": {
+      "githubFieldName": "Value Stream",
+      "githubFieldType": "SINGLE_SELECT",
+      "optionMapping": {
+        "Architecture": "Architecture",
+        "Business": "Business",
+        "Business Request": "Business Request",
+        "Compliance": "Compliance",
+        "Functional": "Functional",
+        "Idea": "Idea",
+        "Operational": "Operational",
+        "Release Management": "Release Management",
+        "User Experience": "User Experience"
+      }
+    },
+    "Microsoft.VSTS.Common.ResolvedReason": {
+      "githubFieldName": null,
+      "githubFieldType": "BODY_METADATA",
+      "_comment": "Preserved in issue body metadata table only (no ProjectV2 field)"
+    }
+  }
+}

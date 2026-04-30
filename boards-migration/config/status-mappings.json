@@ -1,5 +1,5 @@
 {
-  "_comment": "Maps ADO work item states to GitHub ProjectV2 Status column values. When autoSyncStatuses is true, ADO states are auto-created in GitHub; defaultMapping acts as fallback only.",
+  "_comment": "Maps all 39 unique ADO states across 4 projects to GitHub ProjectV2 Status. TypeOverrides take precedence over defaultMapping.",
   "autoSyncStatuses": true,
   "defaultMapping": {
     "New": "Backlog",
@@ -7,21 +7,66 @@
     "Resolved": "Done",
     "Closed": "Done",
     "Done": "Done",
-    "Removed": "Done"
+    "Removed": "Done",
+    "Committed": "Backlog",
+    "Assigned": "In progress",
+    "In Progress": "In progress",
+    "In PR": "In review",
+    "Ready for Testing": "Ready",
+    "In Testing": "In review",
+    "On Hold": "On Hold",
+    "To Do": "Backlog",
+    "Blocked": "Blocked",
+    "In QA": "In review",
+    "Dev Done": "In review",
+    "QA Complete": "Done",
+    "In UAT": "In review",
+    "UAT Complete": "Done",
+    "Ready for Release": "Ready",
+    "Dev Testing complete": "Done",
+    "In Dev Environment": "In progress",
+    "PO Review": "In progress",
+    "Open": "In progress",
+    "Design": "Backlog",
+    "Ready": "Ready",
+    "In Planning": "Backlog",
+    "Completed": "Done",
+    "Inactive": "Done",
+    "As Designed": "Done",
+    "Cannot Reproduce": "Done",
+    "Copied to Backlog": "Done",
+    "Deferred": "Backlog",
+    "Duplicate": "Done",
+    "Fixed": "Done",
+    "Fixed and verified": "Done",
+    "Obsolete": "Done",
+    "Will not Fix": "Done",
+    "Not Automated": "Backlog",
+    "Planned": "Backlog"
   },
   "typeOverrides": {
     "Bug": {
       "New": "Backlog",
+      "Committed": "Backlog",
+      "Assigned": "In progress",
+      "In Progress": "In progress",
+      "In PR": "In review",
+      "Ready for Testing": "Ready",
+      "In Testing": "In review",
+      "On Hold": "On Hold",
+      "Done": "Done",
       "Active": "In progress",
       "Resolved": "Done",
-      "Closed": "Done"
+      "Closed": "Done",
+      "PO Review": "In progress"
     },
     "Task": {
-      "New": "Backlog",
-      "Active": "In progress",
-      "Closed": "Done"
-    },
-    "Epic": {
+      "To Do": "Backlog",
+      "Blocked": "Blocked",
+      "In Progress": "In progress",
+      "In QA": "In review",
+      "Done": "Done",
+      "Removed": "Done",
       "New": "Backlog",
       "Active": "In progress",
       "Resolved": "Done",
@@ -29,22 +74,128 @@
     },
     "Feature": {
       "New": "Backlog",
+      "Assigned": "Backlog",
+      "In Progress": "In progress",
+      "Committed": "In progress",
+      "In PR": "In review",
+      "Dev Done": "In review",
+      "In QA": "In review",
+      "QA Complete": "Done",
+      "In UAT": "In review",
+      "UAT Complete": "Done",
+      "On Hold": "On Hold",
+      "Done": "Done",
+      "Active": "In progress",
+      "Resolved": "Done",
+      "Closed": "Done",
+      "Removed": "Done"
+    },
+    "Epic": {
+      "New": "Backlog",
+      "In Progress": "In progress",
+      "Done": "Done",
+      "Removed": "Done",
       "Active": "In progress",
       "Resolved": "Done",
       "Closed": "Done"
+    },
+    "Product Backlog Item": {
+      "New": "Backlog",
+      "Committed": "Backlog",
+      "Assigned": "In progress",
+      "In Progress": "In progress",
+      "In PR": "In review",
+      "Ready for Testing": "Ready",
+      "In Testing": "In review",
+      "On Hold": "On Hold",
+      "Dev Testing complete": "Done",
+      "In Dev Environment": "In progress",
+      "Done": "Done"
+    },
+    "Change Request": {
+      "New": "Backlog",
+      "Assigned": "Backlog",
+      "Committed": "Backlog",
+      "In Progress": "In progress",
+      "In PR": "In review",
+      "Ready for Testing": "Ready",
+      "In Testing": "In review",
+      "On Hold": "On Hold",
+      "Ready for Release": "Ready",
+      "Done": "Done",
+      "Removed": "Done"
+    },
+    "UAT Review": {
+      "New": "Backlog",
+      "Assigned": "Backlog",
+      "Committed": "Backlog",
+      "In Progress": "In progress",
+      "In PR": "In review",
+      "In UAT": "In review",
+      "Done": "Done",
+      "Removed": "Done"
+    },
+    "Analysis": {
+      "New": "Backlog",
+      "Committed": "In progress",
+      "Done": "Done"
+    },
+    "Impediment": {
+      "Open": "In progress",
+      "Closed": "Done"
+    },
+    "User Story": {
+      "New": "Backlog",
+      "Active": "In progress",
+      "Resolved": "Done",
+      "Closed": "Done",
+      "Removed": "Done"
+    },
+    "Issue": {
+      "Active": "In progress",
+      "Closed": "Done",
+      "New": "Backlog"
+    },
+    "Idea": {
+      "New": "Backlog",
+      "Active": "In progress",
+      "Closed": "Done"
+    },
+    "Test Plan": {
+      "Active": "In progress",
+      "Inactive": "Done"
+    },
+    "Test Suite": {
+      "In Planning": "Backlog",
+      "In Progress": "In progress",
+      "Completed": "Done"
+    },
+    "Test Case": {
+      "Design": "Backlog",
+      "Ready": "Ready",
+      "Closed": "Done"
+    },
+    "Shared Steps": {
+      "Active": "In progress",
+      "Closed": "Done"
+    },
+    "Shared Parameter": {
+      "Active": "In progress",
+      "Inactive": "Done"
     }
   },
   "closedStates": [
-    "Done",
-    "Closed",
-    "Resolved",
-    "Removed"
+    "Done", "Closed", "Resolved", "Removed", "Completed",
+    "Inactive", "QA Complete", "UAT Complete",
+    "Dev Testing complete", "Fixed", "Fixed and verified"
   ],
   "githubProjectStatusOptions": [
     "Backlog",
     "Ready",
     "In progress",
     "In review",
+    "Blocked",
+    "On Hold",
     "Done"
   ]
 }

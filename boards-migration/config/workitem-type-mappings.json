@@ -128,7 +128,7 @@
       }
     },
     "Test Case": {
-      "githubLabel": "test-case",
+      "githubLabel": "type:test-case",
       "labelColor": "A855F7",
       "labelDescription": "Test Case migrated from Azure DevOps",
       "migrationOrder": 8,
@@ -136,6 +136,106 @@
         "description": true,
         "acceptanceCriteria": false,
         "reproSteps": true,
+        "systemInfo": false,
+        "priority": false,
+        "severity": false,
+        "testSteps": true
+      }
+    },
+    "Product Backlog Item": {
+      "githubLabel": "type:product-backlog-item",
+      "labelColor": "10B981",
+      "labelDescription": "Product Backlog Item migrated from Azure DevOps",
+      "migrationOrder": 3,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": true,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "Change Request": {
+      "githubLabel": "type:change-request",
+      "labelColor": "F97316",
+      "labelDescription": "Change Request migrated from Azure DevOps",
+      "migrationOrder": 3,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": true,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "UAT Review": {
+      "githubLabel": "type:uat-review",
+      "labelColor": "06B6D4",
+      "labelDescription": "UAT Review migrated from Azure DevOps",
+      "migrationOrder": 5,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": true,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "Analysis": {
+      "githubLabel": "type:analysis",
+      "labelColor": "8B5CF6",
+      "labelDescription": "Analysis item migrated from Azure DevOps",
+      "migrationOrder": 5,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": true,
+        "severity": false
+      }
+    },
+    "Shared Steps": {
+      "githubLabel": "type:shared-steps",
+      "labelColor": "D946EF",
+      "labelDescription": "Shared Steps migrated from Azure DevOps",
+      "migrationOrder": 9,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": false,
+        "severity": false,
+        "testSteps": true
+      }
+    },
+    "Shared Parameter": {
+      "githubLabel": "type:shared-parameter",
+      "labelColor": "D946EF",
+      "labelDescription": "Shared Parameter migrated from Azure DevOps",
+      "migrationOrder": 9,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
+        "systemInfo": false,
+        "priority": false,
+        "severity": false
+      }
+    },
+    "Idea": {
+      "githubLabel": "type:idea",
+      "labelColor": "FBBF24",
+      "labelDescription": "Idea migrated from Azure DevOps",
+      "migrationOrder": 5,
+      "includeFields": {
+        "description": true,
+        "acceptanceCriteria": false,
+        "reproSteps": false,
         "systemInfo": false,
         "priority": false,
         "severity": false

@@ -271,6 +271,16 @@ stages:
       continueOnError: true  # First run won't have previous artifacts
 
     - task: PowerShell@2
+      displayName: 'Snapshot ADO Data (Pre-Migration Backup)'
+      inputs:
+        filePath: '$(workingDir)\00-extract\snapshot-ado-data.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+      condition: eq('${{ parameters.dryRun }}', false)
+
+    - task: PowerShell@2
       displayName: 'Migrate Work Items'
       inputs:
         targetType: inline
