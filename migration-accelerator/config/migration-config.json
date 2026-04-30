@@ -46,5 +46,5 @@
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "",
-  "REUSABLE_PIPELINE_IDS": [1175]
+  "REUSABLE_PIPELINE_IDS": []
 }
