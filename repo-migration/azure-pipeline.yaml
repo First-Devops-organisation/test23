@@ -198,12 +198,13 @@ stages:
             displayName: "1.3 Scan Secrets"
             inputs:
               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\scan-secrets.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
+              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json" -RepoName "$(ADO_Repo)"'
               pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
             env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PROJECT: $(ADO_PROJECT)
+              ADO_Org: $(ADO_Org)
+              ADO_Project: $(ADO_Project)
+              ADO_Repo: $(ADO_Repo)
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1

@@ -21,11 +21,21 @@ param(
     [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json",
 
     [Parameter(Mandatory = $false)]
-    [int]$ThrottleLimit = 5
+    [int]$ThrottleLimit = 5,
+
+    [Parameter(Mandatory = $false)]
+    [string]$RepoName = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Fallback for RepoName from environment if not passed or passed as token
+if ([string]::IsNullOrWhiteSpace($RepoName) -or $RepoName -eq '$(ADO_Repo)') {
+    if (-not [string]::IsNullOrWhiteSpace($env:ADO_Repo)) {
+        $RepoName = $env:ADO_Repo
+    }
+}
 
 $config    = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $reportDir = $config.output.reportDir
@@ -87,6 +97,17 @@ if (Test-Path $inventoryPath) {
 
 # Skip empty repos
 $repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
+
+# Filter by RepoName if provided
+if (-not [string]::IsNullOrWhiteSpace($RepoName)) {
+    $trimmedRepo = $RepoName.Trim()
+    Write-Host "Filtering scan to single repo: $trimmedRepo" -ForegroundColor Cyan
+    $repos = @($repos | Where-Object { $_.Name -ieq $trimmedRepo })
+    if ($repos.Count -eq 0) {
+        Write-Error "Repository '$trimmedRepo' not found in inventory or API response."
+    }
+}
+
 $repos = @($repos | Sort-Object { $_.SizeMB })
 
 Write-Host "=== Scanning $($repos.Count) repos for secrets (ThrottleLimit=$ThrottleLimit) ===" -ForegroundColor Cyan
