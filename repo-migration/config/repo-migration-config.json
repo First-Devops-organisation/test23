@@ -23,10 +23,11 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
-        "dummy-secret",
+        "APIOPS",
         "Advanced-Security",
-        "Azure-DevOpstemplate",
-        "trivy-ci-test"
+        "angular-ssr-course",
+        "APIOPS-poc"
+        
         
       ]
     }
