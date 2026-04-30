@@ -41,8 +41,12 @@ param(
     [Parameter(Mandatory = $true)]  [string]$ADOOrg,
     [Parameter(Mandatory = $true)]  [string]$ADOProject,
     [Parameter(Mandatory = $true)]  [string]$GHOrg,
-    [Parameter(Mandatory = $false)] [string]$GHRepo,
-    [Parameter(Mandatory = $false)] [string]$ADORepo,
+    [Parameter(Mandatory = $false)] 
+    [AllowEmptyString()]
+    [string]$GHRepo,
+    [Parameter(Mandatory = $false)] 
+    [AllowEmptyString()]
+    [string]$ADORepo,
     [Parameter(Mandatory = $false)] [string]$OutputDir         = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)] [string]$ExpectedVisibility = "internal",
     [Parameter(Mandatory = $false)] [string]$BatchSummaryJson
@@ -89,8 +93,21 @@ $repoList = @()   # array of @{ ADORepo; GHRepo }
 # Trim whitespace — pipeline parameters may pass " " (space default)
 if ($GHRepo)  { $GHRepo  = $GHRepo.Trim() }
 if ($ADORepo) { $ADORepo = $ADORepo.Trim() }
+
+# ── Fallback: if GHRepo is empty, try reading from config.json ───────────────
+if ([string]::IsNullOrWhiteSpace($GHRepo)) {
+    Write-Host "  GHRepo parameter is empty — checking config.json..."
+    if (Test-Path $configPath) {
+        $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
+        if ($cfg.migration -and $cfg.migration.singleRepo) {
+            $GHRepo = $cfg.migration.singleRepo.Trim()
+            Write-Host "  Found default repo in config: $GHRepo" -ForegroundColor Green
+        }
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($GHRepo) -and -not [string]::IsNullOrWhiteSpace($ADORepo)) {
-    Write-Host "  GHRepo was empty — defaulting to ADORepo: '$ADORepo'"
+    Write-Host "  GHRepo was still empty — defaulting to ADORepo: '$ADORepo'"
     $GHRepo = $ADORepo
 }
 
