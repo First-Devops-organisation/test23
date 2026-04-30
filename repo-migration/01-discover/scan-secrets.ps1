@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Scans repos for exposed secrets using gitleaks + keyword pattern matching.
 .DESCRIPTION
@@ -135,7 +135,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         if (Test-Path (Join-Path $clonePath "HEAD")) { Pop-Location }
     }
 
-    Write-Host "  $repoLabel: Found $($branches.Count) branches" -ForegroundColor Gray
+    Write-Host "  ${repoLabel}: Found $($branches.Count) branches" -ForegroundColor Gray
 
     # ------ 3. Run gitleaks (scans entire history across all refs) ------------------------------------
     $gitleaksCount = 0
