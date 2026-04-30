@@ -113,7 +113,21 @@ if ([string]::IsNullOrWhiteSpace($GHRepo) -and -not [string]::IsNullOrWhiteSpace
 
 if (-not [string]::IsNullOrWhiteSpace($GHRepo)) {
     $adoName = if ($ADORepo) { $ADORepo } else { $GHRepo }
-    $repoList += @{ ADORepo = $adoName; GHRepo = $GHRepo; State = $null }
+    
+    # Try to load the migration state (SKIPPED, COMPLETE, etc.) from the log file
+    $state = $null
+    $logDir = "$OutputDir\logs"
+    $stateFile = "$logDir\migration-state-$GHRepo.txt"
+    
+    Write-Host "  [DEBUG] Checking for state file at: $stateFile" -ForegroundColor Gray
+    if (Test-Path $stateFile) {
+        $state = (Get-Content $stateFile -Raw).Trim()
+        Write-Host "  [DEBUG] Found state file! Content: [$state]" -ForegroundColor Gray
+    } else {
+        Write-Host "  [DEBUG] State file NOT found at $stateFile" -ForegroundColor DarkGray
+    }
+    
+    $repoList += @{ ADORepo = $adoName; GHRepo = $GHRepo; State = $state }
 }
 else {
     # Load from batch summary
