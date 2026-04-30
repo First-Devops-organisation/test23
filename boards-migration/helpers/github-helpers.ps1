@@ -29,9 +29,12 @@ function Invoke-GhGraphQL {
             $resp = Invoke-WebRequest -Method POST -Uri "https://api.github.com/graphql" `
                 -Headers $headers -Body $body -UseBasicParsing
             # Check remaining rate limit from response headers
-            $remaining = $resp.Headers["X-RateLimit-Remaining"]
+            $remHeader = $resp.Headers["X-RateLimit-Remaining"]
+            $remaining = if ($remHeader -is [array]) { $remHeader[0] } else { $remHeader }
+            
             if ($remaining -and [int]$remaining -lt 100) {
-                $resetEpoch = [int]$resp.Headers["X-RateLimit-Reset"]
+                $resetHeader = $resp.Headers["X-RateLimit-Reset"]
+                $resetEpoch = [int](if ($resetHeader -is [array]) { $resetHeader[0] } else { $resetHeader })
                 $nowEpoch = [int](Get-Date -UFormat %s)
                 $waitSec = $resetEpoch - $nowEpoch
                 if ($waitSec -gt 0 -and $waitSec -lt 3600) {
@@ -53,7 +56,10 @@ function Invoke-GhGraphQL {
             # Secondary rate limit / abuse detection (403 or 429)
             if ($statusCode -eq 403 -or $statusCode -eq 429) {
                 $retryAfter = $null
-                try { $retryAfter = $_.Exception.Response.Headers["Retry-After"] } catch { }
+                try { 
+                    $raHeader = $_.Exception.Response.Headers["Retry-After"]
+                    $retryAfter = if ($raHeader -is [array]) { $raHeader[0] } else { $raHeader }
+                } catch { }
                 $waitSec = if ($retryAfter) { [int]$retryAfter + 5 }
                            else { [math]::Pow(2, $i) * 30 }
                 Write-Log -Message "Secondary rate limit (HTTP $statusCode). Waiting ${waitSec}s (attempt $i)" -Level "WARN"
