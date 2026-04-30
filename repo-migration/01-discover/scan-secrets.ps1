@@ -55,6 +55,12 @@ if (Test-Path $inventoryPath) {
     Write-Host "repo-inventory.json not found - fetching repos directly from ADO API..." -ForegroundColor Yellow
     $adoOrg  = $config.source.organization
     $adoProj = $config.source.project
+    # If org is just the name (e.g. "YashTech-DevOps"), prepend the base URL
+    if ($adoOrg -and $adoOrg -notmatch '^https?://') {
+        $adoOrg = "https://dev.azure.com/$adoOrg"
+    }
+    Write-Host "  ADO Org URL: $adoOrg" -ForegroundColor Gray
+    Write-Host "  ADO Project: $adoProj" -ForegroundColor Gray
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":${adoPat}"))
     $headers = @{
         Authorization  = "Basic $base64Auth"

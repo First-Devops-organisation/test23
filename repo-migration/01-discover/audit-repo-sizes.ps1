@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Clones each repo and runs git-sizer to detect files/trees exceeding GEI limits.
 .DESCRIPTION
@@ -48,6 +48,10 @@ if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environmen
 # ------ ADO API base + auth header ---------------------------------------------------------------------------------------------------------------------------------------------
 $adoOrg  = $config.source.organization.TrimEnd('/')
 $adoProj = $config.source.project
+# If org is just the name (e.g. "YashTech-DevOps"), prepend the base URL
+if ($adoOrg -and $adoOrg -notmatch '^https?://') {
+    $adoOrg = "https://dev.azure.com/$adoOrg"
+}
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $apiHeaders = @{ Authorization = "Basic $base64Auth" }
 

@@ -21,6 +21,10 @@ if (-not (Test-Path $ConfigPath)) {
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $adoOrg = $config.source.organization
 $adoProj = $config.source.project
+# If org is just the name (e.g. "YashTech-DevOps"), prepend the base URL
+if ($adoOrg -and $adoOrg -notmatch '^https?://') {
+    $adoOrg = "https://dev.azure.com/$adoOrg"
+}
 $adoPat = $config.source.pat
 $reportDir = $config.output.reportDir
 
