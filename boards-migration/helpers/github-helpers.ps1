@@ -45,10 +45,11 @@ function Invoke-GhGraphQL {
             }
             return $json
         } catch {
+            $errLine = if ($_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+            $errMsg = if ($_.Exception) { $_.Exception.Message } else { $_ }
+            Write-Log -Message "GraphQL failed on line $errLine (attempt $i/$RetryCount): $errMsg" -Level "WARN"
+            
             $statusCode = $null
-            if ($_.Exception.Response) {
-                $statusCode = [int]$_.Exception.Response.StatusCode
-            }
             # Secondary rate limit / abuse detection (403 or 429)
             if ($statusCode -eq 403 -or $statusCode -eq 429) {
                 $retryAfter = $null
@@ -61,8 +62,7 @@ function Invoke-GhGraphQL {
             }
             if ($i -eq $RetryCount) { throw }
             $wait = [math]::Pow(2, $i) * 1000
-            $errMsg = if ($_.Exception) { $_.Exception.Message } else { $_ }
-            Write-Log -Message "GraphQL failed (attempt $i/$RetryCount): $errMsg. Retrying in $($wait/1000)s..." -Level "WARN"
+            Write-Log -Message "Retrying in $($wait/1000)s..." -Level "WARN"
             Start-Sleep -Milliseconds $wait
         }
     }
