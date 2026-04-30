@@ -659,9 +659,11 @@ if ($preserveHierarchy -and -not $DryRun) {
     # Group children by parent for batch processing
     $parentChildMap = @{}  # parentAdoId -> @(childAdoIds)
     foreach ($item in $sortedItems) {
-        $adoId = $item.id
-        $parentAdoId = Get-AdoParentId -WorkItemDetails $item
-        if (-not $parentAdoId) { continue }
+        $adoId = "$($item.id)"
+        $parentAdoIdRaw = Get-AdoParentId -WorkItemDetails $item
+        if (-not $parentAdoIdRaw) { continue }
+        $parentAdoId = "$parentAdoIdRaw"
+        
         if (-not $adoToGhMap.ContainsKey($adoId) -or -not $adoToGhMap.ContainsKey($parentAdoId)) {
             Write-Log -Message "  ADO#$adoId parent=$parentAdoId - one or both not in map, skipping" -Level "DEBUG"
             continue
@@ -706,7 +708,7 @@ if ($preserveHierarchy -and -not $DryRun) {
             foreach ($childAdoId in $children) {
                 $childIssueNum = $adoToGhMap[$childAdoId].issueNumber
                 $childUrl      = $adoToGhMap[$childAdoId].issueUrl
-                $childItem     = $allItems[$childAdoId]
+                $childItem     = $allItems[[int]$childAdoId]
                 $childTitle    = if ($childItem) { $childItem.fields.'System.Title' } else { "Issue #$childIssueNum" }
                 $childType     = if ($childItem) { $childItem.fields.'System.WorkItemType' } else { "Item" }
                 $taskListLines += "- [ ] [${childType}: ${childTitle}]($childUrl)"
