@@ -221,6 +221,23 @@ Write-Log -Message "Items sorted by hierarchy. Migration order ready." -Level "I
 # --- ADO ID â†’ GitHub Issue Number tracking ---
 $adoToGhMap = @{}  # adoId â†’ @{ issueNumber; issueNodeId; issueUrl }
 
+# --- Fetch GitHub Milestones for mapping ---
+Write-Log -Message "Fetching GitHub milestones..." -Level "INFO"
+$ghMilestones = @{}
+$page = 1
+do {
+    $uri = "https://api.github.com/repos/$ghOrg/$ghRepo/milestones?state=all&per_page=100&page=$page"
+    $ghHeaders = Get-GhRestHeaders -Pat $ghPat
+    $resp = try { Invoke-RestMethod -Uri $uri -Method GET -Headers $ghHeaders } catch { $null }
+    if ($resp) {
+        foreach ($ms in $resp) {
+            $ghMilestones[$ms.title] = $ms.number
+        }
+    }
+    $page++
+} while ($resp -and $resp.Count -eq 100)
+Write-Log -Message "Loaded $($ghMilestones.Count) milestones." -Level "INFO"
+
 # ============================================================
 #  MAIN MIGRATION LOOP
 # ============================================================
@@ -377,8 +394,17 @@ foreach ($item in $sortedItems) {
 
     # --- Create GitHub Issue ---
     try {
+        $milestoneNumber = 0
+        $adoIterPathRaw = $item.fields.'System.IterationPath'
+        if ($adoIterPathRaw) {
+            $msTitle = ($adoIterPathRaw -split '\\')[-1]
+            if ($ghMilestones.ContainsKey($msTitle)) {
+                $milestoneNumber = $ghMilestones[$msTitle]
+            }
+        }
+
         $issue = New-GhIssue -Org $ghOrg -Repo $ghRepo -Title $title -Body $body `
-            -Labels $labels -Assignees $ghAssignees -Pat $ghPat
+            -Labels $labels -Assignees $ghAssignees -Milestone $milestoneNumber -Pat $ghPat
 
         $issueNum    = $issue.number
         $issueNodeId = $issue.node_id
