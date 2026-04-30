@@ -36,13 +36,13 @@ foreach ($d in @($reportDir, $logDir, $cloneDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
 }
 
-# â”€â”€ Verify gitleaks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Verify gitleaks ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $gl = Get-Command gitleaks -ErrorAction SilentlyContinue
 if (-not $gl) {
     Write-Error "gitleaks not found. Install: https://github.com/gitleaks/gitleaks/releases"
 }
 
-# â”€â”€ Load inventory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Load inventory ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $inventoryPath = Join-Path $reportDir "repo-inventory.json"
 if (-not (Test-Path $inventoryPath)) {
     Write-Error "repo-inventory.json not found. Run 01-discover\discover-repos.ps1 first."
@@ -60,12 +60,12 @@ Write-Host "=== Scanning $($repos.Count) repos for secrets (ThrottleLimit=$Throt
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-# â”€â”€ Thread-safe collections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Thread-safe collections ------------------------------------------------------------------------------------------------------------------------------------------------------
 $allSecrets  = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 
-# â”€â”€ Keyword patterns for additional scanning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# These catch secrets that gitleaks might miss â€” simple key=value assignments
+# ------ Keyword patterns for additional scanning ---------------------------------------------------------------------------------------------------
+# These catch secrets that gitleaks might miss --- simple key=value assignments
 # with common secret-related keywords.
 $keywordPatternsRaw = @(
     # Pattern: KEYWORD = "value" or KEYWORD: "value" or KEYWORD = 'value'
@@ -86,7 +86,7 @@ $keywordPatternsRaw = @(
     '(?i)(bearer)\s+([A-Za-z0-9\-_\.]{20,})'
 )
 
-# â”€â”€ Parallel scan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Parallel scan ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     $repo     = $_
     $cloneDir = $using:cloneDir
@@ -100,13 +100,13 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     $clonePath = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8))"
     $gitleaksReport = Join-Path $logDir "gitleaks-$($repo.Name).json"
 
-    # â”€â”€ 1. Full clone (all branches, all history) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 1. Full clone (all branches, all history) ------------------------------------------------------------------------
     $cloneUrl   = $repo.RemoteUrl -replace '://[^@]+@', '://'
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("pat:${adoPat}"))
 
     try {
         $env:GIT_LFS_SKIP_SMUDGE = '1'
-        Write-Host "  Cloning $repoLabel â€” full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
+        Write-Host "  Cloning $repoLabel --- full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
         $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth",
                        '-c', 'lfs.fetchexclude=*',
                        'clone', '--mirror', '--quiet', $cloneUrl, $clonePath)
@@ -122,7 +122,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         return
     }
 
-    # â”€â”€ 2. Get all branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 2. Get all branches ------------------------------------------------------------------------------------------------------------------------------------------
     $branches = @()
     try {
         Push-Location $clonePath
@@ -137,7 +137,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
     Write-Host "  $repoLabel: Found $($branches.Count) branches" -ForegroundColor Gray
 
-    # â”€â”€ 3. Run gitleaks (scans entire history across all refs) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 3. Run gitleaks (scans entire history across all refs) ------------------------------------
     $gitleaksCount = 0
     $gitleaksExitCode = 0
     try {
@@ -195,13 +195,13 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         }
     }
     elseif ($gitleaksExitCode -eq 0) {
-        Write-Host "  gitleaks CLEAN â€” $repoLabel" -ForegroundColor Green
+        Write-Host "  gitleaks CLEAN --- $repoLabel" -ForegroundColor Green
     }
     else {
         Write-Warning "  gitleaks error (exit=$gitleaksExitCode) for $repoLabel"
     }
 
-    # â”€â”€ 4. Keyword-based regex scan (per branch, per file) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 4. Keyword-based regex scan (per branch, per file) ---------------------------------------------
     $keywordCount = 0
 
     foreach ($branch in $branches) {
@@ -281,7 +281,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         }
     }
 
-    # â”€â”€ 5. Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 5. Summary ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
     $totalFindings = $gitleaksCount + $keywordCount
     $status = if ($totalFindings -gt 0) { "SECRETS_FOUND" } else { "CLEAN" }
 
@@ -303,14 +303,14 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
 $stopwatch.Stop()
 
-# â”€â”€ Final cleanup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Final cleanup ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 if (Test-Path $cloneDir) { Remove-Item $cloneDir -Recurse -Force -ErrorAction SilentlyContinue }
 
-# â”€â”€ Convert to arrays â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Convert to arrays ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $repoSummaryArr = @($repoSummary.ToArray())
 $allSecretsArr  = @($allSecrets.ToArray())
 
-# â”€â”€ Deduplicate secrets (same value in same file = keep one) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Deduplicate secrets (same value in same file = keep one) ---------------------------------------------------
 $uniqueSecrets = @()
 $seenKeys = @{}
 foreach ($s in $allSecretsArr) {
@@ -321,7 +321,7 @@ foreach ($s in $allSecretsArr) {
     }
 }
 
-# â”€â”€ Auto-increment duplicate secret names â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Auto-increment duplicate secret names ------------------------------------------------------------------------------------------------------------
 $nameCounter = @{}
 foreach ($s in $uniqueSecrets) {
     $baseName = $s.SecretName
@@ -333,14 +333,14 @@ foreach ($s in $uniqueSecrets) {
     }
 }
 
-# â”€â”€ Save JSON reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Save JSON reports ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $summaryJson  = Join-Path $reportDir "secret-scan-summary.json"
 $findingsJson = Join-Path $reportDir "secret-scan-findings.json"
 
 $repoSummaryArr | ConvertTo-Json -Depth 3 | Out-File $summaryJson  -Encoding utf8
 $uniqueSecrets  | ConvertTo-Json -Depth 5 | Out-File $findingsJson -Encoding utf8
 
-# â”€â”€ HTML Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ HTML Report ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $htmlPath     = Join-Path $reportDir "secret-scan-report.html"
 $cleanCount   = @($repoSummaryArr | Where-Object Status -eq 'CLEAN').Count
 $secretsCount = @($repoSummaryArr | Where-Object Status -eq 'SECRETS_FOUND').Count
@@ -414,7 +414,7 @@ $findingsTableRows
 "@
 $html | Out-File $htmlPath -Encoding utf8
 
-# â”€â”€ Console Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Console Summary ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Write-Host "`n=== Secret Scan Summary ===" -ForegroundColor Green
 Write-Host "  Elapsed time        : $($stopwatch.Elapsed.ToString('hh\:mm\:ss'))"
 Write-Host "  Total repos scanned : $($repoSummaryArr.Count)"
@@ -436,5 +436,6 @@ Write-Host "  Summary  : $summaryJson"
 Write-Host "  Findings : $findingsJson"
 Write-Host "  HTML     : $htmlPath"
 Write-Host "`nNext step: Run 02-prep\scrub-secrets.ps1"
+
 
 

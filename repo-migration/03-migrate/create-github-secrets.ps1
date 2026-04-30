@@ -6,8 +6,8 @@
     each secret as a GitHub repository-level secret using the GitHub CLI (gh).
 
     DEDUPLICATION LOGIC:
-      - Same SecretName + same SecretValue â†’ set once (skip duplicates)
-      - Same SecretName + different SecretValue â†’ auto-rename to NAME_2, NAME_3, etc.
+      - Same SecretName + same SecretValue --- set once (skip duplicates)
+      - Same SecretName + different SecretValue --- auto-rename to NAME_2, NAME_3, etc.
       - Groups secrets by target GitHub repo so each repo gets only its own secrets
 
     RETRY LOGIC:
@@ -49,7 +49,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# â”€â”€ Resolve secret-values.json path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Resolve secret-values.json path ------------------------------------------------------------------------------------------------------------------------------
 if ([string]::IsNullOrWhiteSpace($SecretValuesPath)) {
     $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
     $reportDir = $config.output.reportDir
@@ -57,11 +57,11 @@ if ([string]::IsNullOrWhiteSpace($SecretValuesPath)) {
 }
 
 if (-not (Test-Path $SecretValuesPath)) {
-    Write-Host "No secret-values.json found at $SecretValuesPath â€” no secrets to create." -ForegroundColor Yellow
+    Write-Host "No secret-values.json found at $SecretValuesPath --- no secrets to create." -ForegroundColor Yellow
     exit 0
 }
 
-# â”€â”€ Verify gh CLI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Verify gh CLI ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $ghCli = Get-Command gh -ErrorAction SilentlyContinue
 if (-not $ghCli) {
     Write-Error "GitHub CLI (gh) not found. Install: https://cli.github.com/"
@@ -80,15 +80,15 @@ if ([string]::IsNullOrWhiteSpace($ghPat)) {
 Write-Host "Authenticating GitHub CLI..." -ForegroundColor Gray
 $ghPat | gh auth login --with-token 2>&1 | Out-Null
 
-# â”€â”€ Load secret values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Load secret values ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $allSecrets = @(Get-Content $SecretValuesPath -Raw | ConvertFrom-Json)
 
 if ($allSecrets.Count -eq 0) {
-    Write-Host "No secrets found in $SecretValuesPath â€” nothing to provision." -ForegroundColor Green
+    Write-Host "No secrets found in $SecretValuesPath --- nothing to provision." -ForegroundColor Green
     exit 0
 }
 
-# â”€â”€ Filter secrets for this specific repo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Filter secrets for this specific repo ------------------------------------------------------------------------------------------------------------
 # secret-values.json may contain secrets from multiple repos (batch mode)
 $repoSecrets = @($allSecrets | Where-Object { $_.Repo -eq $GitHubRepo -or $_.Repo -eq (Split-Path $GitHubRepo -Leaf) })
 
@@ -104,9 +104,9 @@ Write-Host "  Total secrets in file: $($allSecrets.Count)" -ForegroundColor Gray
 Write-Host "  Secrets for this repo: $($repoSecrets.Count)" -ForegroundColor Gray
 Write-Host "  DryRun: $DryRun" -ForegroundColor Gray
 
-# â”€â”€ Deduplicate: same name + same value = keep one; same name + diff value = rename â”€â”€
-$finalSecrets  = @{}   # secretName â†’ secretValue (what we will actually create)
-$nameTracker   = @{}   # secretName â†’ secretValue (to detect collisions)
+# ------ Deduplicate: same name + same value = keep one; same name + diff value = rename ------
+$finalSecrets  = @{}   # secretName --- secretValue (what we will actually create)
+$nameTracker   = @{}   # secretName --- secretValue (to detect collisions)
 
 foreach ($s in $repoSecrets) {
     $name  = $s.SecretName
@@ -122,20 +122,20 @@ foreach ($s in $repoSecrets) {
         continue
     }
 
-    # Case 1: We've already seen this exact name+value combo â†’ skip (true duplicate)
+    # Case 1: We've already seen this exact name+value combo --- skip (true duplicate)
     if ($finalSecrets.ContainsKey($name) -and $finalSecrets[$name] -eq $value) {
         Write-Host "  SKIP (duplicate): $name (same value already queued)" -ForegroundColor DarkGray
         continue
     }
 
-    # Case 2: Name exists but with a DIFFERENT value â†’ rename with suffix
+    # Case 2: Name exists but with a DIFFERENT value --- rename with suffix
     if ($finalSecrets.ContainsKey($name) -and $finalSecrets[$name] -ne $value) {
         $baseName = $name
         $suffix = 2
         while ($finalSecrets.ContainsKey("${baseName}_${suffix}")) {
             # Check if this suffixed name already has the same value
             if ($finalSecrets["${baseName}_${suffix}"] -eq $value) {
-                # Same value already exists under a suffixed name â†’ skip
+                # Same value already exists under a suffixed name --- skip
                 $name = $null
                 break
             }
@@ -146,16 +146,16 @@ foreach ($s in $repoSecrets) {
             continue
         }
         $name = "${baseName}_${suffix}"
-        Write-Host "  RENAME: $baseName â†’ $name (different value)" -ForegroundColor Yellow
+        Write-Host "  RENAME: $baseName --- $name (different value)" -ForegroundColor Yellow
     }
 
-    # Case 3: Brand new name â†’ add directly
+    # Case 3: Brand new name --- add directly
     $finalSecrets[$name] = $value
 }
 
 Write-Host "`n  Unique secrets to create: $($finalSecrets.Count)" -ForegroundColor Cyan
 
-# â”€â”€ Create secrets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Create secrets ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $successCount = 0
 $failCount    = 0
 $skipCount    = 0
@@ -214,11 +214,11 @@ foreach ($entry in $finalSecrets.GetEnumerator()) {
     }
 }
 
-# â”€â”€ Save results report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Save results report ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $resultsPath = Join-Path (Split-Path $SecretValuesPath) "github-secrets-results.json"
 $results | ConvertTo-Json -Depth 3 | Out-File $resultsPath -Encoding utf8
 
-# â”€â”€ Console Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Console Summary ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Write-Host "`n=== GitHub Secrets Summary ===" -ForegroundColor Cyan
 Write-Host "  Target repo     : $targetRepo"
 Write-Host "  Secrets created : $successCount" -ForegroundColor Green
@@ -234,5 +234,6 @@ if ($failCount -gt 0) {
 }
 
 Write-Host "`nDone. Verify secrets at: https://github.com/$targetRepo/settings/secrets/actions"
+
 
 

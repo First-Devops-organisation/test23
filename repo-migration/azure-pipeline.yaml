@@ -1,10 +1,10 @@
-﻿trigger: none
+trigger: none
 
 pool:
   vmImage: windows-latest
 
 # =============================================================================
-# PARAMETERS Ã¢â‚¬â€ choose at queue time
+# PARAMETERS -------- choose at queue time
 # =============================================================================
 parameters:
 
@@ -27,7 +27,7 @@ parameters:
     default: " "
 
   - name: BatchName
-    displayName: "Batch name from config (Batch mode Ã¢â‚¬â€ leave blank for all)"
+    displayName: "Batch name from config (Batch mode -------- leave blank for all)"
     type: string
     default: " "
 
@@ -51,7 +51,7 @@ variables:
 
 stages:
   # ===========================================================================
-  # STAGE 1 Ã¢â‚¬â€œ DISCOVER  (reuse existing scripts Ã¢â‚¬â€ already working)
+  # STAGE 1 -------- DISCOVER  (reuse existing scripts -------- already working)
   # ===========================================================================
   - stage: Discover
     displayName: "1. Discover & Analyse"
@@ -67,8 +67,8 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     ''
-                $c   = $c -replace '\$\(ADO_PROJECT\)', ''
+                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
                 $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
@@ -148,8 +148,8 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     ''
-                $c   = $c -replace '\$\(ADO_PROJECT\)', ''
+                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
                 $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
@@ -235,19 +235,19 @@ stages:
 
                 Download and check:
                   discovery-reports/repo-inventory.json
-                    Ã¢â€ â€™ confirm which repos to include / exclude
-                    Ã¢â€ â€™ update config/repo-migration-config.json batches and exclusions
+                    -------- confirm which repos to include / exclude
+                    -------- update config/repo-migration-config.json batches and exclusions
 
                   discovery-reports/repo-sizes.json
-                    Ã¢â€ â€™ any repo flagged OVER_LIMIT (> 40 GiB) must be remediated first
+                    -------- any repo flagged OVER_LIMIT (> 40 GiB) must be remediated first
 
                   scan-reports-batch*/secret-scan-findings.json
-                    Ã¢â€ â€™ MANDATORY for regulated environment
-                    Ã¢â€ â€™ Critical/High findings must be remediated before migration
-                    Ã¢â€ â€™ if zero findings: safe to proceed
-                    Ã¢â€ â€™ if findings exist: scrub history first (scrub-secrets.ps1)
+                    -------- MANDATORY for regulated environment
+                    -------- Critical/High findings must be remediated before migration
+                    -------- if zero findings: safe to proceed
+                    -------- if findings exist: scrub history first (scrub-secrets.ps1)
 
-                Populate config/user-mappings.csv with ADOÃ¢â€ â€™GitHub username mappings.
+                Populate config/user-mappings.csv with ADO--------GitHub username mappings.
 
                 Approve to proceed to migration, or Reject to abort.
               onTimeout: reject
@@ -278,8 +278,8 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     ''
-                $c   = $c -replace '\$\(ADO_PROJECT\)', ''
+                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
                 $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
@@ -336,7 +336,7 @@ stages:
               publishLocation: pipeline
             condition: always()
 
-  # STAGE 3A Ã¢â‚¬â€œ SINGLE REPO MIGRATION
+  # STAGE 3A -------- SINGLE REPO MIGRATION
   # ===========================================================================
   - stage: MigrateSingle
     displayName: "3a. Migrate (Single Repo)"
@@ -353,7 +353,7 @@ stages:
             inputs:
               targetType: inline
               script: |
-                # Portable zip install Ã¢â‚¬â€ no elevation required on self-hosted agents
+                # Portable zip install -------- no elevation required on self-hosted agents
                 $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
                 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
                     Write-Host "Installing GitHub CLI (portable zip)..."
@@ -417,8 +417,8 @@ stages:
                 }
 
                 $params = @{
-                    ADOOrg     = ''.Trim()
-                    ADOProject = ''.Trim()
+                    ADOOrg     = '$(ADO_Org)'.Trim()
+                    ADOProject = '$(ADO_Project)'.Trim()
                     ADO_Repo    = $ADO_Repo
                     GHOrg      = '$(GitHub_Org)'.Trim()
                     GitHub_Repo     = $GitHub_Repo
@@ -494,7 +494,7 @@ stages:
 
 
   # ===========================================================================
-  # STAGE 3B Ã¢â‚¬â€œ BATCH REPO MIGRATION
+  # STAGE 3B -------- BATCH REPO MIGRATION
   # ===========================================================================
   - stage: MigrateBatch
     displayName: "3b. Migrate (Batch)"
@@ -511,7 +511,7 @@ stages:
             inputs:
               targetType: inline
               script: |
-                # Portable zip install Ã¢â‚¬â€ no elevation required on self-hosted agents
+                # Portable zip install -------- no elevation required on self-hosted agents
                 $ghDir = "$env:AGENT_TOOLSDIRECTORY\gh"
                 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
                     Write-Host "Installing GitHub CLI (portable zip)..."
@@ -541,8 +541,8 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_Org\)',     ''
-                $c   = $c -replace '\$\(ADO_Project\)', ''
+                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
                 $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
@@ -577,8 +577,8 @@ stages:
               targetType: inline
               script: |
                 $params = @{
-                    ADOOrg      = ''
-                    ADOProject  = ''
+                    ADOOrg      = '$(ADO_Org)'
+                    ADOProject  = '$(ADO_Project)'
                     GHOrg       = '$(GitHub_Org)'
                     ConfigPath  = '$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json'
                     BatchName   = '${{ parameters.BatchName }}'
@@ -661,7 +661,7 @@ stages:
 
 
   # ===========================================================================
-  # STAGE 4 Ã¢â‚¬â€œ VALIDATE
+  # STAGE 4 -------- VALIDATE
   # ===========================================================================
   - stage: Validate
     displayName: "4. Validate Migration"
@@ -691,8 +691,8 @@ stages:
               script: |
                 $cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
                 $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_Org\)',     ''
-                $c   = $c -replace '\$\(ADO_Project\)', ''
+                $c   = $c -replace '\$\(ADO_Org\)',     '$(ADO_Org)'
+                $c   = $c -replace '\$\(ADO_Project\)', '$(ADO_Project)'
                 $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
                 $c   = $c -replace '\$\(GitHub_Org\)',      '$(GitHub_Org)'
                 $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
@@ -763,7 +763,7 @@ stages:
               artifact: "BatchMigrationDashboards"
               path: '$(Build.SourcesDirectory)\repo-migration\output\dashboard'
 
-          # Single mode Ã¢â‚¬â€ validate one repo
+          # Single mode -------- validate one repo
           - task: PowerShell@2
             displayName: "4.1 Validate Single Repo"
             condition: eq('${{ parameters.MigrationMode }}', 'Single')
@@ -786,8 +786,8 @@ stages:
                 }
 
                 & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
-                    -ADOOrg     '' `
-                    -ADOProject '' `
+                    -ADOOrg     '$(ADO_Org)' `
+                    -ADOProject '$(ADO_Project)' `
                     -GHOrg      '$(GitHub_Org)' `
                     -GitHub_Repo     $GitHub_Repo `
                     -ADO_Repo    $ADO_Repo `
@@ -799,7 +799,7 @@ stages:
               ADO_PAT: $(ADO_PAT)
               GH_PAT:  $(GH_PAT)
 
-          # Batch mode Ã¢â‚¬â€ validate all repos from batch summary
+          # Batch mode -------- validate all repos from batch summary
           - task: PowerShell@2
             displayName: "4.1 Validate Batch Repos"
             condition: eq('${{ parameters.MigrationMode }}', 'Batch')
@@ -818,8 +818,8 @@ stages:
                 }
 
                 & '$(Build.SourcesDirectory)\repo-migration\04-validate\validate-migration.ps1' `
-                    -ADOOrg     '' `
-                    -ADOProject '' `
+                    -ADOOrg     '$(ADO_Org)' `
+                    -ADOProject '$(ADO_Project)' `
                     -GHOrg      '$(GitHub_Org)' `
                     -OutputDir  '$(Build.SourcesDirectory)\repo-migration\output' `
                     -ExpectedVisibility $visibility
@@ -859,11 +859,11 @@ stages:
                 $singleFile = "$src\$GitHub_Repo\migration-report-$GitHub_Repo.html"
 
                 if (Test-Path $singleFile) {
-                    Write-Host "Single mode Ã¢â‚¬â€ using: $singleFile"
+                    Write-Host "Single mode -------- using: $singleFile"
                     Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
                 }
                 else {
-                    # Batch mode or Single file not found Ã¢â‚¬â€ find all HTML files
+                    # Batch mode or Single file not found -------- find all HTML files
                     $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
                     Write-Host "Found $($htmlFiles.Count) HTML file(s) in dashboard"
                     if ($htmlFiles.Count -eq 1) {
@@ -908,6 +908,11 @@ stages:
                     Write-Host "##vso[task.uploadsummary]$valSummary"
                 } else { Write-Warning "Validation summary not found: $valSummary" }
               pwsh: true
+
+
+
+
+
 
 
 

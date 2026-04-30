@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Validates migrated repos â€” compares ADO source vs GitHub target.
+    Validates migrated repos --- compares ADO source vs GitHub target.
     Works for both Single repo and Batch (reads from batch-migration-summary.json
     or a supplied repo list).
 .DESCRIPTION
@@ -10,7 +10,7 @@
       3.  Missing branches listed
       4.  Default branch matches
       5.  Tag count matches
-      6.  PR count within tolerance (Â±2)
+      6.  PR count within tolerance (--2)
       7.  Repo visibility = expected value
       8.  Latest commit hash reachable on GitHub
       9.  Branch protection rules exist on default branch
@@ -34,7 +34,7 @@
 .PARAMETER ExpectedVisibility
     Expected GitHub repo visibility: internal | private | public  (default: internal)
 .PARAMETER BatchSummaryJson
-    Path to batch-migration-summary.json â€” used when GitHub_Repo is not specified
+    Path to batch-migration-summary.json --- used when GitHub_Repo is not specified
 #>
 [CmdletBinding()]
 param(
@@ -51,7 +51,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# â”€â”€ Read visibility from config (config takes precedence) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Read visibility from config (config takes precedence) ------------------------------------------------------------
 $configPath = "$PSScriptRoot\..\config\repo-migration-config.json"
 if (Test-Path $configPath) {
     $configData = Get-Content $configPath -Raw | ConvertFrom-Json
@@ -61,13 +61,13 @@ if (Test-Path $configPath) {
 }
 Write-Host "  Expected visibility: $ExpectedVisibility"
 
-# â”€â”€ Normalize ADOOrg â€” strip full URL if passed as https://dev.azure.com/<org> â”€â”€
+# ------ Normalize ADOOrg --- strip full URL if passed as https://dev.azure.com/<org> ------
 if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
-    Write-Host "  Normalising ADOOrg: stripping URL prefix â†’ '$($Matches[1])'"
+    Write-Host "  Normalising ADOOrg: stripping URL prefix --- '$($Matches[1])'"
     $ADOOrg = $Matches[1]
 }
 
-# â”€â”€ Validate PATs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Validate PATs ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $adoPat = $env:ADO_PAT
 $ghPat  = $env:GH_PAT
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
@@ -77,20 +77,20 @@ $adoBase64  = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPa
 $adoHeaders = @{ Authorization = "Basic $adoBase64" }
 $ghHeaders  = @{ Authorization = "Bearer $ghPat"; Accept = "application/vnd.github+json" }
 
-# Set GH_TOKEN for gh CLI â€” more reliable than Invoke-RestMethod on PS 5.1/7
+# Set GH_TOKEN for gh CLI --- more reliable than Invoke-RestMethod on PS 5.1/7
 $env:GH_TOKEN = $ghPat
 
 $reportDir = "$OutputDir\reports"
 New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 
-# â”€â”€ Build repo list to validate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Build repo list to validate ---------------------------------------------------------------------------------------------------------------------------------------------
 $repoList = @()   # array of @{ ADO_Repo; GitHub_Repo }
 
-# Trim whitespace â€” pipeline parameters may pass " " (space default)
+# Trim whitespace --- pipeline parameters may pass " " (space default)
 if ($GitHub_Repo)  { $GitHub_Repo  = $GitHub_Repo.Trim() }
 if ($ADO_Repo) { $ADO_Repo = $ADO_Repo.Trim() }
 if ([string]::IsNullOrWhiteSpace($GitHub_Repo) -and -not [string]::IsNullOrWhiteSpace($ADO_Repo)) {
-    Write-Host "  GitHub_Repo was empty â€” defaulting to ADO_Repo: '$ADO_Repo'"
+    Write-Host "  GitHub_Repo was empty --- defaulting to ADO_Repo: '$ADO_Repo'"
     $GitHub_Repo = $ADO_Repo
 }
 
@@ -101,7 +101,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHub_Repo)) {
 else {
     # Load from batch summary
     $summaryPath = if ($BatchSummaryJson) { $BatchSummaryJson } else { "$reportDir\batch-migration-summary.json" }
-    if (-not (Test-Path $summaryPath)) { Write-Error "Batch summary not found: $summaryPath. Specify â€“GitHub_Repo for single-repo validation." }
+    if (-not (Test-Path $summaryPath)) { Write-Error "Batch summary not found: $summaryPath. Specify ---GitHub_Repo for single-repo validation." }
     $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
     foreach ($entry in $summary) {
         $entryState = $null
@@ -117,14 +117,14 @@ Write-Host "  GitHub: $GHOrg"
 Write-Host "  Repos: $($repoList.Count)"
 Write-Host "============================================"
 
-# â”€â”€ Helper functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Helper functions ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 function Get-AuditVal($auditDir, $file) {
     $p = "$auditDir\$file"
     if (Test-Path $p) { return (Get-Content $p -Raw).Trim() }
     return $null
 }
 
-# Safe property accessor â€” iterates properties to avoid PS 5.1 indexer bug
+# Safe property accessor --- iterates properties to avoid PS 5.1 indexer bug
 function Get-JsonProp($obj, [string]$name, $default = $null) {
     if ($null -eq $obj) { return $default }
     foreach ($p in $obj.PSObject.Properties) {
@@ -144,9 +144,9 @@ foreach ($entry in $repoList) {
     $migState    = $entry['State']
     $auditDir    = "$OutputDir\audit\$ghRepoName"
 
-    # â”€â”€ Skip validation for repos whose migration was skipped (already existed) â”€â”€
+    # ------ Skip validation for repos whose migration was skipped (already existed) ------
     if ($migState -eq 'SKIPPED') {
-        Write-Host "`nâ”€â”€ Skipping: $adoRepoName â†’ $ghRepoName â”€â”€  (migration was SKIPPED â€” repo already existed)" -ForegroundColor DarkGray
+        Write-Host "`n------ Skipping: $adoRepoName --- $ghRepoName ------  (migration was SKIPPED --- repo already existed)" -ForegroundColor DarkGray
         $allResults += [PSCustomObject]@{
             ADO_Repo   = $adoRepoName
             GitHub_Repo    = $ghRepoName
@@ -160,7 +160,7 @@ foreach ($entry in $repoList) {
         continue
     }
 
-    Write-Host "`nâ”€â”€ Validating: $adoRepoName â†’ $ghRepoName â”€â”€" -ForegroundColor Yellow
+    Write-Host "`n------ Validating: $adoRepoName --- $ghRepoName ------" -ForegroundColor Yellow
 
     $checks = @()
 
@@ -181,11 +181,11 @@ foreach ($entry in $repoList) {
     function Add-Warn($name, $detail) {
         $check = [PSCustomObject]@{ Check=$name; Source="N/A"; Target="N/A"; Status="WARN"; Detail=$detail }
         $script:checks += $check
-        Write-Host "    [WARN] $name â€” $detail" -ForegroundColor Yellow
+        Write-Host "    [WARN] $name --- $detail" -ForegroundColor Yellow
         $script:totalWarn++
     }
 
-    # â”€â”€ 1. Repo exists on GitHub (via gh CLI â€” avoids PS 5.1 Invoke-RestMethod issues) â”€â”€
+    # ------ 1. Repo exists on GitHub (via gh CLI --- avoids PS 5.1 Invoke-RestMethod issues) ------
     $ghRepoCheck = $null
     $ErrorActionPreference = 'SilentlyContinue'
     $ghRepoCheck = gh repo view "$GHOrg/$ghRepoName" --json name --jq .name 2>&1
@@ -204,7 +204,7 @@ foreach ($entry in $repoList) {
     if ($ghVisibility) { $ghVisibility = $ghVisibility.ToLower() }   # gh returns PRIVATE/INTERNAL/PUBLIC
     Write-Host "      [DEBUG] default_branch=$ghDefault  visibility=$ghVisibility" -ForegroundColor DarkGray
 
-    # â”€â”€ 2. ADO source data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 2. ADO source data ---------------------------------------------------------------------------------------------------------------------------------------------------------
     $adoRepoEncoded = [Uri]::EscapeDataString($adoRepoName)
     $adoRepoUrl  = "https://dev.azure.com/$ADOOrg/$ADOProject/_apis/git/repositories/$adoRepoEncoded"
     $ADO_Repo     = $null
@@ -261,9 +261,9 @@ foreach ($entry in $repoList) {
     }
     catch { Add-Warn "ADO Branch API" "Cannot fetch ADO branches: $_" }
 
-    # Fallback: if ADO default branch is still empty, warn â€” do NOT guess
+    # Fallback: if ADO default branch is still empty, warn --- do NOT guess
     if (-not $adoDefault -and $adoBranches.Count -gt 0) {
-        Write-Host "      [WARN] ADO API did not return defaultBranch â€” cannot determine ADO default" -ForegroundColor Yellow
+        Write-Host "      [WARN] ADO API did not return defaultBranch --- cannot determine ADO default" -ForegroundColor Yellow
     }
 
     try {
@@ -295,7 +295,7 @@ foreach ($entry in $repoList) {
     }
     catch { Add-Warn "ADO Tag API" "Cannot fetch ADO tags: $_" }
 
-    # â”€â”€ 3. GitHub branch list (via gh api â€” paginated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 3. GitHub branch list (via gh api --- paginated) ------------------------------------------------------------------------
     $ghBranches = @()
     try {
         $page = 1
@@ -309,7 +309,7 @@ foreach ($entry in $repoList) {
     }
     catch { Add-Warn "GitHub Branch API" "Could not fetch branches: $_" }
 
-    # â”€â”€ 4. Branch count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 4. Branch count ------------------------------------------------------------------------------------------------------------------------------------------------------------------
     $auditBranchCount = Get-AuditVal $auditDir "gh-branch-count.txt"
     $ghBranchCount    = $ghBranches.Count
     $sourceBranchCount = $adoBranches.Count
@@ -318,12 +318,12 @@ foreach ($entry in $repoList) {
     if ($adoBranches.Count -gt 0 -or $ghBranches.Count -gt 0) {
         $branchDetail = "ADO=$($adoBranches.Count) GH=$($ghBranches.Count)"
     }
-    # GEI may create a few extra branches from PR head refs â€” allow tolerance for large repos
+    # GEI may create a few extra branches from PR head refs --- allow tolerance for large repos
     $branchTolerance = if ($sourceBranchCount -gt 100) { [math]::Ceiling($sourceBranchCount * 0.01) } else { 0 }
     $branchMatch = [math]::Abs($sourceBranchCount - $ghBranchCount) -le $branchTolerance
     Add-Check "Branch Count" $sourceBranchCount $ghBranchCount $branchMatch $branchDetail
 
-    # â”€â”€ List branch names (truncate for large repos) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ List branch names (truncate for large repos) ------------------------------------------------------------------------
     $maxShow = 20
     if ($adoBranches.Count -gt 0) {
         $sorted = $adoBranches | Sort-Object
@@ -338,7 +338,7 @@ foreach ($entry in $repoList) {
         Write-Host "      GH  Branches ($($ghBranches.Count)): $shown$more" -ForegroundColor DarkGray
     }
 
-    # â”€â”€ 5. Missing branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 5. Missing branches ------------------------------------------------------------------------------------------------------------------------------------------------------
     if ($adoBranches.Count -gt 0) {
         $missing = @($adoBranches | Where-Object { $_ -notin $ghBranches })
         $extra   = @($ghBranches  | Where-Object { $_ -notin $adoBranches })
@@ -357,7 +357,7 @@ foreach ($entry in $repoList) {
         }
     }
 
-    # â”€â”€ 6. Default branch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 6. Default branch ------------------------------------------------------------------------------------------------------------------------------------------------------------
     if ([string]::IsNullOrWhiteSpace($ghDefault)) { $ghDefault = 'N/A' }
     Write-Host "      Default Branch: ADO=[$adoDefault] GH=[$ghDefault]" -ForegroundColor DarkGray
     if ($adoDefault) {
@@ -369,7 +369,7 @@ foreach ($entry in $repoList) {
         else               { Add-Warn  "Default Branch" "ADO default branch not available for comparison" }
     }
 
-    # â”€â”€ 7. Tag count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 7. Tag count ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     $ghTags = @()
     $ghTagNames  = @()
     $adoTagNames = @()
@@ -421,7 +421,7 @@ foreach ($entry in $repoList) {
         }
     }
 
-    # â”€â”€ 8. PR count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 8. PR count ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     $ghPrCount = 0
     try {
         $prSearchRaw = gh api "search/issues?q=repo:$GHOrg/$ghRepoName+type:pr" 2>$null
@@ -433,7 +433,7 @@ foreach ($entry in $repoList) {
     catch { }
     if ($adoPrCount -gt 0) {
         $prDiff = [math]::Abs($adoPrCount - $ghPrCount)
-        Add-Check "PR Count (Â±2 tolerance)" $adoPrCount $ghPrCount ($prDiff -le 2) $(if ($prDiff -gt 2) { "Difference: $prDiff" } else { "" })
+        Add-Check "PR Count (--2 tolerance)" $adoPrCount $ghPrCount ($prDiff -le 2) $(if ($prDiff -gt 2) { "Difference: $prDiff" } else { "" })
     }
     else {
         $auditPrCount = Get-AuditVal $auditDir "gh-pr-count.txt"
@@ -442,7 +442,7 @@ foreach ($entry in $repoList) {
         }
     }
 
-    # â”€â”€ 9. Repo visibility â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 9. Repo visibility ---------------------------------------------------------------------------------------------------------------------------------------------------------
     if ([string]::IsNullOrWhiteSpace($ghVisibility)) { $ghVisibility = "unknown" }
 
     # Get ADO project visibility (ADO repos inherit visibility from their project)
@@ -456,10 +456,10 @@ foreach ($entry in $repoList) {
         Write-Host "      [DEBUG] Could not fetch ADO project visibility: $_" -ForegroundColor DarkGray
     }
 
-    Write-Host "      Visibility   : ADO=$adoVisibility â†’ GitHub=$ghVisibility (expected=$ExpectedVisibility)" -ForegroundColor DarkGray
+    Write-Host "      Visibility   : ADO=$adoVisibility --- GitHub=$ghVisibility (expected=$ExpectedVisibility)" -ForegroundColor DarkGray
     Add-Check "Visibility" $adoVisibility $ghVisibility ($ghVisibility -eq $ExpectedVisibility)
 
-    # â”€â”€ 10. Latest commit reachable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 10. Latest commit reachable ------------------------------------------------------------------------------------------------------------------------------------------
     $auditHash = Get-AuditVal $auditDir "gh-latest-hash.txt"
     if ($auditHash -and $auditHash -ne "N/A") {
         $ErrorActionPreference = 'SilentlyContinue'
@@ -478,7 +478,7 @@ foreach ($entry in $repoList) {
         Add-Warn "Latest Commit Check" "No audit hash available (run migrate-single.ps1 first)"
     }
 
-    # â”€â”€ 12. Branch protection on default branch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ 12. Branch protection on default branch ------------------------------------------------------------------------------------------
     $ErrorActionPreference = 'SilentlyContinue'
     $bpRaw = gh api "repos/$GHOrg/$ghRepoName/branches/$ghDefault/protection" 2>$null
     $ErrorActionPreference = 'Stop'
@@ -486,10 +486,10 @@ foreach ($entry in $repoList) {
         Add-Check "Branch Protection" "configured" "configured" $true
     }
     else {
-        Add-Warn "Branch Protection" "No branch protection on default branch '$ghDefault' â€” configure after migration"
+        Add-Warn "Branch Protection" "No branch protection on default branch '$ghDefault' --- configure after migration"
     }
 
-    # â”€â”€ Overall â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ------ Overall ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     $failedChecks = @($checks | Where-Object { $_.Status -eq "FAIL" })
     $repoStatus   = if ($failedChecks.Count -eq 0) { "PASS" } else { "FAIL" }
     $passCount    = @($checks | Where-Object { $_.Status -eq "PASS" }).Count
@@ -497,7 +497,7 @@ foreach ($entry in $repoList) {
     $warnCount    = @($checks | Where-Object { $_.Status -eq "WARN" }).Count
     $accuracy     = if (($passCount + $failCount) -gt 0) { [math]::Round(($passCount / ($passCount + $failCount)) * 100, 1) } else { 0 }
 
-    Write-Host "  â”€â”€â”€ Result: $repoStatus  Accuracy: $accuracy%  ($passCount PASS / $failCount FAIL / $warnCount WARN) â”€â”€â”€" -ForegroundColor $(if ($repoStatus -eq "PASS") {"Green"} else {"Red"})
+    Write-Host "  --------- Result: $repoStatus  Accuracy: $accuracy%  ($passCount PASS / $failCount FAIL / $warnCount WARN) ---------" -ForegroundColor $(if ($repoStatus -eq "PASS") {"Green"} else {"Red"})
 
     $allResults += [PSCustomObject]@{
         ADO_Repo    = $adoRepoName
@@ -511,12 +511,12 @@ foreach ($entry in $repoList) {
     }
 }
 
-# â”€â”€ Write JSON + CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Write JSON + CSV ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $jsonPath = "$reportDir\validation-results.json"
 $csvPath  = "$reportDir\validation-results.csv"
 $allResults | ConvertTo-Json -Depth 5 | Out-File $jsonPath -Encoding utf8
 
-# Flat CSV â€” one row per check per repo
+# Flat CSV --- one row per check per repo
 $flatRows = @()
 foreach ($r in $allResults) {
     foreach ($c in $r.Checks) {
@@ -529,8 +529,8 @@ foreach ($r in $allResults) {
 }
 $flatRows | Export-Csv $csvPath -NoTypeInformation -Encoding utf8
 
-# â”€â”€ HTML report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$migDate    = Get-Date -Format 'dd MMM yyyy Â· HH:mm'
+# ------ HTML report ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+$migDate    = Get-Date -Format 'dd MMM yyyy -- HH:mm'
 $totalRepos   = $allResults.Count
 $passRepos    = @($allResults | Where-Object { $_.Status -eq "PASS" }).Count
 $skippedRepos = @($allResults | Where-Object { $_.Status -eq "SKIPPED" }).Count
@@ -607,21 +607,21 @@ $html += "<div class='footer'>Generated $migDate &bull; ADO-to-GitHub Migration 
 $htmlPath = "$reportDir\validation-report.html"
 $html | Out-File $htmlPath -Encoding utf8
 
-# â”€â”€ Markdown summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Markdown summary ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $md  = "# Migration Validation Report`n`n"
 $md += "> Generated: $migDate`n`n"
 $md += "| Metric | Value |`n|:---|---:|`n"
 $md += "| Total repos validated | $totalRepos |`n"
 $md += "| &#x1F3AF; Migration Accuracy | **$overallAccuracy%** |`n"
-$md += "| âœ… PASS | $passRepos |`n"
-$md += "| â­ï¸ SKIPPED | $skippedRepos |`n"
-$md += "| âŒ FAIL | $failRepos |`n`n"
+$md += "| --- PASS | $passRepos |`n"
+$md += "| ------ SKIPPED | $skippedRepos |`n"
+$md += "| --- FAIL | $failRepos |`n`n"
 if ($failRepos -gt 0) {
     $md += "## Failed Repos`n`n"
     $allResults | Where-Object { $_.Status -notin @("PASS","SKIPPED") } | ForEach-Object {
         $md += "### ``$($_.GitHub_Repo)```n`n"
         $_.Checks | Where-Object { $_.Status -eq "FAIL" } | ForEach-Object {
-            $md += "- âŒ **$($_.Check)** â€” Source: ``$($_.Source)`` Target: ``$($_.Target)`` $($_.Detail)`n"
+            $md += "- --- **$($_.Check)** --- Source: ``$($_.Source)`` Target: ``$($_.Target)`` $($_.Detail)`n"
         }
         $md += "`n"
     }
@@ -629,7 +629,7 @@ if ($failRepos -gt 0) {
 $mdPath = "$reportDir\validation-summary.md"
 $md | Out-File $mdPath -Encoding utf8
 
-# â”€â”€ Console summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ------ Console summary ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "============================================" -ForegroundColor $(if ($failRepos -eq 0) {"Green"} else {"Red"})
 Write-Host "  VALIDATION SUMMARY"
@@ -653,5 +653,6 @@ if ($failRepos -gt 0) {
 }
 
 exit 0
+
 
 
