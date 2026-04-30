@@ -1,17 +1,17 @@
-
+﻿
 {
   "source": {
     "type": "AzureDevOps",
-    "organization": "$(ADO_ORG)",
-    "project": "$(ADO_PROJECT)",
+    "organization": "$(ADO_Org)",
+    "project": "$(ADO_Project)",
     "pat": "$(ADO_PAT)"
   },
   "target": {
-    "organization": "$(GH_ORG)",
+    "organization": "$(GitHub_Org)",
     "pat": "$(GH_PAT)"
   },
   "migration": {
-    "cloneTempDir": "./tmp/clones",
+    "cloneTempDir": "$(CLONE_TEMP_DIR)",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
@@ -36,7 +36,9 @@
     "branches": []
   },
   "output": {
-    "reportDir": "./output/reports",
-    "logDir": "./output/logs"
+    "reportDir": "$(REPORT_DIR)",
+    "logDir": "$(LOG_DIR)"
   }
 }
+
+

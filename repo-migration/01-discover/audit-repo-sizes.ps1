@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Clones each repo and runs git-sizer to detect files/trees exceeding GEI limits.
 .DESCRIPTION
@@ -29,13 +29,13 @@ foreach ($d in @($reportDir, $logDir, $cloneDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
 }
 
-# ── Verify git-sizer is installed ────────────────────────────────────────────
+# â”€â”€ Verify git-sizer is installed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $gitSizer = Get-Command git-sizer -ErrorAction SilentlyContinue
 if (-not $gitSizer) {
     Write-Error "git-sizer not found. Install it: https://github.com/github/git-sizer/releases or run 02-prep\install-tools.ps1"
 }
 
-# ── Load inventory ───────────────────────────────────────────────────────────
+# â”€â”€ Load inventory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $inventoryPath = Join-Path $reportDir "repo-inventory.json"
 if (-not (Test-Path $inventoryPath)) {
     Write-Error "repo-inventory.json not found. Run 01-discover\discover-repos.ps1 first."
@@ -45,7 +45,7 @@ $repos = Get-Content $inventoryPath -Raw | ConvertFrom-Json
 $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
-# ── ADO API base + auth header ───────────────────────────────────────────────
+# â”€â”€ ADO API base + auth header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $adoOrg  = $config.source.organization.TrimEnd('/')
 $adoProj = $config.source.project
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
@@ -59,7 +59,7 @@ Write-Host "  Repos >= ${apiOnlyThresholdMB} MB will use ADO REST API (no clone)
 
 $results = @()
 
-# ── Helper: Audit via ADO REST API (no clone needed) ─────────────────────────
+# â”€â”€ Helper: Audit via ADO REST API (no clone needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Get-RepoSizeViaApi {
     param($repo, $adoOrg, $adoProj, $apiHeaders)
 
@@ -69,17 +69,17 @@ function Get-RepoSizeViaApi {
     # Use ADO Items API to recursively list all files in the default branch
     $defaultBranch = $repo.DefaultBranch
     if (-not $defaultBranch) {
-        Write-Warning "  No default branch — using API size only"
+        Write-Warning "  No default branch â€” using API size only"
         return @{ MaxBlobMB = 0; LargestBlobs = @() }
     }
 
     try {
-        # Fetch file tree with sizes — ADO supports recursionLevel=Full
+        # Fetch file tree with sizes â€” ADO supports recursionLevel=Full
         $itemsUrl = "$adoOrg/$adoProj/_apis/git/repositories/$($repo.Id)/items?recursionLevel=Full&versionDescriptor.version=$defaultBranch&api-version=7.1"
         $itemsResp = Invoke-RestMethod -Uri $itemsUrl -Headers $apiHeaders -Method Get
 
         if ($itemsResp.value) {
-            # Filter to blobs (files) — ADO returns gitObjectType='blob' for files
+            # Filter to blobs (files) â€” ADO returns gitObjectType='blob' for files
             # Some items may lack isFolder; use gitObjectType or check for size property
             $files = @($itemsResp.value | Where-Object {
                 $isFile = $false
@@ -116,23 +116,23 @@ function Get-RepoSizeViaApi {
 }
 
 foreach ($repo in $repos) {
-    Write-Host "`n── [$($repo.Project)] $($repo.Name) ──" -ForegroundColor Yellow
+    Write-Host "`nâ”€â”€ [$($repo.Project)] $($repo.Name) â”€â”€" -ForegroundColor Yellow
 
     $maxBlobSize  = 0
     $largestBlobs = @()
     $totalSize    = $repo.SizeMB
     $auditMethod  = ""
 
-    # ── LARGE REPOS: API-only path (no clone, no disk usage) ─────────────
+    # â”€â”€ LARGE REPOS: API-only path (no clone, no disk usage) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($repo.SizeMB -ge $apiOnlyThresholdMB) {
         $auditMethod = "API"
-        Write-Host "  Using ADO REST API (repo is $($repo.SizeMB) MB — skipping clone)" -ForegroundColor Gray
+        Write-Host "  Using ADO REST API (repo is $($repo.SizeMB) MB â€” skipping clone)" -ForegroundColor Gray
 
         $apiResult    = Get-RepoSizeViaApi -repo $repo -adoOrg $adoOrg -adoProj $adoProj -apiHeaders $apiHeaders
         $maxBlobSize  = $apiResult.MaxBlobMB
         $largestBlobs = $apiResult.LargestBlobs
     }
-    # ── SMALL REPOS: clone + git-sizer (precise analysis) ────────────────
+    # â”€â”€ SMALL REPOS: clone + git-sizer (precise analysis) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     else {
         $auditMethod = "Clone"
         $clonePath = Join-Path $cloneDir "$($repo.Name).git"
@@ -151,7 +151,7 @@ foreach ($repo in $repos) {
             if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
         }
         catch {
-            Write-Warning "  Clone failed for $($repo.Name): $_ — falling back to API"
+            Write-Warning "  Clone failed for $($repo.Name): $_ â€” falling back to API"
             $apiResult    = Get-RepoSizeViaApi -repo $repo -adoOrg $adoOrg -adoProj $adoProj -apiHeaders $apiHeaders
             $maxBlobSize  = $apiResult.MaxBlobMB
             $largestBlobs = $apiResult.LargestBlobs
@@ -206,7 +206,7 @@ foreach ($repo in $repos) {
         }
     }
 
-    # ── Evaluate limits ──────────────────────────────────────────────────
+    # â”€â”€ Evaluate limits â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     $exceedsGEI  = $maxBlobSize -gt 400 -or $repo.SizeGB -gt 40
     $exceedsPush = $maxBlobSize -gt 100
 
@@ -214,7 +214,7 @@ foreach ($repo in $repos) {
         Write-Warning "  BLOCKER: Exceeds GEI limits (max blob: ${maxBlobSize} MB, total: $($repo.SizeGB) GB)"
     }
     elseif ($exceedsPush) {
-        Write-Warning "  WARNING: Has files > 100 MB — will need Git LFS after migration"
+        Write-Warning "  WARNING: Has files > 100 MB â€” will need Git LFS after migration"
     }
     else {
         Write-Host "  OK (max blob: ${maxBlobSize} MB) [$auditMethod]" -ForegroundColor Green
@@ -234,10 +234,10 @@ foreach ($repo in $repos) {
     }
 }
 
-# ── Final cleanup (safety net) ───────────────────────────────────────────────
+# â”€â”€ Final cleanup (safety net) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (Test-Path $cloneDir) { Remove-Item $cloneDir -Recurse -Force -ErrorAction SilentlyContinue }
 
-# ── Report ───────────────────────────────────────────────────────────────────
+# â”€â”€ Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $jsonOut = Join-Path $reportDir "repo-size-audit.json"
 $results | ConvertTo-Json -Depth 5 | Out-File $jsonOut -Encoding utf8
 
@@ -256,3 +256,5 @@ if ($blocked) {
 
 Write-Host "`nReport saved: $jsonOut"
 Write-Host "Next step: Run 01-discover\scan-secrets.ps1 to check for exposed credentials."
+
+

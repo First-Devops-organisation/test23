@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reclaims mannequin (placeholder) users created by GEI migration.
 .DESCRIPTION
@@ -27,7 +27,7 @@ $ghPat = if ($config.target.pat -eq '$(GH_PAT)') { $env:GH_PAT } else { $config.
 if ([string]::IsNullOrWhiteSpace($ghPat)) { Write-Error "Set GH_PAT environment variable" }
 $env:GH_PAT = $ghPat
 
-# ── Load user mappings ───────────────────────────────────────────────────────
+# â”€â”€ Load user mappings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $mappingPath = "$PSScriptRoot\..\config\user-mappings.csv"
 if (-not (Test-Path $mappingPath)) {
     Write-Error "user-mappings.csv not found at $mappingPath"
@@ -37,7 +37,7 @@ $mappings = Import-Csv $mappingPath
 Write-Host "=== Reclaiming Mannequins for $ghOrg ===" -ForegroundColor Cyan
 Write-Host "  User mappings loaded: $($mappings.Count)"
 
-# ── List mannequins ──────────────────────────────────────────────────────────
+# â”€â”€ List mannequins â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Host "`nFetching mannequins from GitHub org..."
 try {
     $mannequinOutput = & gh gei generate-mannequin-csv --github-org $ghOrg 2>&1
@@ -56,7 +56,7 @@ if ($mannequins.Count -eq 0) {
     return
 }
 
-# ── Match and reclaim ────────────────────────────────────────────────────────
+# â”€â”€ Match and reclaim â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $reclaimResults = @()
 
 foreach ($m in $mannequins) {
@@ -72,7 +72,7 @@ foreach ($m in $mannequins) {
 
     if ($match) {
         $targetGhUser = $match.GitHubUsername
-        Write-Host "  $mannequinLogin → $targetGhUser" -ForegroundColor Yellow
+        Write-Host "  $mannequinLogin â†’ $targetGhUser" -ForegroundColor Yellow
 
         try {
             & gh gei reclaim-mannequin --github-org $ghOrg --mannequin-user $mannequinLogin --target-user $targetGhUser --force 2>&1 | Out-Null
@@ -89,14 +89,14 @@ foreach ($m in $mannequins) {
         }
     }
     else {
-        Write-Warning "  $mannequinLogin — NO MAPPING FOUND. Add to user-mappings.csv"
+        Write-Warning "  $mannequinLogin â€” NO MAPPING FOUND. Add to user-mappings.csv"
         $reclaimResults += [PSCustomObject]@{
             Mannequin = $mannequinLogin; TargetUser = ""; Status = "NO_MAPPING"
         }
     }
 }
 
-# ── Report ───────────────────────────────────────────────────────────────────
+# â”€â”€ Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $resultPath = Join-Path $reportDir "mannequin-reclaim-results.json"
 $reclaimResults | ConvertTo-Json -Depth 3 | Out-File $resultPath -Encoding utf8
 
@@ -107,3 +107,5 @@ Write-Host "  Failed           : $(($reclaimResults | Where-Object Status -eq 'F
 Write-Host "  No mapping       : $(($reclaimResults | Where-Object Status -eq 'NO_MAPPING').Count)"
 Write-Host "`nNote: Target users must ACCEPT the reclaim invitation in GitHub."
 Write-Host "Report: $resultPath"
+
+

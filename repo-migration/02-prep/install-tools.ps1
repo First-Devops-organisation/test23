@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Installs and validates all tools required for repo migration.
 .DESCRIPTION
@@ -60,7 +60,7 @@ else {
     Write-Host "`nAll tools installed!" -ForegroundColor Green
 }
 
-# ── Validate GEI auth ───────────────────────────────────────────────────────
+# â”€â”€ Validate GEI auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Host "`n=== Checking environment variables ===" -ForegroundColor Cyan
 $envVars = @("ADO_PAT", "GH_PAT")
 foreach ($var in $envVars) {
@@ -74,3 +74,5 @@ foreach ($var in $envVars) {
 }
 
 Write-Host "`nDone. Ensure all tools are green and env vars are set before proceeding."
+
+

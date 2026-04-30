@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Discovers all Git repositories in an Azure DevOps project. 
     Outputs repo list with metadata (size, default branch, last commit, LFS usage).
@@ -22,24 +22,24 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Load config ──────────────────────────────────────────────────────────────
+# â”€â”€ Load config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (-not (Test-Path $ConfigPath)) {
     Write-Error "Config not found at $ConfigPath. Copy repo-migration-config.json and fill in your values."
 }
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 
-# Resolve config values — if they look like ADO pipeline variable references, read from env
-$adoOrg  = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
-$adoProj = if ($config.source.project      -match '^\$\(') { $env:ADO_PROJECT } else { $config.source.project }
+# Resolve config values â€” if they look like ADO pipeline variable references, read from env
+$adoOrg  = if ($config.source.organization -match '^\$\(') { $env:ADO_Org } else { $config.source.organization }
+$adoProj = if ($config.source.project      -match '^\$\(') { $env:ADO_Project } else { $config.source.project }
 $adoPat  = if ($config.source.pat           -match '^\$\(') { $env:ADO_PAT } else { $config.source.pat }
 
 $adoOrg = ($adoOrg ?? '').TrimEnd('/')
 
 if ([string]::IsNullOrWhiteSpace($adoOrg)) {
-    Write-Error "Set the ADO_ORG environment variable or update config.source.organization"
+    Write-Error "Set the ADO_Org environment variable or update config.source.organization"
 }
 if ([string]::IsNullOrWhiteSpace($adoProj)) {
-    Write-Error "Set the ADO_PROJECT environment variable or update config.source.project"
+    Write-Error "Set the ADO_Project environment variable or update config.source.project"
 }
 if ([string]::IsNullOrWhiteSpace($adoPat)) {
     Write-Error "Set the ADO_PAT environment variable or update config.source.pat"
@@ -48,7 +48,7 @@ if ([string]::IsNullOrWhiteSpace($adoPat)) {
 $reportDir = $config.output.reportDir
 if (-not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir -Force | Out-Null }
 
-# ── Auth header ──────────────────────────────────────────────────────────────
+# â”€â”€ Auth header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
 $headers = @{
     Authorization  = "Basic $base64Auth"
@@ -56,7 +56,7 @@ $headers = @{
     "Content-Type" = "application/json"
 }
 
-# ── Verify PAT connectivity ─────────────────────────────────────────────────
+# â”€â”€ Verify PAT connectivity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Host "Verifying PAT connectivity..." -ForegroundColor Cyan
 try {
     $connTest = Invoke-RestMethod -Uri "$adoOrg/_apis/connectiondata" -Headers $headers -Method Get
@@ -66,7 +66,7 @@ catch {
     Write-Error "PAT authentication failed against $adoOrg. Ensure ADO_PAT is valid and not expired. Detail: $_"
 }
 
-# ── Fetch all repos ─────────────────────────────────────────────────────────
+# â”€â”€ Fetch all repos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Host "=== Discovering repos in $adoOrg/$adoProj ===" -ForegroundColor Cyan
 $repoApiUrl = "$adoOrg/$adoProj/_apis/git/repositories?api-version=7.1"
 
@@ -75,7 +75,7 @@ try {
 }
 catch {
     $statusCode = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { 'N/A' }
-    Write-Error "API call failed (HTTP $statusCode) for $repoApiUrl — verify ADO_PAT has 'Code (Read)' scope for project '$adoProj'. Detail: $_"
+    Write-Error "API call failed (HTTP $statusCode) for $repoApiUrl â€” verify ADO_PAT has 'Code (Read)' scope for project '$adoProj'. Detail: $_"
 }
 
 if ($response -is [string]) {
@@ -84,7 +84,7 @@ if ($response -is [string]) {
 
 if (-not $response.PSObject.Properties['value']) {
     Write-Host "API response keys: $($response.PSObject.Properties.Name -join ', ')" -ForegroundColor Yellow
-    Write-Error "Unexpected API response — no 'value' property. Response: $($response | ConvertTo-Json -Depth 2 -Compress)"
+    Write-Error "Unexpected API response â€” no 'value' property. Response: $($response | ConvertTo-Json -Depth 2 -Compress)"
 }
 
 $repoList = $response.value
@@ -121,7 +121,7 @@ $repos = @($repoList | ForEach-Object -ThrottleLimit $throttleLimit -Parallel {
         if ($gitattrs -match 'filter=lfs') { $hasLfs = $true }
     }
     catch {
-        # No .gitattributes — fine
+        # No .gitattributes â€” fine
     }
 
     $sizeBytes = $repo.size  # ADO returns size in bytes
@@ -130,7 +130,7 @@ $repos = @($repoList | ForEach-Object -ThrottleLimit $throttleLimit -Parallel {
 
     # GEI limit flags
     $exceedsGeiLimit  = $sizeGB -gt 40
-    $exceedsFileLimit = $false  # Would need per-file check — flagged in audit-repo-sizes.ps1
+    $exceedsFileLimit = $false  # Would need per-file check â€” flagged in audit-repo-sizes.ps1
 
     [PSCustomObject]@{
         Project           = $adoProj
@@ -149,7 +149,7 @@ $repos = @($repoList | ForEach-Object -ThrottleLimit $throttleLimit -Parallel {
     }
 })
 
-# ── Exclusion filter ─────────────────────────────────────────────────────────
+# â”€â”€ Exclusion filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $exclusions = @()
 if ($config.exclusions -and $config.exclusions.repos) {
     $exclusions = $config.exclusions.repos
@@ -157,7 +157,7 @@ if ($config.exclusions -and $config.exclusions.repos) {
 $included = @($repos | Where-Object { $_.Name -notin $exclusions })
 $excluded = @($repos | Where-Object { $_.Name -in $exclusions })
 
-# ── Summary ──────────────────────────────────────────────────────────────────
+# â”€â”€ Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Host "`n=== Discovery Summary ===" -ForegroundColor Green
 Write-Host "  Total repos found   : $($repos.Count)"
 Write-Host "  Excluded by config  : $($excluded.Count)"
@@ -174,11 +174,11 @@ if ($oversize) {
 
 $lfsRepos = @($included | Where-Object { $_.HasLFS })
 if ($lfsRepos) {
-    Write-Warning "The following repos use Git LFS — LFS objects are NOT migrated by GEI:"
+    Write-Warning "The following repos use Git LFS â€” LFS objects are NOT migrated by GEI:"
     $lfsRepos | Format-Table Name, SizeGB -AutoSize
 }
 
-# ── Output ───────────────────────────────────────────────────────────────────
+# â”€â”€ Output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $jsonOut = Join-Path $reportDir "repo-inventory.json"
 $csvOut  = Join-Path $reportDir "repo-inventory.csv"
 $htmlOut = Join-Path $reportDir "repo-inventory.html"
@@ -186,7 +186,7 @@ $htmlOut = Join-Path $reportDir "repo-inventory.html"
 $included | ConvertTo-Json -Depth 5 | Out-File $jsonOut -Encoding utf8
 $included | Export-Csv $csvOut -NoTypeInformation -Encoding utf8
 
-# ── HTML Dashboard Report ────────────────────────────────────────────────────
+# â”€â”€ HTML Dashboard Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $totalSizeMB = [math]::Round(($included | Measure-Object -Property SizeMB -Sum).Sum, 2)
 $totalSizeGB = [math]::Round($totalSizeMB / 1024, 2)
 $lfsCount    = @($included | Where-Object HasLFS).Count
@@ -324,3 +324,5 @@ Write-Host "  JSON : $jsonOut"
 Write-Host "  CSV  : $csvOut"
 Write-Host "  HTML : $htmlOut"
 Write-Host "`nNext step: Run 01-discover\audit-repo-sizes.ps1 for detailed per-file size analysis."
+
+

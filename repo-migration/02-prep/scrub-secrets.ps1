@@ -1,9 +1,9 @@
-<#
+﻿<#
 .SYNOPSIS
     Scrubs secrets from Git history and replaces them with GitHub Secret references.
 .DESCRIPTION
     Reads secret-scan-findings.json from scan-secrets.ps1, then for each repo:
-      1. Clones the repo (full mirror clone — all branches, all history)
+      1. Clones the repo (full mirror clone â€” all branches, all history)
       2. Builds a git-filter-repo expressions file that maps:
            secret_value ==> ${{ secrets.SECRET_NAME }}
       3. Runs git-filter-repo --replace-text to rewrite ALL history
@@ -43,20 +43,20 @@ foreach ($d in @($reportDir, $logDir, $cloneDir, $scrubbedDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
 }
 
-# ── Verify git-filter-repo ───────────────────────────────────────────────────
+# â”€â”€ Verify git-filter-repo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $filterRepo = Get-Command git-filter-repo -ErrorAction SilentlyContinue
 if (-not $filterRepo) {
     Write-Error "git-filter-repo not found. Install: pip install git-filter-repo"
 }
 
-# ── Load findings ────────────────────────────────────────────────────────────
+# â”€â”€ Load findings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $findingsPath = Join-Path $reportDir "secret-scan-findings.json"
 if (-not (Test-Path $findingsPath)) {
     Write-Error "secret-scan-findings.json not found. Run 01-discover\scan-secrets.ps1 first."
 }
 $findings = @(Get-Content $findingsPath -Raw | ConvertFrom-Json)
 if ($findings.Count -eq 0) {
-    Write-Host "No secrets found — nothing to scrub." -ForegroundColor Green
+    Write-Host "No secrets found â€” nothing to scrub." -ForegroundColor Green
     # Write empty secret-values.json so downstream scripts don't fail
     @() | ConvertTo-Json | Out-File (Join-Path $reportDir "secret-values.json") -Encoding utf8
     return
@@ -68,18 +68,18 @@ $repos = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
 $adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
-# ── Group findings by repo ───────────────────────────────────────────────────
+# â”€â”€ Group findings by repo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $byRepo = $findings | Group-Object -Property Repo
 
 Write-Host "=== Secret Scrubbing ($($byRepo.Count) repos, DryRun=$DryRun) ===" -ForegroundColor Cyan
 Write-Host "NOTE: Original ADO repos are NOT modified. Scrubbed clones stay local." -ForegroundColor Green
 
-# ── Collections ──────────────────────────────────────────────────────────────
+# â”€â”€ Collections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $allSecretValues    = @()    # For secret-values.json (GitHub Secret provisioning)
 $migrationReport    = @()    # Full report of all findings
 $rotationChecklist  = @()    # Credential rotation tracker
 
-# ── Common false-positive values to skip ─────────────────────────────────────
+# â”€â”€ Common false-positive values to skip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $falsePositives = @(
     'changeme', 'password', 'secret', 'example', 'placeholder',
     'your-secret-here', 'your-password-here', 'your-token-here',
@@ -97,13 +97,13 @@ foreach ($group in $byRepo) {
     Write-Host "`n  ==========================================" -ForegroundColor Cyan
     Write-Host "  Processing: $repoName ($($repoFindings.Count) findings)" -ForegroundColor Yellow
 
-    # ── Track unique secrets for dedup ────────────────────────────────────
-    $seenSecrets     = @{}   # secret value → resolved secret name
-    $seenSecretNames = @{}   # secret name  → secret value (detect collisions)
+    # â”€â”€ Track unique secrets for dedup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    $seenSecrets     = @{}   # secret value â†’ resolved secret name
+    $seenSecretNames = @{}   # secret name  â†’ secret value (detect collisions)
     $expressions     = @()   # git-filter-repo replacement lines
 
     foreach ($finding in $repoFindings) {
-        # ── Clean the secret value ────────────────────────────────────
+        # â”€â”€ Clean the secret value â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         $secret = $finding.SecretValue
         if ([string]::IsNullOrWhiteSpace($secret)) { continue }
 
@@ -116,7 +116,7 @@ foreach ($group in $byRepo) {
         if ([string]::IsNullOrWhiteSpace($secret)) { continue }
         if ($secret.Length -lt 4) { continue }
 
-        # ── Skip false positives ──────────────────────────────────────
+        # â”€â”€ Skip false positives â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if ($falsePositives -contains $secret.ToLower()) {
             Write-Host "    SKIP (placeholder): [$secret]" -ForegroundColor DarkGray
             continue
@@ -134,7 +134,7 @@ foreach ($group in $byRepo) {
             continue
         }
 
-        # ── Determine secret name ─────────────────────────────────────
+        # â”€â”€ Determine secret name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         $secretName = $finding.SecretName
         if ([string]::IsNullOrWhiteSpace($secretName)) {
             # Try to extract key name from the match context
@@ -154,12 +154,12 @@ foreach ($group in $byRepo) {
         }
         if ($secretName.Length -gt 100) { $secretName = $secretName.Substring(0, 100) }
 
-        # ── Resolve name collisions ───────────────────────────────────
+        # â”€â”€ Resolve name collisions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if ($seenSecrets.ContainsKey($secret)) {
-            # Same secret value seen before — reuse assigned name
+            # Same secret value seen before â€” reuse assigned name
             $secretName = $seenSecrets[$secret]
         } elseif ($seenSecretNames.ContainsKey($secretName)) {
-            # Different value but same name — append suffix
+            # Different value but same name â€” append suffix
             $baseName = $secretName
             $suffix = 2
             while ($seenSecretNames.ContainsKey("${baseName}_${suffix}")) {
@@ -169,14 +169,14 @@ foreach ($group in $byRepo) {
             Write-Host "      Name collision: renamed to $secretName" -ForegroundColor Yellow
         }
 
-        # ── Log finding ───────────────────────────────────────────────
+        # â”€â”€ Log finding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         $secretPreview = if ($secret.Length -le 8) { "***" }
                          else { $secret.Substring(0, 3) + ("*" * ($secret.Length - 6)) + $secret.Substring($secret.Length - 3) }
 
         Write-Host "    -> KEY: $secretName | File: $($finding.File):$($finding.LineNumber) | Rule: $($finding.RuleID)" -ForegroundColor Yellow
         Write-Host "       Value: [$secretPreview] | Branch: $($finding.Branch)" -ForegroundColor DarkGray
 
-        # ── Build replacement expression (only once per unique secret) ─
+        # â”€â”€ Build replacement expression (only once per unique secret) â”€
         if (-not $seenSecrets.ContainsKey($secret)) {
             $seenSecrets[$secret]          = $secretName
             $seenSecretNames[$secretName]  = $secret
@@ -199,7 +199,7 @@ foreach ($group in $byRepo) {
             }
         }
 
-        # ── Add to migration report (all findings, not deduplicated) ──
+        # â”€â”€ Add to migration report (all findings, not deduplicated) â”€â”€
         $migrationReport += [PSCustomObject]@{
             Repo             = $repoName
             File             = $finding.File
@@ -229,14 +229,14 @@ foreach ($group in $byRepo) {
     Write-Host "    $uniqueCount unique secrets (deduped), $($repoFindings.Count) total occurrences" -ForegroundColor Cyan
 
     if ($uniqueCount -eq 0) {
-        Write-Host "    No actionable secrets after filtering — skipping" -ForegroundColor Green
+        Write-Host "    No actionable secrets after filtering â€” skipping" -ForegroundColor Green
         continue
     }
 
-    # ── Sort expressions longest-first (prevents partial replacements) ────
+    # â”€â”€ Sort expressions longest-first (prevents partial replacements) â”€â”€â”€â”€
     $sortedExpressions = $expressions | Sort-Object { ($_ -split "==>")[0].Length } -Descending
 
-    # ── Write expressions file ────────────────────────────────────────────
+    # â”€â”€ Write expressions file â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     $expressionsFile = Join-Path (Resolve-Path $logDir).Path "expressions-$repoName.txt"
     $sortedExpressions | Out-File -FilePath $expressionsFile -Encoding utf8
 
@@ -255,7 +255,7 @@ foreach ($group in $byRepo) {
         continue
     }
 
-    # ── Clone repo (mirror — all branches, all history) ───────────────────
+    # â”€â”€ Clone repo (mirror â€” all branches, all history) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     $clonePath = Join-Path $cloneDir "$repoName-scrub"
     if (Test-Path $clonePath) { Remove-Item -Recurse -Force $clonePath }
 
@@ -266,11 +266,11 @@ foreach ($group in $byRepo) {
                     'clone', '--mirror', '--quiet', $cloneUrl, $clonePath)
     $cloneOutput = & git @cloneArgs 2>&1
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "    Clone failed for $repoName — skipping"
+        Write-Warning "    Clone failed for $repoName â€” skipping"
         continue
     }
 
-    # ── Run git-filter-repo --replace-text ────────────────────────────────
+    # â”€â”€ Run git-filter-repo --replace-text â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     Write-Host "    Running git-filter-repo (redacting $($sortedExpressions.Count) secrets)..." -ForegroundColor Gray
     $absExpressionsFile = (Resolve-Path $expressionsFile).Path
 
@@ -290,7 +290,7 @@ foreach ($group in $byRepo) {
         Pop-Location
     }
 
-    # ── Move scrubbed clone to output ─────────────────────────────────────
+    # â”€â”€ Move scrubbed clone to output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     $outputRepoDir = Join-Path $scrubbedDir $repoName
     if (Test-Path $outputRepoDir) { Remove-Item -Recurse -Force $outputRepoDir }
     Move-Item -Path $clonePath -Destination $outputRepoDir
@@ -298,21 +298,21 @@ foreach ($group in $byRepo) {
     Write-Host "    Original ADO repo was NOT modified" -ForegroundColor Green
 }
 
-# ── Save secret-values.json (for GitHub Secret provisioning) ─────────────────
+# â”€â”€ Save secret-values.json (for GitHub Secret provisioning) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $secretValuesFile = Join-Path $reportDir "secret-values.json"
 $allSecretValues | ConvertTo-Json -Depth 10 | Out-File -FilePath $secretValuesFile -Encoding utf8
 
-# ── Save migration report CSV ────────────────────────────────────────────────
+# â”€â”€ Save migration report CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $reportCsvFile = Join-Path $reportDir "secret-migration-report.csv"
 if ($migrationReport.Count -gt 0) {
     $migrationReport | Export-Csv -Path $reportCsvFile -NoTypeInformation -Encoding utf8
 }
 
-# ── Save rotation checklist ──────────────────────────────────────────────────
+# â”€â”€ Save rotation checklist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $checklistPath = Join-Path $reportDir "credential-rotation-checklist.csv"
 $rotationChecklist | Export-Csv $checklistPath -NoTypeInformation -Encoding utf8
 
-# ── HTML Dashboard ───────────────────────────────────────────────────────────
+# â”€â”€ HTML Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $dashboardDir = Join-Path $reportDir "dashboard"
 if (-not (Test-Path $dashboardDir)) { New-Item -ItemType Directory -Path $dashboardDir -Force | Out-Null }
 
@@ -391,7 +391,7 @@ $html = @"
     <h3>What Teams Need To Do</h3>
     <p>1. Check GitHub repo Settings > Secrets > verify each secret exists</p>
     <p>2. Update code to use <code>`${{ secrets.SECRET_NAME }}</code> syntax</p>
-    <p>3. <strong style="color:#f85149">ROTATE all credentials</strong> — original values may have been in ADO history</p>
+    <p>3. <strong style="color:#f85149">ROTATE all credentials</strong> â€” original values may have been in ADO history</p>
   </div>
 </div>
 <div class="footer">Generated by ADO-to-GitHub Migration Accelerator</div>
@@ -399,7 +399,7 @@ $html = @"
 "@
 $html | Out-File -FilePath $htmlFile -Encoding utf8
 
-# ── Console Summary ──────────────────────────────────────────────────────────
+# â”€â”€ Console Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Host "`n=== Scrub Summary ===" -ForegroundColor Cyan
 Write-Host "  Repos processed       : $($byRepo.Count)"
 Write-Host "  Unique secrets        : $($allSecretValues.Count)"
@@ -416,3 +416,5 @@ Write-Host ""
 Write-Host "  CRITICAL: Rotate ALL credentials listed in:" -ForegroundColor Red
 Write-Host "  $checklistPath"
 Write-Host "`nNext step: Run 03-migrate to push scrubbed repos to GitHub."
+
+
