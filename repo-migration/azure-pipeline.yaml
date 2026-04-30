@@ -139,8 +139,7 @@ stages:
       - job: ScanSecrets
         displayName: "1.3 Scan Secrets (gitleaks)"
         dependsOn: DiscoverAndAudit
-        condition: and(succeeded(), or(eq('${{ parameters.MigrationMode }}', 'Batch'), eq(variables['BATCH_INDEX'], '0')))
-
+       
         strategy:
           maxParallel: 3
           matrix:
