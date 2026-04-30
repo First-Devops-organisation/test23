@@ -41,10 +41,10 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [1171,1156],
-  "PIPELINE_REPO_MAP": {"1171": "migration_testing", "1156": "CICD-ADO-Azure"},
+  "PIPELINE_IDS": [],
+  "PIPELINE_REPO_MAP": {},
   "PIPELINE_TYPE": "build",
-  "MIGRATE_MODE": "migrate",
+  "MIGRATE_MODE": "",
   "GH_REPO": "",
-  "REUSABLE_PIPELINE_IDS": [1156]
+  "REUSABLE_PIPELINE_IDS": []
 }
