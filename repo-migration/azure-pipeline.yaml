@@ -97,31 +97,31 @@ stages:
               LOG_DIR: $(LOG_DIR)
               CLONE_TEMP_DIR: $(CLONE_TEMP_DIR)
 
-          - task: PowerShell@2
-            displayName: "1.1 Discover Repos"
-            inputs:
-              filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\discover-repos.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
-              pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
-            env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PROJECT: $(ADO_PROJECT)
-              ADO_PAT: $(ADO_PAT)
-
-          - task: PowerShell@2
-            displayName: "1.2 Audit Repo Sizes"
-            inputs:
-              filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
-              pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
-            condition: eq('${{ parameters.SkipAudit }}', false)
-            env:
-              ADO_ORG: $(ADO_ORG)
-              ADO_PROJECT: $(ADO_PROJECT)
-              ADO_PAT: $(ADO_PAT)
-
+#           - task: PowerShell@2
+#             displayName: "1.1 Discover Repos"
+#             inputs:
+#               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\discover-repos.ps1'
+#               arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
+#               pwsh: true
+#               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+#             env:
+#               ADO_ORG: $(ADO_ORG)
+#               ADO_PROJECT: $(ADO_PROJECT)
+#               ADO_PAT: $(ADO_PAT)
+# 
+#           - task: PowerShell@2
+#             displayName: "1.2 Audit Repo Sizes"
+#             inputs:
+#               filePath: '$(Build.SourcesDirectory)\repo-migration\01-discover\audit-repo-sizes.ps1'
+#               arguments: '-ConfigPath "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"'
+#               pwsh: true
+#               workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+#             condition: eq('${{ parameters.SkipAudit }}', false)
+#             env:
+#               ADO_ORG: $(ADO_ORG)
+#               ADO_PROJECT: $(ADO_PROJECT)
+#               ADO_PAT: $(ADO_PAT)
+# 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Discovery Reports"
             inputs:
