@@ -5,12 +5,12 @@
 
 function Get-GhRestHeaders {
     param([Parameter(Mandatory)][string]$Pat)
-    return @{ Authorization = "token $Pat"; Accept = "application/vnd.github.v3+json"; "Content-Type" = "application/json" }
+    return @{ Authorization = "token $Pat"; Accept = "application/vnd.github.v3+json"; "Content-Type" = "application/json"; "User-Agent" = "ADO-Migration-Script" }
 }
 
 function Get-GhGraphQLHeaders {
     param([Parameter(Mandatory)][string]$Pat)
-    return @{ Authorization = "bearer $Pat"; "Content-Type" = "application/json" }
+    return @{ Authorization = "bearer $Pat"; "Content-Type" = "application/json"; "User-Agent" = "ADO-Migration-Script" }
 }
 
 # --- Invoke GraphQL with retry, rate-limit, and secondary abuse-detection handling ---
@@ -55,7 +55,8 @@ function Invoke-GhGraphQL {
             }
             if ($i -eq $RetryCount) { throw }
             $wait = [math]::Pow(2, $i) * 1000
-            Write-Log -Message "GraphQL failed (attempt $i/$RetryCount), retrying in $($wait/1000)s..." -Level "WARN"
+            $errMsg = if ($_.Exception) { $_.Exception.Message } else { $_ }
+            Write-Log -Message "GraphQL failed (attempt $i/$RetryCount): $errMsg. Retrying in $($wait/1000)s..." -Level "WARN"
             Start-Sleep -Milliseconds $wait
         }
     }
