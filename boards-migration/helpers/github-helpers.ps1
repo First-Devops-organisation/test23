@@ -16,8 +16,14 @@ function Get-GhGraphQLHeaders {
 # --- Invoke GraphQL with retry, rate-limit, and secondary abuse-detection handling ---
 function Invoke-GhGraphQL {
     param([string]$Query, [string]$Pat, [int]$RetryCount = 5)
-    $headers = Get-GhGraphQLHeaders -Pat $Pat
-    $body = @{ query = $Query } | ConvertTo-Json -Depth 10
+    $headers = @{ Authorization = "bearer $Pat"; "Content-Type" = "application/json"; "User-Agent" = "ADO-Migration-Script" }
+    
+    # Ensure body is strictly a single string
+    $jsonObj = @{ query = $Query }
+    $body = $jsonObj | ConvertTo-Json -Depth 10 -Compress
+    if ($body -is [array]) { $body = $body -join '' }
+    $body = [string]$body
+
     for ($i = 1; $i -le $RetryCount; $i++) {
         try {
             $resp = Invoke-WebRequest -Method POST -Uri "https://api.github.com/graphql" `
