@@ -30,7 +30,8 @@ Initialize-Log -LogPath (Join-Path $scriptRoot $config.output.logDir "setup-mile
 Write-LogSection "Phase 2: Setup GitHub Milestones"
 
 Write-Log -Message "Querying ADO for work items to find unique iterations..." -Level "INFO"
-$allIds = Get-AdoWorkItemIds -Org $adoOrg -Project $adoProject -IncludeClosed $true -Pat $adoPat
+$areaPath = $config.source.areaPath
+$allIds = Get-AdoWorkItemIds -Org $adoOrg -Project $adoProject -AreaPath $areaPath -IncludeClosed $true -Pat $adoPat
 
 if (-not $allIds -or $allIds.Count -eq 0) {
     Write-Log -Message "No ADO items found. Exiting." -Level "WARN"
