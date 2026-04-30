@@ -165,6 +165,16 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PowerShell@2
+      displayName: 'Setup GitHub Milestones'
+      inputs:
+        filePath: '$(workingDir)\02-prep\setup-github-milestones.ps1'
+        arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+        GH_PAT: $(GH_PAT)
+
+    - task: PowerShell@2
       displayName: 'Deploy Workflow Rules to GitHub'
       inputs:
         filePath: '$(workingDir)\02-prep\deploy-github-workflow.ps1'
