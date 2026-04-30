@@ -81,6 +81,9 @@ if ([string]::IsNullOrWhiteSpace($GHRepo)) {
     $GHRepo = $ADORepo
 }
 
+# Now that we have the final GHRepo name, set the state file path
+$stateFile = "$OutputDir\logs\migration-state-$GHRepo.txt"
+
 # ── Normalize ADOOrg — strip full URL if user set it as https://dev.azure.com/<org> ──
 if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
     Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
@@ -130,7 +133,6 @@ foreach ($d in @($reportDir, $logDir, $auditDir, $dashDir, $folderDir)) {
     New-Item -ItemType Directory -Path $d -Force | Out-Null
 }
 
-$stateFile    = "$logDir\migration-state-$GHRepo.txt"
 $precheckFile = "$logDir\repo-precheck-$GHRepo.txt"
 
 Write-Host "============================================" -ForegroundColor Cyan
