@@ -192,7 +192,9 @@ Write-Host "`n=== Discovery Summary ===" -ForegroundColor Green
 Write-Host "  Total repos found   : $($repos.Count)"
 Write-Host "  Excluded by config  : $($excluded.Count)"
 Write-Host "  Repos to migrate    : $($included.Count)"
-Write-Host "  Total size          : $([math]::Round(($included | Measure-Object -Property SizeMB -Sum).Sum, 2)) MB"
+$totalSizeSum = ($included | Measure-Object -Property SizeMB -Sum).Sum
+if ($null -eq $totalSizeSum) { $totalSizeSum = 0 }
+Write-Host "  Total size          : $([math]::Round($totalSizeSum, 2)) MB"
 Write-Host "  Repos with LFS      : $(@($included | Where-Object HasLFS).Count)"
 Write-Host "  Repos > 40 GB (GEI) : $(@($included | Where-Object ExceedsGEI40GB).Count)"
 
@@ -217,7 +219,9 @@ $included | ConvertTo-Json -Depth 5 | Out-File $jsonOut -Encoding utf8
 $included | Export-Csv $csvOut -NoTypeInformation -Encoding utf8
 
 # ── HTML Dashboard Report ────────────────────────────────────────────────────
-$totalSizeMB = [math]::Round(($included | Measure-Object -Property SizeMB -Sum).Sum, 2)
+$totalSizeMB_raw = ($included | Measure-Object -Property SizeMB -Sum).Sum
+if ($null -eq $totalSizeMB_raw) { $totalSizeMB_raw = 0 }
+$totalSizeMB = [math]::Round($totalSizeMB_raw, 2)
 $totalSizeGB = [math]::Round($totalSizeMB / 1024, 2)
 $lfsCount    = @($included | Where-Object HasLFS).Count
 $geiCount    = @($included | Where-Object ExceedsGEI40GB).Count
