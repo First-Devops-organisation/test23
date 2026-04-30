@@ -103,7 +103,7 @@ if ($ghPat) {
                 $mappedValues = $statusMappings.defaultMapping.PSObject.Properties.Value | Sort-Object -Unique
                 foreach ($val in $mappedValues) {
                     if ($val -notin $ghStatusOptions) {
-                        $errors += "Mapped status '$val' not found in GitHub Project Status options. Available: $($ghStatusOptions -join ', ')"
+                        $warnings += "Mapped status '$val' not found in GitHub Project. (It will be created automatically in the next pipeline step)"
                     }
                 }
             } else {
