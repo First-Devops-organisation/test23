@@ -53,7 +53,7 @@ $totalBatches = [math]::Ceiling($allIds.Count / $batchSize)
 $snapshotItems = @()
 
 for ($i = 0; $i -lt $allIds.Count; $i += $batchSize) {
-    $batchNum = [math]::Floor($i / $batchSize) + 1
+    $batchNum = [int]([math]::Floor($i / $batchSize)) + 1
     $batch = @($allIds[$i..([math]::Min($i + $batchSize - 1, $allIds.Count - 1))])
 
     Write-Log -Message "Fetching batch $batchNum of $totalBatches ($($batch.Count) items)..." -Level "INFO"
