@@ -70,49 +70,75 @@ if (-not $gl) {
     Write-Error "gitleaks not found. Install: https://github.com/gitleaks/gitleaks/releases or run 02-prep\install-tools.ps1"
 }
 
-# ── Load inventory ───────────────────────────────────────────────────────────
-$inventoryPath = Join-Path $reportDir "repo-inventory.json"
-if (-not (Test-Path $inventoryPath)) {
-    Write-Error "repo-inventory.json not found. Run 01-discover\discover-repos.ps1 first."
-}
-$repos = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
-
-# Filter repos to only those scheduled for migration
-$migratingRepos = @()
+# ── Identify repos to scan ───────────────────────────────────────────────────
+$reposToScan = @()
 if ($MigrationMode -ieq 'Single') {
     # Fallback: If SingleRepoName is blank, try reading from config.json
     if ([string]::IsNullOrWhiteSpace($SingleRepoName) -and $config.migration -and $config.migration.singleRepo) {
         $SingleRepoName = $config.migration.singleRepo
         Write-Host "Filter: SingleRepoName was blank — using default from config: $SingleRepoName" -ForegroundColor Gray
     }
-
     if (-not [string]::IsNullOrWhiteSpace($SingleRepoName)) {
-        $migratingRepos += $SingleRepoName.Trim()
-        Write-Host "Filter: Single mode enabled. Scanning repo: $SingleRepoName" -ForegroundColor Gray
+        $reposToScan += $SingleRepoName.Trim()
     }
 } 
-elseif ($null -ne $config.batches) {
-    foreach ($batch in $config.batches) {
+else {
+    # Batch mode — load all repos from the requested batch (or all batches)
+    $targetBatches = $config.batches
+    $batchFilter = $SingleRepoName.Trim() # Pipeline passes BatchName here
+    if (-not [string]::IsNullOrWhiteSpace($batchFilter)) {
+        $targetBatches = @($config.batches | Where-Object { $_.name -eq $batchFilter })
+    }
+    foreach ($batch in $targetBatches) {
         if ($null -ne $batch.repos) {
-            $migratingRepos += @($batch.repos)
+            $reposToScan += @($batch.repos)
         }
     }
 }
 
-if ($migratingRepos.Count -gt 0) {
-    Write-Host "  [DEBUG] Config migrating list: $($migratingRepos -join ', ')" -ForegroundColor Gray
-    $reposBefore = $repos.Count
-    $repos = @($repos | Where-Object { $migratingRepos -contains $_.Name })
-    Write-Host "  [DEBUG] Matched $($repos.Count) out of $reposBefore repos from ADO against the config list." -ForegroundColor Gray
-    if ($MigrationMode -ine 'Single') {
-        Write-Host "Filter: Only scanning $($repos.Count) repos scheduled for batch migration." -ForegroundColor Gray
-    }
-} else {
-    Write-Host "Filter: No repos explicitly scheduled for migration. Scanning all." -ForegroundColor Gray
+if ($reposToScan.Count -eq 0) {
+    Write-Error "No repositories identified for scanning. Check config.json or pipeline parameters."
 }
 
-$adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
-if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
+# ── Fetch repo metadata directly from ADO (Avoids stale inventory) ───────────
+Write-Host "Fetching metadata for $($reposToScan.Count) repos from Azure DevOps..." -ForegroundColor Cyan
+$base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
+$headers = @{ Authorization = "Basic $base64Auth"; Accept = "application/json" }
+$repos = @()
+
+foreach ($repoName in $reposToScan) {
+    try {
+        $apiUrl = "$adoOrg/$adoProj/_apis/git/repositories/$($repoName.Trim())?api-version=7.1"
+        $repoData = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
+        
+        # Normalize size (ADO returns bytes, we want MB)
+        $sizeMB = [math]::Round($repoData.size / 1MB, 2)
+        
+        $repos += [PSCustomObject]@{
+            Name   = $repoData.name
+            SizeMB = $sizeMB
+            Url    = $repoData.webUrl
+            RemoteUrl = $repoData.remoteUrl
+        }
+    }
+    catch {
+        Write-Warning "  Could not fetch metadata for '$repoName' (repo might not exist or PAT has no access). Skipping."
+    }
+}
+
+Write-Host "  Found $($repos.Count) valid repositories to scan." -ForegroundColor Green
+
+# Filter out exclusions
+$excludeList = if ($config.exclusions -and $config.exclusions.repos) { $config.exclusions.repos } else { @() }
+$repos = @($repos | Where-Object { $_.Name -notin $excludeList })
+
+# Skip empty repos
+$reposBeforeEmpty = $repos.Count
+$repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
+if ($repos.Count -lt $reposBeforeEmpty) {
+    $skippedCount = $reposBeforeEmpty - $repos.Count
+    Write-Host "  [DEBUG] Skipping $skippedCount empty repository(ies) (0 MB)." -ForegroundColor Yellow
+}
 
 # Filter repos by size if requested (for parallel jobs)
 $totalCount = ($repos | Measure-Object).Count
@@ -123,9 +149,6 @@ if ($SizeFilter -eq 'Small') {
     $repos = @($repos | Where-Object { $_.SizeMB -ge $SizeThresholdMB })
     Write-Host "Filter: Large repos only (>= ${SizeThresholdMB} MB) — $($repos.Count) of $totalCount repos" -ForegroundColor Gray
 }
-
-# Skip empty repos
-$repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
 
 # Sort repos smallest-first so most repos complete quickly
 $repos = @($repos | Sort-Object { $_.SizeMB })
