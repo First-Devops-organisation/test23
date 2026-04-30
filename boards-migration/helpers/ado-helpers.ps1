@@ -70,6 +70,8 @@ function Get-AdoParentId {
     if ($WorkItemDetails.relations) {
         $parentLink = $WorkItemDetails.relations | Where-Object { $_.rel -eq "System.LinkTypes.Hierarchy-Reverse" }
         if ($parentLink) { return [int](($parentLink.url -split '/')[-1]) }
+    } else {
+        Write-Log -Message "  Get-AdoParentId: No relations property found on ADO#$($WorkItemDetails.id)!" -Level "WARN"
     }
     return $null
 }

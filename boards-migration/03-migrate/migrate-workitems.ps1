@@ -687,11 +687,14 @@ if ($preserveHierarchy -and -not $DryRun) {
     foreach ($item in $sortedItems) {
         $adoId = "$($item.id)"
         $parentAdoIdRaw = Get-AdoParentId -WorkItemDetails $item
-        if (-not $parentAdoIdRaw) { continue }
+        if (-not $parentAdoIdRaw) { 
+            Write-Log -Message "  ADO#$adoId has no parent link." -Level "DEBUG"
+            continue 
+        }
         $parentAdoId = "$parentAdoIdRaw"
         
         if (-not $adoToGhMap.ContainsKey($adoId) -or -not $adoToGhMap.ContainsKey($parentAdoId)) {
-            Write-Log -Message "  ADO#$adoId parent=$parentAdoId - one or both not in map, skipping" -Level "DEBUG"
+            Write-Log -Message "  ADO#$adoId parent=$parentAdoId - one or both not in map, skipping. (adoId in map: $($adoToGhMap.ContainsKey($adoId)), parent in map: $($adoToGhMap.ContainsKey($parentAdoId)))" -Level "WARN"
             continue
         }
         if (-not $parentChildMap.ContainsKey($parentAdoId)) { $parentChildMap[$parentAdoId] = @() }
