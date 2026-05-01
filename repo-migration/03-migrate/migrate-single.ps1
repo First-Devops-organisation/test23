@@ -206,54 +206,63 @@ else {
     $migState = "EXPORTING"
     $migState | Out-File $stateFile -Encoding utf8
 
-    # --- SECURE MIGRATION CHECK ---
-    $scrubbedRoot = Join-Path (Split-Path $logDir) "tmp\scrubbed"
-    $scrubbedPath = Join-Path $scrubbedRoot $ADO_Repo
-    
-    if (Test-Path $scrubbedPath) {
-        Write-Host "  SECURE MODE -------- Found scrubbed clone at $scrubbedPath" -ForegroundColor Green
-        Write-Host "  Pushing scrubbed history to GitHub (mirror)..."
+    # 1. Run Standard GEI Migration (to get PRs, Issues, etc.)
+    Write-Host "  Step 3.1: Running gh ado2gh migrate-repo (GEI Logic)..." -ForegroundColor Cyan
+    $migOutput = gh ado2gh migrate-repo `
+        --ado-org          $ADOOrg `
+        --ado-team-project $ADOProject `
+        --ado-repo         $ADO_Repo `
+        --github-org       $GHOrg `
+        --github-repo      $GitHub_Repo `
+        --target-repo-visibility $TargetRepoVisibility 2>&1
+
+    $migOutput | ForEach-Object { Write-Host "  $_" }
+
+    if ($LASTEXITCODE -eq 0 -or (($migOutput -join "") -match "already been queued")) {
+        # 2. Check if we need to perform post-migration scrubbing
+        $reportDirAbs = (Resolve-Path $reportDir).Path
+        $expressionsFile = Join-Path $reportDirAbs "expressions-$ADO_Repo.txt"
         
-        # 1. Ensure target repo exists
-        $ErrorActionPreference = 'SilentlyContinue'
-        $repoCheck = gh repo view "$GHOrg/$GitHub_Repo" 2>&1
-        $ErrorActionPreference = 'Stop'
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  Creating target repository $GHOrg/$GitHub_Repo..."
-            gh repo create "$GHOrg/$GitHub_Repo" --$TargetRepoVisibility --confirm
+        if (Test-Path $expressionsFile) {
+            Write-Host "`n  Step 3.2: SECURE MODE -------- Found expressions file. Performing post-migration scrub..." -ForegroundColor Green
+            
+            # Wait for migration to actually finish in GitHub (if queued)
+            Write-Host "  Waiting for GitHub repo to be ready..."
+            for ($w = 1; $w -le 20; $w++) {
+                $ErrorActionPreference = 'SilentlyContinue'
+                $check = gh repo view "$GHOrg/$GitHub_Repo" --json name 2>&1
+                $ErrorActionPreference = 'Stop'
+                if ($LASTEXITCODE -eq 0) { break }
+                Start-Sleep -Seconds 30
+            }
+
+            # Local clone, scrub, and force-push
+            $ghClonePath = Join-Path (Split-Path $logDir) "tmp\gh-scrub-$GitHub_Repo"
+            if (Test-Path $ghClonePath) { Remove-Item -Recurse -Force $ghClonePath }
+            
+            Write-Host "  Cloning from GitHub for scrubbing..."
+            $ghRemote = "https://x-access-token:$ghPat@github.com/$GHOrg/$GitHub_Repo.git"
+            & git clone --mirror $ghRemote $ghClonePath 2>&1 | Out-Null
+            
+            if (Test-Path $ghClonePath) {
+                Push-Location $ghClonePath
+                try {
+                    Write-Host "  Running git-filter-repo on GitHub history..."
+                    & git filter-repo --replace-text "$expressionsFile" --force 2>&1 | Out-Null
+                    
+                    Write-Host "  Force-pushing scrubbed history back to GitHub..."
+                    # Push all branches and tags
+                    & git push --force --mirror $ghRemote 2>&1 | Out-Null
+                    Write-Host "  Post-migration scrub COMPLETE." -ForegroundColor Green
+                }
+                catch {
+                    Write-Warning "  Post-migration scrub failed: $_"
+                }
+                finally {
+                    Pop-Location
+                }
+            }
         }
-        
-        # 2. Push mirror
-        Push-Location $scrubbedPath
-        try {
-            $remoteUrl = "https://x-access-token:$ghPat@github.com/$GHOrg/$GitHub_Repo.git"
-            # We use mirror push to ensure all branches and tags are preserved
-            $pushOutput = & git push --mirror $remoteUrl 2>&1
-            if ($LASTEXITCODE -ne 0) { throw ($pushOutput | Out-String) }
-            Write-Host "  Successfully pushed scrubbed history." -ForegroundColor Green
-            $LASTEXITCODE = 0
-        }
-        catch {
-            Write-Warning "  Failed to push scrubbed history: $_"
-            $LASTEXITCODE = 1
-        }
-        finally {
-            Pop-Location
-        }
-        $migOutput = @("Secure migration (local push) completed.")
-    }
-    else {
-        Write-Host "  STANDARD MODE -------- No scrubbed clone found. Using gh ado2gh server-to-server migration." -ForegroundColor Yellow
-        # GEI reads ADO_PAT and GH_PAT from environment variables automatically.
-        # Passing PATs as CLI args causes quoting issues when PATs contain +, =, / chars.
-        $migOutput = gh ado2gh migrate-repo `
-            --ado-org          $ADOOrg `
-            --ado-team-project $ADOProject `
-            --ado-repo         $ADO_Repo `
-            --github-org       $GHOrg `
-            --github-repo      $GitHub_Repo `
-            --target-repo-visibility $TargetRepoVisibility 2>&1
     }
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
