@@ -221,19 +221,29 @@ else {
     if ($LASTEXITCODE -eq 0 -or (($migOutput -join "") -match "already been queued")) {
         # 2. Check if we need to perform post-migration scrubbing
         $reportDirAbs = (Resolve-Path $reportDir).Path
-        $expressionsFile = Join-Path $reportDirAbs "expressions-$ADO_Repo.txt"
+        # Use a wildcard search to be more resilient to naming differences
+        $exprFiles = Get-ChildItem -Path $reportDirAbs -Filter "expressions-*.txt"
+        $expressionsFile = $exprFiles | Where-Object { $_.Name -match [regex]::Escape($ADO_Repo) } | Select-Object -ExpandProperty FullName -First 1
         
-        if (Test-Path $expressionsFile) {
-            Write-Host "`n  Step 3.2: SECURE MODE -------- Found expressions file. Performing post-migration scrub..." -ForegroundColor Green
+        if ($expressionsFile -and (Test-Path $expressionsFile)) {
+            Write-Host "`n  Step 3.2: SECURE MODE -------- Found expressions file: $expressionsFile" -ForegroundColor Green
+            Write-Host "  Performing post-migration scrub..."
             
             # Wait for migration to actually finish in GitHub (if queued)
-            Write-Host "  Waiting for GitHub repo to be ready..."
-            for ($w = 1; $w -le 20; $w++) {
+            Write-Host "  Waiting for GitHub repo to be ready (up to 30 mins)..."
+            $repoReady = $false
+            for ($w = 1; $w -le 60; $w++) {
                 $ErrorActionPreference = 'SilentlyContinue'
                 $check = gh repo view "$GHOrg/$GitHub_Repo" --json name 2>&1
                 $ErrorActionPreference = 'Stop'
-                if ($LASTEXITCODE -eq 0) { break }
+                if ($LASTEXITCODE -eq 0) { $repoReady = $true; break }
+                Write-Host "    $w/60: Still waiting..."
                 Start-Sleep -Seconds 30
+            }
+            
+            if (-not $repoReady) {
+                Write-Warning "  GitHub repo did not become ready in time. Skipping scrub."
+                return
             }
 
             # Local clone, scrub, and force-push

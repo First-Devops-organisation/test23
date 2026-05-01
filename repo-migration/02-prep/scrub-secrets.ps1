@@ -127,8 +127,10 @@ foreach ($group in $byRepo) {
 
         # Trim outer whitespace
         $secret = $secret.Trim()
-        # Strip leading/trailing quotes, commas, semicolons
+        # Remove common delimiters like quotes, commas, semicolons from the ends
+        # and remove any carriage returns that might have been captured
         $secret = $secret -replace '^["'']+|["'',;]+$', ''
+        $secret = $secret.Replace("`r", "")
         $secret = $secret.Trim()
 
         if ([string]::IsNullOrWhiteSpace($secret)) { continue }
