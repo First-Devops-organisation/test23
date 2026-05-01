@@ -21,10 +21,10 @@ regex = '''(?i-m)ssh-(?:rsa|dss|ed25519|ecdsa-sha2-nistp(?:256|384|521)) [a-z0-9
 [[rules]]
 description = "Generic Keyword-based Secret (Broad)"
 id = "generic-keyword-broad"
-regex = '''(?i)(?:key|pass|secret|token|auth|cred|pwd|passwd|uri|api|private)[^a-z0-9\s]{1,5}["']?([^\r\n"']{8,})["']?'''
+regex = '''(?i)(?:key|pass|secret|token|auth|cred|pwd|passwd|uri|api|private)[^a-z0-9\s]{1,5}["']?([^\r\n"']{4,})["']?'''
 secretGroup = 1
 keywords = [
-    "key", "password", "secret", "token", "auth", "cred", "pwd", "passwd", "uri"
+    "key", "password", "secret", "token", "auth", "cred", "pwd", "passwd", "uri", "InstrumentationKey"
 ]
 
 [[rules]]

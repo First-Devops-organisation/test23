@@ -205,8 +205,8 @@ foreach ($group in $byRepo) {
             $placeholder = "`${{ secrets.$secretName }}"
             
             # git-filter-repo --replace-text requires newlines to be escaped as the literal string \n
-            $escapedSecret = $secret -replace "\r?\n", "\n"
-            $escapedSecret = $escapedSecret.Replace("`n", "\n")
+            # Escape backslashes for git-filter-repo (it treats \ as an escape char)
+            $escapedSecret = $secret.Replace("\", "\\").Replace("`n", "\n")
             $expressions += "$escapedSecret==>$placeholder"
 
             # Save for post-migration GitHub Secret provisioning
@@ -269,7 +269,8 @@ foreach ($group in $byRepo) {
 
     # ------ Write expressions file (Save to reports dir so it is published) --------------------------------------------------------------------------------------------
     $expressionsFile = Join-Path (Resolve-Path $reportDir).Path "expressions-$repoName.txt"
-    $sortedExpressions | Set-Content -Path $expressionsFile -Encoding UTF8
+    # Use .NET to ensure BOM-less UTF8 (Set-Content adds BOM in WinPS 5.1)
+    [System.IO.File]::WriteAllLines($expressionsFile, $sortedExpressions)
 
     Write-Host "    Expressions file: $expressionsFile ($($sortedExpressions.Count) entries)" -ForegroundColor Gray
 

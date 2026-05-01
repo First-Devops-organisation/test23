@@ -251,17 +251,32 @@ else {
             if (Test-Path $ghClonePath) { Remove-Item -Recurse -Force $ghClonePath }
             
             Write-Host "  Cloning from GitHub for scrubbing..."
-            $ghRemote = "https://x-access-token:$ghPat@github.com/$GHOrg/$GitHub_Repo.git"
-            & git clone --mirror $ghRemote $ghClonePath 2>&1 | Out-Null
+            $encodedPat = [uri]::EscapeDataString($ghPat)
+            $ghRemote = "https://x-access-token:$encodedPat@github.com/$GHOrg/$GitHub_Repo.git"
+            & git clone --mirror $ghRemote $ghClonePath 2>&1 | ForEach-Object { Write-Host "    $_" }
+            
+            if (-not (Test-Path $ghClonePath)) {
+                Write-Warning "  Failed to clone GitHub repository for scrubbing. Check the logs above."
+            }
             
             if (Test-Path $ghClonePath) {
                 Push-Location $ghClonePath
                 try {
                     Write-Host "  Expressions in $expressionsFile :"
-                    Get-Content $expressionsFile | Select-Object -First 5 | ForEach-Object { Write-Host "    $_" }
+                    $allExprs = Get-Content $expressionsFile
+                    Write-Host "    Found $($allExprs.Count) replacement rules."
+                    $allExprs | Select-Object -First 50 | ForEach-Object { Write-Host "    $_" }
+                    if ($allExprs.Count -gt 50) { Write-Host "    ... (truncated)" }
                     
                     Write-Host "  Running git-filter-repo on GitHub history..."
                     & git filter-repo --replace-text "$expressionsFile" --force 2>&1 | ForEach-Object { Write-Host "    $_" }
+                    
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Warning "  git-filter-repo reported an error. History may not have been rewritten."
+                    }
+                    else {
+                        Write-Host "  History rewrite successful." -ForegroundColor Green
+                    }
                     
                     Write-Host "  Force-pushing scrubbed history back to GitHub..."
                     # Push all branches and tags
@@ -279,15 +294,6 @@ else {
         else {
             Write-Host "  Step 3.2: No expressions file found at $expressionsFile. Skipping post-migration scrub (nothing to redact)." -ForegroundColor Gray
         }
-    }
-
-    $migOutput | ForEach-Object { Write-Host "  $_" }
-
-    # Parse migration log URL from GEI output (line like "Migration log available at https://...")
-    $logLine = $migOutput | Where-Object { $_ -match 'Migration log available at (https://\S+)' } | Select-Object -First 1
-    if ($logLine -and $logLine -match 'Migration log available at (https://\S+)') {
-        $migLogUrl = $Matches[1]
-        Write-Host "  Log URL captured: $migLogUrl"
     }
 
     if ($LASTEXITCODE -eq 0) {
@@ -320,6 +326,8 @@ else {
         }
     }
     else {
+        Write-Host "`n[Step 3] GEI Migration FAILED!" -ForegroundColor Red
+        $migOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkRed }
         $migState = "FAILED"
         $migState | Out-File $stateFile -Encoding utf8
         $outputStr = $migOutput -join "`n"
@@ -683,6 +691,7 @@ else {
             $o=$prByBase[$bb].Open; $m=$prByBase[$bb].Merged; $c=$prByBase[$bb].Closed; $t=$o+$m+$c
             $prBaseMd += "| $bb | $o | $m | $c | $t |`n"
         }
+        $prBaseMd += "| **TOTAL** | **$totalOpen** | **$totalMerged** | **$totalClosed** | **$totalPRs** |`n"
         $prBaseMd | Out-File "$auditDir\gh-pr-by-target-branch.md" -Encoding utf8
 
         # Branch-wise Markdown table

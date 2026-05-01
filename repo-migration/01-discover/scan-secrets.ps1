@@ -158,7 +158,7 @@ $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::ne
 # with common secret-related keywords.
 $keywordPatternsRaw = @(
     # Pattern: KEYWORD = value (handles optional quotes, captures rest of line if unquoted to handle SSH/PEM)
-    '(?i)(password|passwd|pwd|pass|key|api|secret|token|auth|cred|uri|client[_-]?secret|private[_-]?key|connection[_-]?string)\s*[=:]\s*(?:["\u0027]([^"\u0027\r\n]{4,})["\u0027]|([^\r\n]{8,}))'
+    '(?i)(password|passwd|pwd|pass|key|api|secret|token|auth|cred|uri|client[_-]?secret|private[_-]?key|connection[_-]?string|InstrumentationKey)\s*[=:]\s*(?:["\u0027]([^"\u0027\r\n]{4,})["\u0027]|([^\r\n]{4,}))'
     
     # Special case: PEM blocks / SSH keys (often start on same line or next)
     '(?i)(ssh[_-]?key|private[_-]?key|cert|certificate|ssl[_-]?key)\s*[=:]\s*(?:["\u0027]([^"\u0027]{20,})["\u0027]|(ssh-(?:rsa|dss|ed25519|ecdsa)\s+[a-z0-9+/=]{20,}.*)|(-----BEGIN.*-----))'
