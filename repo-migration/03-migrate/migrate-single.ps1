@@ -184,30 +184,11 @@ Write-Host "  Status: $repoStatus"
 # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # STEP 3 -------- Migrate repo via GEI
 # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-if ($repoStatus -eq "ALREADY_EXISTS") {
-    Write-Host "`n[Step 3] SKIPPED -------- repo already exists in GitHub." -ForegroundColor Yellow
-    $migState = "SKIPPED"
-    $migState | Out-File $stateFile -Encoding utf8
-}
-elseif ($DryRun) {
-    Write-Host "`n[Step 3] DRY RUN -------- GEI command that would run:" -ForegroundColor DarkYellow
-    Write-Host "  gh ado2gh migrate-repo --ado-org `"$ADOOrg`" --ado-team-project `"$ADOProject`" --ado-repo `"$ADO_Repo`" --github-org `"$GHOrg`" --github-repo `"$GitHub_Repo`" --target-repo-visibility $TargetRepoVisibility"
-    $migState = "DRY_RUN"
-    $migState | Out-File $stateFile -Encoding utf8
-}
-else {
-    Write-Host "`n[Step 3] Migrating repo..." -ForegroundColor Cyan
+# --- EXECUTION ---
+if ($repoStatus -ne "ALREADY_EXISTS" -and -not $DryRun) {
+    Write-Host "`n[Step 3.1] Migrating repo via GEI..." -ForegroundColor Cyan
     $env:ADO_PAT  = $adoPat
     $env:GH_PAT   = $ghPat
-    $migState = "PENDING"
-    $migState | Out-File $stateFile -Encoding utf8
-
-    Write-Host "  State: EXPORTING from ADO..."
-    $migState = "EXPORTING"
-    $migState | Out-File $stateFile -Encoding utf8
-
-    # 1. Run Standard GEI Migration (to get PRs, Issues, etc.)
-    Write-Host "  Step 3.1: Running gh ado2gh migrate-repo (GEI Logic)..." -ForegroundColor Cyan
     $migOutput = gh ado2gh migrate-repo `
         --ado-org          $ADOOrg `
         --ado-team-project $ADOProject `
@@ -217,120 +198,113 @@ else {
         --target-repo-visibility $TargetRepoVisibility 2>&1
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
+    
+    if ($LASTEXITCODE -ne 0 -and ($migOutput -join "") -notmatch "already been queued") {
+        Write-Host "`n[Step 3] GEI Migration FAILED!" -ForegroundColor Red
+        $migOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkRed }
+        $migState = "FAILED"
+        $migState | Out-File $stateFile -Encoding utf8
+        Write-Error "Migration failed for $ADO_Repo."
+        return
+    }
+}
 
-    if ($LASTEXITCODE -eq 0 -or (($migOutput -join "") -match "already been queued")) {
-        # 2. Check if we need to perform post-migration scrubbing
-        $reportDirAbs = (Resolve-Path $reportDir).Path
-        # Use a wildcard search to be more resilient to naming differences
-        $exprFiles = Get-ChildItem -Path $reportDirAbs -Filter "expressions-*.txt"
-        $expressionsFile = $exprFiles | Where-Object { $_.Name -match [regex]::Escape($ADO_Repo) } | Select-Object -ExpandProperty FullName -First 1
+# --- POST-MIGRATION SCRUBBING ---
+$reportDirAbs = (Resolve-Path $reportDir).Path
+Write-Host "`n  [Debug] Searching for expressions in $reportDirAbs ..."
+if (Test-Path $reportDirAbs) {
+    Get-ChildItem -Path $reportDirAbs | ForEach-Object { Write-Host "    - Found file: $($_.Name)" }
+} else {
+    Write-Warning "    Reports directory NOT FOUND at $reportDirAbs"
+}
+
+$exprFiles = Get-ChildItem -Path $reportDirAbs -Filter "expressions-*.txt" 2>$null
+$expressionsFile = $exprFiles | Where-Object { $_.Name -match [regex]::Escape($ADO_Repo) } | Select-Object -ExpandProperty FullName -First 1
+
+if ($expressionsFile -and (Test-Path $expressionsFile) -and -not $DryRun) {
+    Write-Host "`n[Step 3.2] SECURE MODE -------- Found expressions file: $expressionsFile" -ForegroundColor Green
+    Write-Host "  Performing post-migration scrub..."
+    
+    # Wait for GitHub repo to be ready
+    Write-Host "  Waiting for GitHub repo to be ready (up to 30 mins)..."
+    $repoReady = $false
+    for ($w = 1; $w -le 60; $w++) {
+        $ErrorActionPreference = 'SilentlyContinue'
+        $check = gh repo view "$GHOrg/$GitHub_Repo" --json name 2>&1
+        $ErrorActionPreference = 'Stop'
+        if ($LASTEXITCODE -eq 0) { $repoReady = $true; break }
+        Write-Host "    $w/60: Still waiting..."
+        Start-Sleep -Seconds 30
+    }
+    
+    if ($repoReady) {
+        # Local clone, scrub, and force-push
+        $ghClonePath = Join-Path (Split-Path $logDir) "tmp\gh-scrub-$GitHub_Repo"
+        if (Test-Path $ghClonePath) { Remove-Item -Recurse -Force $ghClonePath }
         
-        if ($expressionsFile -and (Test-Path $expressionsFile)) {
-            Write-Host "`n  Step 3.2: SECURE MODE -------- Found expressions file: $expressionsFile" -ForegroundColor Green
-            Write-Host "  Performing post-migration scrub..."
-            
-            # Wait for migration to actually finish in GitHub (if queued)
-            Write-Host "  Waiting for GitHub repo to be ready (up to 30 mins)..."
-            $repoReady = $false
-            for ($w = 1; $w -le 60; $w++) {
-                $ErrorActionPreference = 'SilentlyContinue'
-                $check = gh repo view "$GHOrg/$GitHub_Repo" --json name 2>&1
-                $ErrorActionPreference = 'Stop'
-                if ($LASTEXITCODE -eq 0) { $repoReady = $true; break }
-                Write-Host "    $w/60: Still waiting..."
-                Start-Sleep -Seconds 30
-            }
-            
-            if (-not $repoReady) {
-                Write-Warning "  GitHub repo did not become ready in time. Skipping scrub."
-                return
-            }
-
-            # Local clone, scrub, and force-push
-            $ghClonePath = Join-Path (Split-Path $logDir) "tmp\gh-scrub-$GitHub_Repo"
-            if (Test-Path $ghClonePath) { Remove-Item -Recurse -Force $ghClonePath }
-            
-            Write-Host "  Cloning from GitHub for scrubbing..."
-            $encodedPat = [uri]::EscapeDataString($ghPat)
-            $ghRemote = "https://x-access-token:$encodedPat@github.com/$GHOrg/$GitHub_Repo.git"
-            & git clone --mirror $ghRemote $ghClonePath 2>&1 | ForEach-Object { Write-Host "    $_" }
-            
-            if (-not (Test-Path $ghClonePath)) {
-                Write-Warning "  Failed to clone GitHub repository for scrubbing. Check the logs above."
-            }
-            
-            if (Test-Path $ghClonePath) {
-                Push-Location $ghClonePath
-                try {
-                    Write-Host "  Expressions in $expressionsFile :"
-                    $allExprs = Get-Content $expressionsFile
-                    Write-Host "    Found $($allExprs.Count) replacement rules."
-                    $allExprs | Select-Object -First 50 | ForEach-Object { Write-Host "    $_" }
-                    
-                    # --- NORMALIZATION STEP: Convert all files to BOM-less UTF-8 ---
-                    # This is the "Master Fix" for encoding-related match failures.
-                    Write-Host "  Normalizing repository encodings to BOM-less UTF-8..."
-                    & git checkout HEAD -- . 2>$null # Ensure we have a working tree if possible, or skip
-                    # In a mirror clone, we use filter-repo to normalize encodings if we really wanted to, 
-                    # but let's try to make the expressions file match better first.
-                    
-                    Write-Host "  Running git-filter-repo on GitHub history..."
-                    & git filter-repo --replace-text "$expressionsFile" --force 2>&1 | ForEach-Object { Write-Host "    $_" }
-                    
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Warning "  git-filter-repo reported an error."
+        Write-Host "  Cloning from GitHub for scrubbing..."
+        $encodedPat = [uri]::EscapeDataString($ghPat)
+        $ghRemote = "https://x-access-token:$encodedPat@github.com/$GHOrg/$GitHub_Repo.git"
+        & git clone --mirror $ghRemote $ghClonePath 2>&1 | ForEach-Object { Write-Host "    $_" }
+        
+        if (Test-Path $ghClonePath) {
+            Push-Location $ghClonePath
+            try {
+                Write-Host "  Expressions in $expressionsFile :"
+                $allExprs = Get-Content $expressionsFile
+                Write-Host "    Found $($allExprs.Count) replacement rules."
+                $allExprs | Select-Object -First 50 | ForEach-Object { Write-Host "    $_" }
+                
+                # --- NORMALIZATION STEP: Convert all files to BOM-less UTF-8 ---
+                Write-Host "  Normalizing repository encodings..."
+                & git checkout HEAD -- . 2>$null
+                
+                Write-Host "  Running git-filter-repo..."
+                & git filter-repo --replace-text "$expressionsFile" --force 2>&1 | ForEach-Object { Write-Host "    $_" }
+                
+                # --- VERIFICATION STEP ---
+                Write-Host "  Verifying scrub quality..."
+                $firstExpr = $allExprs | Select-Object -First 1
+                if ($firstExpr -match "(.+?)==>") {
+                    $checkSecret = $Matches[1].Replace("\\", "\")
+                    $search = & git grep "$checkSecret" HEAD 2>&1
+                    if ($search -match [regex]::Escape($checkSecret)) {
+                        Write-Error "CRITICAL FAILURE: Secret '$checkSecret' still found after scrub!"
+                        return
                     }
-
-                    # --- VERIFICATION STEP: Ensure no secrets remain in the local clone ---
-                    Write-Host "  Verifying scrub quality..."
-                    # We check the first secret from the expressions file
-                    $firstExpr = $allExprs | Select-Object -First 1
-                    if ($firstExpr -match "(.+?)==>") {
-                        $checkSecret = $Matches[1].Replace("\\", "\") # Unescape backslashes for grep
-                        # In a mirror clone, we must search a specific ref (e.g. HEAD or a branch)
-                        $search = & git grep "$checkSecret" HEAD 2>&1
-                        if ($search -match [regex]::Escape($checkSecret)) {
-                            Write-Error "CRITICAL FAILURE: Secret '$checkSecret' still found in history (HEAD) after scrub! The strings did not match. This is likely an encoding issue in the source file."
-                            return
-                        }
-                        Write-Host "  Verification PASSED. Secret not found in HEAD." -ForegroundColor Green
-                    }
-
-                    # --- HANDLE BRANCH PROTECTION: Disable temporarily to allow force-push ---
-                    Write-Host "  Checking for branch protection on GitHub..."
-                    $defaultBranch = & gh repo view "$GHOrg/$GitHub_Repo" --json defaultBranchRef --jq .defaultBranchRef.name
-                    $protection = & gh api "repos/$GHOrg/$GitHub_Repo/branches/$defaultBranch/protection" 2>$null
-                    $hadProtection = $LASTEXITCODE -eq 0
-                    
-                    if ($hadProtection) {
-                        Write-Host "  Temporarily disabling branch protection for $defaultBranch..."
-                        & gh api "repos/$GHOrg/$GitHub_Repo/branches/$defaultBranch/protection" -X DELETE | Out-Null
-                    }
-
-                    Write-Host "  Force-pushing scrubbed history back to GitHub..."
-                    # Push all branches and tags
-                    & git push --force --mirror $ghRemote 2>&1 | ForEach-Object { Write-Host "    $_" }
-                    
-                    if ($hadProtection) {
-                        Write-Host "  Restoring branch protection for $defaultBranch..."
-                        # Note: This is a simplification; full restoration requires saving the original config.
-                        # For now, we just notify the user.
-                        Write-Warning "  Branch protection was disabled for $defaultBranch. Please re-enable it in GitHub settings."
-                    }
-
-                    Write-Host "  Post-migration scrub COMPLETE." -ForegroundColor Green
+                    Write-Host "  Verification PASSED." -ForegroundColor Green
                 }
-                catch {
-                    Write-Warning "  Post-migration scrub failed: $_"
-                }
-                finally {
-                    Pop-Location
-                }
+
+                # --- HANDLE BRANCH PROTECTION ---
+                Write-Host "  Handling branch protection..."
+                $defaultBranch = & gh repo view "$GHOrg/$GitHub_Repo" --json defaultBranchRef --jq .defaultBranchRef.name
+                $protection = & gh api "repos/$GHOrg/$GitHub_Repo/branches/$defaultBranch/protection" 2>$null
+                $hadProtection = $LASTEXITCODE -eq 0
+                if ($hadProtection) { & gh api "repos/$GHOrg/$GitHub_Repo/branches/$defaultBranch/protection" -X DELETE | Out-Null }
+
+                Write-Host "  Force-pushing scrubbed history..."
+                & git push --force --mirror $ghRemote 2>&1 | ForEach-Object { Write-Host "    $_" }
+                
+                if ($hadProtection) { Write-Warning "  Branch protection was disabled. Please re-enable it." }
+                Write-Host "  Post-migration scrub COMPLETE." -ForegroundColor Green
+            }
+            finally {
+                Pop-Location
             }
         }
-        else {
-            Write-Host "  Step 3.2: No expressions file found at $expressionsFile. Skipping post-migration scrub (nothing to redact)." -ForegroundColor Gray
-        }
+    }
+}
+elseif ($DryRun) {
+    Write-Host "`n[Step 3] DRY RUN -------- Skipping execution." -ForegroundColor DarkYellow
+}
+else {
+    Write-Host "`n[Step 3] No scrubbing needed (no secrets found)." -ForegroundColor Gray
+}
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  State: COMPLETE" -ForegroundColor Green
+        $migState = "COMPLETE"
+        $migState | Out-File $stateFile -Encoding utf8
     }
 
     if ($LASTEXITCODE -eq 0) {

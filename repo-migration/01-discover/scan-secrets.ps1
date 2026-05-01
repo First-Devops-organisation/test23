@@ -146,6 +146,7 @@ if ([string]::IsNullOrWhiteSpace($RepoName)) {
 $repos = @($repos | Sort-Object { $_.SizeMB })
 
 Write-Host "=== Scanning $($repos.Count) repos for secrets (ThrottleLimit=$ThrottleLimit) ===" -ForegroundColor Cyan
+foreach ($r in $repos) { Write-Host "  - [$($r.Project)] $($r.Name) ($($r.SizeMB) MB)" }
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
