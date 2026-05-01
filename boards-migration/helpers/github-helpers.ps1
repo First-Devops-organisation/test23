@@ -390,6 +390,32 @@ function Ensure-GhProjectCustomFields {
 }
 
 
+# --- Helper to invoke REST API with rate-limit retry ---
+function Invoke-GhRestWithRetry {
+    param([string]$Uri, [string]$Method, [hashtable]$Headers, [string]$Body, [int]$RetryCount = 5)
+    
+    for ($i = 1; $i -le $RetryCount; $i++) {
+        try {
+            if ($Body) {
+                return Invoke-RestMethod -Uri $Uri -Method $Method -Headers $Headers -Body $Body
+            } else {
+                return Invoke-RestMethod -Uri $Uri -Method $Method -Headers $Headers
+            }
+        } catch {
+            $statusCode = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { 0 }
+            if ($statusCode -eq 403 -or $statusCode -eq 429) {
+                $retryAfter = $_.Exception.Response.Headers["Retry-After"]
+                $waitSec = if ($retryAfter) { [int]$retryAfter + 5 } else { [math]::Pow(2, $i) * 20 }
+                Write-Log -Message "REST Secondary rate limit (HTTP $statusCode). Waiting ${waitSec}s (attempt $i/$RetryCount)" -Level "WARN"
+                Start-Sleep -Seconds ([math]::Min($waitSec, 900))
+                continue
+            }
+            throw
+        }
+    }
+    throw "Max retries exceeded for $Uri"
+}
+
 # --- Create a GitHub Issue via REST API ---
 function New-GhIssue {
     param([string]$Org, [string]$Repo, [string]$Title, [string]$Body, [string[]]$Labels, [string[]]$Assignees, [int]$Milestone, [string]$Pat)
@@ -405,7 +431,7 @@ function New-GhIssue {
     $jsonBody = $issueData | ConvertTo-Json -Depth 10
     $uri = "https://api.github.com/repos/$Org/$Repo/issues"
     try {
-        $resp = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers -Body $jsonBody
+        $resp = Invoke-GhRestWithRetry -Uri $uri -Method POST -Headers $headers -Body $jsonBody
         return $resp
     } catch {
         # If assignees caused the failure (user not a collaborator), retry without them
@@ -415,7 +441,7 @@ function New-GhIssue {
             $issueData.Remove('assignees')
             $jsonBody = $issueData | ConvertTo-Json -Depth 10
             try {
-                $resp = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers -Body $jsonBody
+                $resp = Invoke-GhRestWithRetry -Uri $uri -Method POST -Headers $headers -Body $jsonBody
                 return $resp
             } catch {
                 Write-Log -Message "Failed to create issue '$Title' (even without assignees): $_" -Level "ERROR"
@@ -434,7 +460,7 @@ function Add-GhIssueComment {
     $jsonBody = @{ body = $Body } | ConvertTo-Json -Depth 5
     $uri = "https://api.github.com/repos/$Org/$Repo/issues/$IssueNumber/comments"
     try {
-        return Invoke-RestMethod -Uri $uri -Method POST -Headers $headers -Body $jsonBody
+        return Invoke-GhRestWithRetry -Uri $uri -Method POST -Headers $headers -Body $jsonBody
     } catch {
         Write-Log -Message "Failed to add comment to issue #$IssueNumber`: $_" -Level "WARN"
         return $null
@@ -448,7 +474,7 @@ function Close-GhIssue {
     $jsonBody = @{ state = "closed"; state_reason = "completed" } | ConvertTo-Json -Compress
     $uri = "https://api.github.com/repos/$Org/$Repo/issues/$IssueNumber"
     try {
-        Invoke-RestMethod -Uri $uri -Method PATCH -Headers $headers -Body $jsonBody | Out-Null
+        Invoke-GhRestWithRetry -Uri $uri -Method PATCH -Headers $headers -Body $jsonBody | Out-Null
     } catch {
         Write-Log -Message "Failed to close issue #$IssueNumber`: $_" -Level "WARN"
     }
