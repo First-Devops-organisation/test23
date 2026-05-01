@@ -27,7 +27,10 @@
         "APIM-Migration",
         "Board_migration",
         "APIOPS-poc",
-        "CICD-ADO-Azure"
+        "CICD-ADO-Azure",
+        "SSPM",
+        "ssr-v19",
+        "eShopOnWeb"
         
         
       ]
