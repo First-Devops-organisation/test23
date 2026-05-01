@@ -256,11 +256,18 @@ foreach ($group in $byRepo) {
     }
 
     # ------ Sort expressions longest-first (prevents partial replacements) ------------
-    $sortedExpressions = $expressions | Sort-Object { ($_ -split "==>")[0].Length } -Descending
+    $uniqueExpressions = @{}
+    foreach ($expr in $expressions) {
+        $parts = $expr -split "==>", 2
+        if ($parts.Count -eq 2 -and -not $uniqueExpressions.ContainsKey($parts[0])) {
+            $uniqueExpressions[$parts[0]] = $parts[1]
+        }
+    }
+    $sortedExpressions = $uniqueExpressions.Keys | Sort-Object { $_.Length } -Descending | ForEach-Object { "$_==>$($uniqueExpressions[$_])" }
 
     # ------ Write expressions file (Save to reports dir so it is published) --------------------------------------------------------------------------------------------
     $expressionsFile = Join-Path (Resolve-Path $reportDir).Path "expressions-$repoName.txt"
-    $sortedExpressions | Out-File -FilePath $expressionsFile -Encoding utf8
+    $sortedExpressions | Set-Content -Path $expressionsFile -Encoding UTF8
 
     Write-Host "    Expressions file: $expressionsFile ($($sortedExpressions.Count) entries)" -ForegroundColor Gray
 

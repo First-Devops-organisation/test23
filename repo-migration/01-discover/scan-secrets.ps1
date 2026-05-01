@@ -157,11 +157,11 @@ $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::ne
 # These catch secrets that gitleaks might miss --- simple key=value assignments
 # with common secret-related keywords.
 $keywordPatternsRaw = @(
-    # Pattern: KEYWORD = value (handles optional quotes, stops at space or newline if unquoted)
-    '(?i)(password|passwd|pwd|pass|key|api|secret|token|auth|cred|uri|client[_-]?secret|private[_-]?key|connection[_-]?string)\s*[=:]\s*(?:["\u0027]([^"\u0027\r\n]{4,})["\u0027]|([^\s"\u0027\r\n]{4,}))'
+    # Pattern: KEYWORD = value (handles optional quotes, captures rest of line if unquoted to handle SSH/PEM)
+    '(?i)(password|passwd|pwd|pass|key|api|secret|token|auth|cred|uri|client[_-]?secret|private[_-]?key|connection[_-]?string)\s*[=:]\s*(?:["\u0027]([^"\u0027\r\n]{4,})["\u0027]|([^\r\n]{8,}))'
     
-    # Special case: multi-word or space-containing values (must be quoted)
-    '(?i)(ssh[_-]?key|private[_-]?key|cert|certificate)\s*[=:]\s*["\u0027]([^"\u0027]{20,})["\u0027]'
+    # Special case: PEM blocks / SSH keys (often start on same line or next)
+    '(?i)(ssh[_-]?key|private[_-]?key|cert|certificate|ssl[_-]?key)\s*[=:]\s*(?:["\u0027]([^"\u0027]{20,})["\u0027]|(ssh-(?:rsa|dss|ed25519|ecdsa)\s+[a-z0-9+/=]{20,}.*)|(-----BEGIN.*-----))'
     
     # Bearer tokens
     '(?i)(bearer)\s+([A-Za-z0-9\-_\.]{20,})'
