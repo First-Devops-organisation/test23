@@ -345,12 +345,12 @@ stages:
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
-            displayName: "Publish Scrub Reports"
+            displayName: "Publish Scrubbed Repos"
             inputs:
-              targetPath: '$(Build.SourcesDirectory)\repo-migration\$(REPORT_DIR)'
-              artifact: "scrub-reports"
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\tmp\scrubbed'
+              artifact: "scrubbed-repos"
               publishLocation: pipeline
-            condition: always()
+            condition: succeeded()
 
   # STAGE 3A -------- SINGLE REPO MIGRATION
   # ===========================================================================
@@ -412,6 +412,13 @@ stages:
               REPORT_DIR: $(REPORT_DIR)
               LOG_DIR: $(LOG_DIR)
               CLONE_TEMP_DIR: $(CLONE_TEMP_DIR)
+
+          - task: DownloadPipelineArtifact@1
+            displayName: "Download Scrubbed Repos"
+            inputs:
+              artifact: "scrubbed-repos"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\tmp\scrubbed'
+            condition: succeeded()
 
           - task: PowerShell@2
             displayName: "Migrate Single Repo"
@@ -604,6 +611,13 @@ stages:
               REPORT_DIR: $(REPORT_DIR)
               LOG_DIR: $(LOG_DIR)
               CLONE_TEMP_DIR: $(CLONE_TEMP_DIR)
+
+          - task: DownloadPipelineArtifact@1
+            displayName: "Download Scrubbed Repos"
+            inputs:
+              artifact: "scrubbed-repos"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\tmp\scrubbed'
+            condition: succeeded()
 
           - task: PowerShell@2
             displayName: "Migrate Batch Repos"

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Migrates a SINGLE repo from ADO to GitHub using GEI (gh ado2gh).
     Converted from yaml.yaml pipeline logic into a reusable PS1 script.
@@ -206,15 +206,55 @@ else {
     $migState = "EXPORTING"
     $migState | Out-File $stateFile -Encoding utf8
 
-    # GEI reads ADO_PAT and GH_PAT from environment variables automatically.
-    # Passing PATs as CLI args causes quoting issues when PATs contain +, =, / chars.
-    $migOutput = gh ado2gh migrate-repo `
-        --ado-org          $ADOOrg `
-        --ado-team-project $ADOProject `
-        --ado-repo         $ADO_Repo `
-        --github-org       $GHOrg `
-        --github-repo      $GitHub_Repo `
-        --target-repo-visibility $TargetRepoVisibility 2>&1
+    # --- SECURE MIGRATION CHECK ---
+    $scrubbedRoot = Join-Path (Split-Path $logDir) "tmp\scrubbed"
+    $scrubbedPath = Join-Path $scrubbedRoot $ADO_Repo
+    
+    if (Test-Path $scrubbedPath) {
+        Write-Host "  SECURE MODE -------- Found scrubbed clone at $scrubbedPath" -ForegroundColor Green
+        Write-Host "  Pushing scrubbed history to GitHub (mirror)..."
+        
+        # 1. Ensure target repo exists
+        $ErrorActionPreference = 'SilentlyContinue'
+        $repoCheck = gh repo view "$GHOrg/$GitHub_Repo" 2>&1
+        $ErrorActionPreference = 'Stop'
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  Creating target repository $GHOrg/$GitHub_Repo..."
+            gh repo create "$GHOrg/$GitHub_Repo" --$TargetRepoVisibility --confirm
+        }
+        
+        # 2. Push mirror
+        Push-Location $scrubbedPath
+        try {
+            $remoteUrl = "https://x-access-token:$ghPat@github.com/$GHOrg/$GitHub_Repo.git"
+            # We use mirror push to ensure all branches and tags are preserved
+            $pushOutput = & git push --mirror $remoteUrl 2>&1
+            if ($LASTEXITCODE -ne 0) { throw ($pushOutput | Out-String) }
+            Write-Host "  Successfully pushed scrubbed history." -ForegroundColor Green
+            $LASTEXITCODE = 0
+        }
+        catch {
+            Write-Warning "  Failed to push scrubbed history: $_"
+            $LASTEXITCODE = 1
+        }
+        finally {
+            Pop-Location
+        }
+        $migOutput = @("Secure migration (local push) completed.")
+    }
+    else {
+        Write-Host "  STANDARD MODE -------- No scrubbed clone found. Using gh ado2gh server-to-server migration." -ForegroundColor Yellow
+        # GEI reads ADO_PAT and GH_PAT from environment variables automatically.
+        # Passing PATs as CLI args causes quoting issues when PATs contain +, =, / chars.
+        $migOutput = gh ado2gh migrate-repo `
+            --ado-org          $ADOOrg `
+            --ado-team-project $ADOProject `
+            --ado-repo         $ADO_Repo `
+            --github-org       $GHOrg `
+            --github-repo      $GitHub_Repo `
+            --target-repo-visibility $TargetRepoVisibility 2>&1
+    }
 
     $migOutput | ForEach-Object { Write-Host "  $_" }
 
