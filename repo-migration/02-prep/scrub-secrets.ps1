@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Scrubs secrets from Git history and replaces them with GitHub Secret references.
 .DESCRIPTION
@@ -37,6 +37,24 @@ $config    = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $reportDir = $config.output.reportDir
 $logDir    = $config.output.logDir
 $cloneDir  = $config.migration.cloneTempDir
+
+# --- Expand tokens if still present (fallback) ---
+foreach ($var in @('reportDir', 'logDir', 'cloneDir')) {
+    $val = Get-Variable $var -ValueOnly
+    if ($val -match '\$\(([^)]+)\)') {
+        $varName = $Matches[1]
+        $envVal = Get-Item -Path "Env:$varName" -ErrorAction SilentlyContinue
+        if ($envVal) {
+            Set-Variable -Name $var -Value ($val -replace '\$\([^)]+\)', $envVal.Value)
+        }
+    }
+}
+
+# If they are still tokens or empty, provide defaults
+if ($reportDir -match '\$\(' -or [string]::IsNullOrWhiteSpace($reportDir)) { $reportDir = "output\reports" }
+if ($logDir    -match '\$\(' -or [string]::IsNullOrWhiteSpace($logDir))    { $logDir    = "output\logs" }
+if ($cloneDir  -match '\$\(' -or [string]::IsNullOrWhiteSpace($cloneDir))  { $cloneDir  = "output\tmp\clones" }
+
 $scrubbedDir = Join-Path (Split-Path $cloneDir) "scrubbed"
 
 foreach ($d in @($reportDir, $logDir, $cloneDir, $scrubbedDir)) {

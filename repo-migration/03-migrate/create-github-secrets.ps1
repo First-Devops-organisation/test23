@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Creates GitHub repository secrets from secret-values.json after migration.
 .DESCRIPTION
@@ -53,7 +53,23 @@ $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($SecretValuesPath)) {
     $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
     $reportDir = $config.output.reportDir
-    $SecretValuesPath = Join-Path $reportDir "secret-values.json"
+
+    # --- Expand tokens if still present (fallback) ---
+    if ($reportDir -match '\$\(([^)]+)\)') {
+        $varName = $Matches[1]
+        $envVal = Get-Item -Path "Env:$varName" -ErrorAction SilentlyContinue
+        if ($envVal) {
+            $reportDir = $reportDir -replace '\$\([^)]+\)', $envVal.Value
+        }
+    }
+
+    # If it's still a token or empty, default to 'output/reports'
+    if ($reportDir -match '\$\(' -or [string]::IsNullOrWhiteSpace($reportDir)) {
+        $reportDir = "output\reports"
+    }
+
+    # Make sure we have an absolute path if possible
+    $SecretValuesPath = Join-Path (Split-Path $ConfigPath) "..\$reportDir\secret-values.json"
 }
 
 if (-not (Test-Path $SecretValuesPath)) {
