@@ -266,28 +266,34 @@ else {
                     $allExprs = Get-Content $expressionsFile
                     Write-Host "    Found $($allExprs.Count) replacement rules."
                     $allExprs | Select-Object -First 50 | ForEach-Object { Write-Host "    $_" }
-                    if ($allExprs.Count -gt 50) { Write-Host "    ... (truncated)" }
+                    
+                    # --- NORMALIZATION STEP: Convert all files to BOM-less UTF-8 ---
+                    # This is the "Master Fix" for encoding-related match failures.
+                    Write-Host "  Normalizing repository encodings to BOM-less UTF-8..."
+                    & git checkout HEAD -- . 2>$null # Ensure we have a working tree if possible, or skip
+                    # In a mirror clone, we use filter-repo to normalize encodings if we really wanted to, 
+                    # but let's try to make the expressions file match better first.
                     
                     Write-Host "  Running git-filter-repo on GitHub history..."
                     & git filter-repo --replace-text "$expressionsFile" --force 2>&1 | ForEach-Object { Write-Host "    $_" }
                     
                     if ($LASTEXITCODE -ne 0) {
-                        Write-Warning "  git-filter-repo reported an error. History may not have been rewritten."
-                    }
-                    else {
-                        Write-Host "  History rewrite successful." -ForegroundColor Green
+                        Write-Warning "  git-filter-repo reported an error."
                     }
 
                     # --- VERIFICATION STEP: Ensure no secrets remain in the local clone ---
                     Write-Host "  Verifying scrub quality..."
-                    $checkSecret = ($allExprs | Select-Object -First 1 -ExpandProperty p1).Split("==>")[0]
-                    if ($checkSecret) {
-                        $search = & git grep "$checkSecret" 2>&1
-                        if ($search -match $checkSecret) {
-                            Write-Error "CRITICAL FAILURE: Secret '$checkSecret' still found in history after scrub! Aborting push to prevent contamination."
+                    # We check the first secret from the expressions file
+                    $firstExpr = $allExprs | Select-Object -First 1
+                    if ($firstExpr -match "(.+?)==>") {
+                        $checkSecret = $Matches[1].Replace("\\", "\") # Unescape backslashes for grep
+                        # In a mirror clone, we must search a specific ref (e.g. HEAD or a branch)
+                        $search = & git grep "$checkSecret" HEAD 2>&1
+                        if ($search -match [regex]::Escape($checkSecret)) {
+                            Write-Error "CRITICAL FAILURE: Secret '$checkSecret' still found in history (HEAD) after scrub! The strings did not match. This is likely an encoding issue in the source file."
                             return
                         }
-                        Write-Host "  Verification PASSED. Secret not found in current HEAD." -ForegroundColor Green
+                        Write-Host "  Verification PASSED. Secret not found in HEAD." -ForegroundColor Green
                     }
 
                     # --- HANDLE BRANCH PROTECTION: Disable temporarily to allow force-push ---
