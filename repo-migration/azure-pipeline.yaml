@@ -345,6 +345,14 @@ stages:
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
+            displayName: "Publish Scrub Reports"
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)\repo-migration\$(REPORT_DIR)'
+              artifact: "scrub-reports"
+              publishLocation: pipeline
+            condition: always()
+
+          - task: PublishPipelineArtifact@1
             displayName: "Publish Scrubbed Repos"
             inputs:
               targetPath: '$(Build.SourcesDirectory)\repo-migration\output\tmp\scrubbed'
@@ -412,6 +420,13 @@ stages:
               REPORT_DIR: $(REPORT_DIR)
               LOG_DIR: $(LOG_DIR)
               CLONE_TEMP_DIR: $(CLONE_TEMP_DIR)
+
+          - task: DownloadPipelineArtifact@1
+            displayName: "Download Scrub Reports"
+            inputs:
+              artifact: "scrub-reports"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+            condition: succeeded()
 
           - task: DownloadPipelineArtifact@1
             displayName: "Download Scrubbed Repos"
@@ -611,6 +626,13 @@ stages:
               REPORT_DIR: $(REPORT_DIR)
               LOG_DIR: $(LOG_DIR)
               CLONE_TEMP_DIR: $(CLONE_TEMP_DIR)
+
+          - task: DownloadPipelineArtifact@1
+            displayName: "Download Scrub Reports"
+            inputs:
+              artifact: "scrub-reports"
+              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+            condition: succeeded()
 
           - task: DownloadPipelineArtifact@1
             displayName: "Download Scrubbed Repos"
