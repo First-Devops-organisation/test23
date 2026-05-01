@@ -127,6 +127,7 @@ foreach ($repoName in $reposToScan) {
             SizeMB = $sizeMB
             Url    = $repoData.webUrl
             RemoteUrl = $repoData.remoteUrl
+            SizeBytes = $repoData.size
         }
     }
     catch {
@@ -140,12 +141,10 @@ Write-Host "  Found $($repos.Count) valid repositories to scan." -ForegroundColo
 $excludeList = if ($config.exclusions -and $config.exclusions.repos) { $config.exclusions.repos } else { @() }
 $repos = @($repos | Where-Object { $_.Name -notin $excludeList })
 
-# Skip empty repos
-$reposBeforeEmpty = $repos.Count
-$repos = @($repos | Where-Object { $_.SizeMB -gt 0 })
-if ($repos.Count -lt $reposBeforeEmpty) {
-    $skippedCount = $reposBeforeEmpty - $repos.Count
-    Write-Host "  [DEBUG] Skipping $skippedCount empty repository(ies) (0 MB)." -ForegroundColor Yellow
+# Identify empty repos to skip cloning but still report them as CLEAN
+$emptyRepos = @($repos | Where-Object { $_.SizeBytes -eq 0 })
+if ($emptyRepos.Count -gt 0) {
+    Write-Host "  [DEBUG] Found $($emptyRepos.Count) empty repository(ies) (0 Bytes). They will be marked as CLEAN automatically." -ForegroundColor Yellow
 }
 
 # Filter repos by size if requested (for parallel jobs)
@@ -195,6 +194,13 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     $repoLabel  = "[$($repo.Project)] $($repo.Name)"
     $clonePath  = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8)).git"
     $reportFile = Join-Path $logDir "gitleaks-$($repo.Name).json"
+
+    # If repo is completely empty (0 Bytes), mark as CLEAN and skip clone/scan
+    if ($repo.SizeBytes -eq 0) {
+        Write-Host "  CLEAN (Empty) — $repoLabel" -ForegroundColor Green
+        $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = 0; Status = "CLEAN" })
+        return
+    }
 
     # Clone — full bare clone with header auth; skip LFS (binaries can't contain text secrets)
     $cloneUrl   = $repo.RemoteUrl -replace '://[^@]+@', '://'
