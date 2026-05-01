@@ -1,0 +1,51 @@
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''vendor/''',
+    '''node_modules/''',
+    '''test/''',
+    '''tests/'''
+]
+
+[[rules]]
+description = "Generic Keyword-based Secret (KEY, PASS, SECRET, TOKEN)"
+id = "generic-keyword-secret"
+regex = '''(?i)(?:key|pass|secret|token|auth|cred|pwd|passwd|uri|api|private)[^a-z0-9\s]{1,5}["']?([^\s"'`\r\n]{4,})["']?'''
+secretGroup = 1
+keywords = [
+    "key", "password", "secret", "token", "auth", "cred", "pwd", "passwd", "uri"
+]
+
+[[rules]]
+description = "Azure Storage Key"
+id = "azure-storage-key"
+regex = '''(?i)AZURE_STORAGE_KEY\s*[=:]\s*["']?([a-z0-9\+\/]{50,64}={0,2})["']?'''
+secretGroup = 1
+
+[[rules]]
+description = "Google API Key"
+id = "google-api-key"
+regex = '''(?i)GOOGLE_API_KEY\s*[=:]\s*["']?(AIza[0-9A-Za-z\-_]{35})["']?'''
+secretGroup = 1
+
+[[rules]]
+description = "OpenAI API Key"
+id = "openai-api-key"
+regex = '''(?i)OPENAI_API_KEY\s*[=:]\s*["']?(sk-[a-zA-Z0-9]{48})["']?'''
+secretGroup = 1
+
+[[rules]]
+description = "Generic Private Key"
+id = "generic-private-key"
+regex = '''-----BEGIN (?:RSA|OPENSSH|DSA|EC|PGP)? PRIVATE KEY-----[\s\S]+?-----END (?:RSA|OPENSSH|DSA|EC|PGP)? PRIVATE KEY-----'''
+
+[[rules]]
+description = "SSH Key (Public or Private)"
+id = "ssh-key"
+regex = '''ssh-(?:rsa|dss|ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521) [a-zA-Z0-9+/=]+(?:\s+.*)?'''
+
+[[rules]]
+description = "MongoDB URI with Credentials"
+id = "mongodb-uri"
+regex = '''mongodb(?:\+srv)?:\/\/[a-zA-Z0-9._%+-]+:[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?::[0-9]+)?(?:\/.*)?'''

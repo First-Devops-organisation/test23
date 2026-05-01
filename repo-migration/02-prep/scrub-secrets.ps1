@@ -201,7 +201,11 @@ foreach ($group in $byRepo) {
 
             # The placeholder uses GitHub Actions syntax: ${{ secrets.NAME }}
             $placeholder = "`${{ secrets.$secretName }}"
-            $expressions += "$secret==>$placeholder"
+            
+            # git-filter-repo --replace-text requires newlines to be escaped as the literal string \n
+            $escapedSecret = $secret -replace "\r?\n", "\n"
+            $escapedSecret = $escapedSecret.Replace("`n", "\n")
+            $expressions += "$escapedSecret==>$placeholder"
 
             # Save for post-migration GitHub Secret provisioning
             $allSecretValues += [PSCustomObject]@{

@@ -157,21 +157,13 @@ $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::ne
 # These catch secrets that gitleaks might miss --- simple key=value assignments
 # with common secret-related keywords.
 $keywordPatternsRaw = @(
-    # Pattern: KEYWORD = "value" or KEYWORD: "value" or KEYWORD = 'value'
-    '(?i)(password|passwd|pwd)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(api[_-]?key|apikey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(secret[_-]?key|secretkey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(access[_-]?key|accesskey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(auth[_-]?token|authtoken)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(token)\s*[=:]\s*["\u0027]([^"\u0027\s]{8,})["\u0027]'
-    '(?i)(private[_-]?key|privatekey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(client[_-]?secret|clientsecret)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(connection[_-]?string|connectionstring)\s*[=:]\s*["\u0027]([^"\u0027\s]{8,})["\u0027]'
-    '(?i)(credential|cred)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(signing[_-]?key|signingkey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(encryption[_-]?key|encryptionkey)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(db[_-]?password|dbpassword)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
-    '(?i)(smtp[_-]?password|smtppassword)\s*[=:]\s*["\u0027]([^"\u0027\s]{4,})["\u0027]'
+    # Pattern: KEYWORD = value (handles optional quotes, stops at space or newline if unquoted)
+    '(?i)(password|passwd|pwd|pass|key|api|secret|token|auth|cred|uri|client[_-]?secret|private[_-]?key|connection[_-]?string)\s*[=:]\s*(?:["\u0027]([^"\u0027\r\n]{4,})["\u0027]|([^\s"\u0027\r\n]{4,}))'
+    
+    # Special case: multi-word or space-containing values (must be quoted)
+    '(?i)(ssh[_-]?key|private[_-]?key|cert|certificate)\s*[=:]\s*["\u0027]([^"\u0027]{20,})["\u0027]'
+    
+    # Bearer tokens
     '(?i)(bearer)\s+([A-Za-z0-9\-_\.]{20,})'
 )
 
@@ -230,7 +222,12 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     $gitleaksCount = 0
     $gitleaksExitCode = 0
     try {
-        $output = & gitleaks detect --source $clonePath --report-path $gitleaksReport --report-format json --no-banner 2>&1
+        $gitleaksConfig = Join-Path (Split-Path $using:ConfigPath) "gitleaks.toml"
+        $gitleaksArgs = @('detect', '--source', $clonePath, '--report-path', $gitleaksReport, '--report-format', 'json', '--no-banner')
+        if (Test-Path $gitleaksConfig) {
+            $gitleaksArgs += @('--config', $gitleaksConfig)
+        }
+        $output = & gitleaks @gitleaksArgs 2>&1
         $gitleaksExitCode = $LASTEXITCODE
     }
     catch {
@@ -316,7 +313,8 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
                     foreach ($pattern in $kwPatterns) {
                         if ($line -match $pattern) {
                             $keyName  = $Matches[1]
-                            $secretVal = $Matches[2]
+                            $secretVal = if ($null -ne $Matches[2]) { $Matches[2] } else { $Matches[3] }
+                            if ([string]::IsNullOrWhiteSpace($secretVal)) { continue }
 
                             # Skip placeholders and short values
                             $lowerVal = $secretVal.ToLower()
