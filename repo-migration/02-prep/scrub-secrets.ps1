@@ -258,8 +258,8 @@ foreach ($group in $byRepo) {
     # ------ Sort expressions longest-first (prevents partial replacements) ------------
     $sortedExpressions = $expressions | Sort-Object { ($_ -split "==>")[0].Length } -Descending
 
-    # ------ Write expressions file ------------------------------------------------------------------------------------------------------------------------------------
-    $expressionsFile = Join-Path (Resolve-Path $logDir).Path "expressions-$repoName.txt"
+    # ------ Write expressions file (Save to reports dir so it is published) --------------------------------------------------------------------------------------------
+    $expressionsFile = Join-Path (Resolve-Path $reportDir).Path "expressions-$repoName.txt"
     $sortedExpressions | Out-File -FilePath $expressionsFile -Encoding utf8
 
     Write-Host "    Expressions file: $expressionsFile ($($sortedExpressions.Count) entries)" -ForegroundColor Gray

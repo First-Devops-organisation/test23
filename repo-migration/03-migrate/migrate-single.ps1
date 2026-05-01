@@ -247,12 +247,15 @@ else {
             if (Test-Path $ghClonePath) {
                 Push-Location $ghClonePath
                 try {
+                    Write-Host "  Expressions in $expressionsFile :"
+                    Get-Content $expressionsFile | Select-Object -First 5 | ForEach-Object { Write-Host "    $_" }
+                    
                     Write-Host "  Running git-filter-repo on GitHub history..."
-                    & git filter-repo --replace-text "$expressionsFile" --force 2>&1 | Out-Null
+                    & git filter-repo --replace-text "$expressionsFile" --force 2>&1 | ForEach-Object { Write-Host "    $_" }
                     
                     Write-Host "  Force-pushing scrubbed history back to GitHub..."
                     # Push all branches and tags
-                    & git push --force --mirror $ghRemote 2>&1 | Out-Null
+                    & git push --force --mirror $ghRemote 2>&1 | ForEach-Object { Write-Host "    $_" }
                     Write-Host "  Post-migration scrub COMPLETE." -ForegroundColor Green
                 }
                 catch {
@@ -262,6 +265,9 @@ else {
                     Pop-Location
                 }
             }
+        }
+        else {
+            Write-Host "  Step 3.2: No expressions file found at $expressionsFile. Skipping post-migration scrub (nothing to redact)." -ForegroundColor Gray
         }
     }
 
