@@ -298,6 +298,7 @@ function Set-GhProjectItemFieldsBatch {
     $resp = Invoke-GhGraphQL -Query $mutation -Pat $Pat
     if ($resp.errors) {
         Write-Log -Message "Batch field update errors: $($resp.errors | ConvertTo-Json -Compress)" -Level "WARN"
+        Write-Log -Message "Query was: $mutation" -Level "DEBUG"
     }
 }
 # Returns a hashtable of field definitions with their IDs and options
