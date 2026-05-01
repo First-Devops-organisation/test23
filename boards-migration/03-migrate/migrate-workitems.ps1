@@ -245,7 +245,7 @@ $migrated = 0; $skipped = 0; $failed = 0
 $total = $sortedItems.Count
 
 foreach ($item in $sortedItems) {
-    $adoId    = $item.id
+    $adoId    = "$($item.id)"
     $title    = $item.fields.'System.Title'
     $type     = $item.fields.'System.WorkItemType'
     $state    = $item.fields.'System.State'
@@ -685,13 +685,13 @@ if ($preserveHierarchy -and -not $DryRun) {
     # Group children by parent for batch processing
     $parentChildMap = @{}  # parentAdoId -> @(childAdoIds)
     foreach ($item in $sortedItems) {
-        $adoId = $item.id
+        $adoId = "$($item.id)"
         $parentAdoIdRaw = Get-AdoParentId -WorkItemDetails $item
         if (-not $parentAdoIdRaw) { 
             Write-Log -Message "  ADO#$adoId has no parent link." -Level "DEBUG"
             continue 
         }
-        $parentAdoId = $parentAdoIdRaw
+        $parentAdoId = "$parentAdoIdRaw"
         
         if (-not $adoToGhMap.ContainsKey($adoId) -or -not $adoToGhMap.ContainsKey($parentAdoId)) {
             Write-Log -Message "  ADO#$adoId parent=$parentAdoId - one or both not in map, skipping. (adoId in map: $($adoToGhMap.ContainsKey($adoId)), parent in map: $($adoToGhMap.ContainsKey($parentAdoId)))" -Level "WARN"
