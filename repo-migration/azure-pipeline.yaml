@@ -426,19 +426,43 @@ stages:
               LOG_DIR: $(LOG_DIR)
               CLONE_TEMP_DIR: $(CLONE_TEMP_DIR)
 
-          - task: DownloadPipelineArtifact@1
-            displayName: "Download Scrub Reports"
+          - task: DownloadPipelineArtifact@2
+            displayName: "Download Scrub Reports (expressions files)"
             inputs:
               artifact: "scrub-reports"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              path: '$(Build.SourcesDirectory)\repo-migration\output\scrub-artifacts'
             condition: succeeded()
 
-          - task: DownloadPipelineArtifact@1
-            displayName: "Download Scrubbed Repos"
+          - task: PowerShell@2
+            displayName: "Validate expressions file exists"
             inputs:
-              artifact: "scrubbed-repos"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\tmp\scrubbed'
-            condition: succeeded()
+              targetType: inline
+              script: |
+                $exprDir = "$(Build.SourcesDirectory)\repo-migration\output\scrub-artifacts"
+                Write-Host "=== Validating expressions file ===" -ForegroundColor Cyan
+                Write-Host "  Looking in: $exprDir"
+                
+                if (-not (Test-Path $exprDir)) {
+                    Write-Error "FATAL: Scrub artifacts directory not found at $exprDir. The ScrubSecrets stage may have failed."
+                    exit 1
+                }
+                
+                Write-Host "  Files found in scrub-artifacts:"
+                Get-ChildItem -Path $exprDir -Recurse | ForEach-Object { Write-Host "    $($_.FullName)" }
+                
+                $exprFiles = Get-ChildItem -Path $exprDir -Filter "expressions-*.txt" -Recurse
+                if ($exprFiles.Count -eq 0) {
+                    Write-Warning "No expressions files found. If the repo has no secrets, this is expected."
+                    Write-Host "##vso[task.setvariable variable=HAS_EXPRESSIONS]false"
+                } else {
+                    Write-Host "  Found $($exprFiles.Count) expressions file(s):" -ForegroundColor Green
+                    $exprFiles | ForEach-Object { 
+                        Write-Host "    $($_.Name) ($((Get-Content $_.FullName).Count) rules)"
+                        Get-Content $_.FullName | Select-Object -First 5 | ForEach-Object { Write-Host "      $_" }
+                    }
+                    Write-Host "##vso[task.setvariable variable=HAS_EXPRESSIONS]true"
+                }
+              pwsh: true
 
           - task: PowerShell@2
             displayName: "Migrate Single Repo"
@@ -485,6 +509,7 @@ stages:
               ADO_PAT:   $(ADO_PAT)
               GH_PAT:    $(GH_PAT)
               GH_TOKEN:  $(GH_PAT)
+              EXPRESSIONS_DIR: $(Build.SourcesDirectory)\repo-migration\output\scrub-artifacts
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish Migration Logs"
