@@ -325,9 +325,9 @@ if ($migState -eq "COMPLETE" -and -not $DryRun) {
                 $ErrorActionPreference = 'Stop'
 
                 if ($exists) {
-                    Write-Host "      Found branch on GitHub. Deleting..." -ForegroundColor Gray
-                    # 2. Attempt deletion
-                    $deleteOut = gh repo branch delete $branch --repo "$GHOrg/$GHRepo" --yes 2>&1
+                    Write-Host "      Found branch on GitHub. Deleting via API..." -ForegroundColor Gray
+                    # 2. Attempt deletion via REST API
+                    $deleteOut = gh api -X DELETE "repos/$GHOrg/$GHRepo/git/refs/heads/$branch" 2>&1
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host "      [SUCCESS] Deleted branch '$branch'" -ForegroundColor Green
                     } else {
