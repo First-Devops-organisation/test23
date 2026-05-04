@@ -331,7 +331,16 @@ function Ensure-GhProjectCustomFields {
     if ($RequiredStates.Count -gt 0) {
         Ensure-Field -Key "adoStatus" -Name "ADO Status" -DataType "SINGLE_SELECT" -Opts @($RequiredStates | ForEach-Object { @{ name = $_ } })
     }
-    # 2. Priority
+    # 2. Item Type (work item type dropdown — mirrors ADO's type system)
+    Ensure-Field -Key "itemType" -Name "Item Type" -DataType "SINGLE_SELECT" -Opts @(
+        @{ name = "Epic"; color = "PURPLE" }, @{ name = "Feature"; color = "BLUE" },
+        @{ name = "User Story"; color = "GREEN" }, @{ name = "Product Backlog Item"; color = "GREEN" },
+        @{ name = "Task"; color = "YELLOW" }, @{ name = "Bug"; color = "RED" },
+        @{ name = "Test Plan"; color = "GRAY" }, @{ name = "Test Suite"; color = "GRAY" },
+        @{ name = "Test Case"; color = "GRAY" }, @{ name = "Issue"; color = "ORANGE" },
+        @{ name = "Impediment"; color = "ORANGE" }, @{ name = "Change Request"; color = "PINK" },
+        @{ name = "Idea"; color = "BLUE" }, @{ name = "Analysis"; color = "BLUE" })
+    # 3. Priority
     Ensure-Field -Key "priority" -Name "Priority" -DataType "SINGLE_SELECT" -Opts @(
         @{ name = "P1 - Critical"; color = "RED" }, @{ name = "P2 - High"; color = "ORANGE" },
         @{ name = "P3 - Medium"; color = "YELLOW" }, @{ name = "P4 - Low"; color = "GREEN" })
