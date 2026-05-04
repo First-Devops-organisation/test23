@@ -342,13 +342,14 @@ foreach ($item in $sortedItems) {
     if ($item.relations) {
         foreach ($rel in $item.relations) {
             if ($rel.rel -eq "ArtifactLink") {
-                # PR link: vstfs:///Git/PullRequestId/PROJECT_ID/REPO_ID/PR_ID
-                if ($rel.url -match "vstfs:///Git/PullRequestId/[^/]+/[^/]+/(\d+)") {
-                    $linkedPRs += $Matches[1]
+                if ($rel.url -match "vstfs:///Git/PullRequestId/") {
+                    # The ID is the very last segment (handle both / and %2f)
+                    $prId = ($rel.url -split '(/|%2f|%2F)')[-1]
+                    if ($prId -match "^\d+$") { $linkedPRs += $prId }
                 }
-                # Commit link: vstfs:///Git/Commit/PROJECT_ID/REPO_ID/([a-fA-F0-9]+)
-                elseif ($rel.url -match "vstfs:///Git/Commit/[^/]+/[^/]+/([a-fA-F0-9]+)") {
-                    $linkedCommits += $Matches[1]
+                elseif ($rel.url -match "vstfs:///Git/Commit/") {
+                    $commitHash = ($rel.url -split '(/|%2f|%2F)')[-1]
+                    $linkedCommits += $commitHash
                 }
             }
         }
