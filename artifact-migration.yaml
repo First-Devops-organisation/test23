@@ -22,7 +22,7 @@ jobs:
           GH_TOKEN: $(GH_PAT)
         inputs:
           targetType: 'filePath'
-          filePath: 'repo-migration/03-migrate/migrate-artifacts.ps1'
+          filePath: 'migrate-artifacts.ps1'
           arguments: >
             -LastBuilds "$(LastBuilds)"
             -OrgName "$(ADO_ORG)"
