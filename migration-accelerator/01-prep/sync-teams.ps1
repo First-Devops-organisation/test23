@@ -1,85 +1,112 @@
 <#
 .SYNOPSIS
-    Creates GitHub teams based on mappings defined in team-mappings.json.
-.DESCRIPTION
-    Reads the team-mappings.json file and ensures all mapped teams exist in the target GitHub organization.
+    Automatically creates GitHub teams and syncs members from ADO using a user mapping CSV.
 .PARAMETER GitHubOrg
     Target GitHub organization name.
 .PARAMETER GitHubPat
     GitHub PAT with admin:org scope.
-.PARAMETER MappingFile
-    Path to the team-mappings.json file.
+.PARAMETER AdoOrg
+    Azure DevOps Org URL (e.g., https://dev.azure.com/myorg).
+.PARAMETER AdoPat
+    Azure DevOps PAT with Project & Team (Read) scope.
+.PARAMETER TeamMappingFile
+    Path to team-mappings.json.
+.PARAMETER UserMappingFile
+    Path to user-mappings.csv.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$GitHubOrg,
-
     [Parameter(Mandatory = $true)]
     [string]$GitHubPat,
-
-    [string]$MappingFile = "./config/team-mappings.json"
+    [Parameter(Mandatory = $true)]
+    [string]$AdoOrg, # Renamed from AdoOrgUrl to match Var Group
+    [Parameter(Mandatory = $true)]
+    [string]$AdoPat,
+    [string]$TeamMappingFile = "./config/team-mappings.json",
+    [string]$UserMappingFile = "./config/user-mappings.csv"
 )
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Stop"
 
-$headers = @{
+# --- Setup Headers ---
+$ghHeaders = @{
     Authorization = "Bearer $GitHubPat"
     Accept        = "application/vnd.github+json"
     "X-GitHub-Api-Version" = "2022-11-28"
 }
 
-if (-not (Test-Path $MappingFile)) {
-    Write-Error "Mapping file not found: $MappingFile"
-    exit 1
+$base64AdoAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$AdoPat"))
+$adoHeaders = @{ Authorization = "Basic $base64AdoAuth" }
+
+# --- 1. Load User Mappings ---
+Write-Host "Loading user mappings from $UserMappingFile..." -ForegroundColor Gray
+if (-not (Test-Path $UserMappingFile)) { Write-Error "User mapping file not found!"; exit 1 }
+$userMap = @{}
+Import-Csv $UserMappingFile | ForEach-Object {
+    if ($_.ado_email -and $_.github_username) {
+        $userMap[$_.ado_email.ToLower()] = $_.github_username
+    }
 }
 
-$mappingData = Get-Content $MappingFile -Raw | ConvertFrom-Json
+# --- 2. Load Team Mappings ---
+$mappingData = Get-Content $TeamMappingFile -Raw | ConvertFrom-Json
 $mappings = $mappingData.mappings
-$defaultVisibility = if ($mappingData.defaultVisibility) { $mappingData.defaultVisibility } else { "closed" }
 
-Write-Host "=== Syncing GitHub Teams to $GitHubOrg ===" -ForegroundColor Cyan
+Write-Host "=== Starting Automated Team Sync ===" -ForegroundColor Cyan
 
-foreach ($team in $mappings) {
-    Write-Host "`nProcessing team: $($team.githubTeam)" -ForegroundColor Yellow
+foreach ($map in $mappings) {
+    Write-Host "`nProcessing: $($map.adoProject) / $($map.adoTeam) -> $($map.githubTeam)" -ForegroundColor Yellow
     
-    $teamName = $team.githubTeam
-    $description = if ($team.githubTeamDescription) { $team.githubTeamDescription } else { "Migrated from ADO" }
-    
-    # Check if team already exists
+    # A. Ensure GitHub Team Exists
+    $teamName = $map.githubTeam
     try {
-        $existingTeam = Invoke-RestMethod -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$teamName" -Headers $headers -Method Get -ErrorAction Stop
-        Write-Host "   [EXISTS] Team '$teamName' already exists. Updating description..." -ForegroundColor Gray
-        
-        $updateBody = @{
-            description = $description
-        } | ConvertTo-Json
-        
-        Invoke-RestMethod -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$teamName" -Headers $headers -Method Patch -Body $updateBody -ContentType "application/json"
+        $ghTeam = Invoke-RestMethod -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$teamName" -Headers $ghHeaders -Method Get
+        Write-Host "   [OK] GitHub team '$teamName' exists." -ForegroundColor Green
     }
     catch {
-        # Team doesn't exist, create it
-        Write-Host "   [MISSING] Creating team '$teamName'..." -ForegroundColor Green
+        Write-Host "   [NEW] Creating GitHub team '$teamName'..." -ForegroundColor Green
+        $createBody = @{ name = $teamName; description = $map.githubTeamDescription; privacy = "closed" }
+        $ghTeam = Invoke-RestMethod -Uri "https://api.github.com/orgs/$GitHubOrg/teams" -Headers $ghHeaders -Method Post -Body ($createBody | ConvertTo-Json) -ContentType "application/json"
+    }
+
+    # B. Fetch ADO Team Members
+    Write-Host "   Fetching members from ADO..." -ForegroundColor Gray
+    try {
+        # Get Project ID
+        $project = Invoke-RestMethod -Uri "$AdoOrg/_apis/projects/$($map.adoProject)?api-version=7.1" -Headers $adoHeaders
+        # Get Team ID
+        $teams = Invoke-RestMethod -Uri "$AdoOrg/_apis/projects/$($project.id)/teams?api-version=7.1" -Headers $adoHeaders
+        $adoTeam = $teams.value | Where-Object { $_.name -eq $map.adoTeam }
         
-        $createBody = @{
-            name        = $teamName
-            description = $description
-            privacy     = $defaultVisibility
-        }
+        # Get Members
+        $members = Invoke-RestMethod -Uri "$AdoOrg/_apis/projects/$($project.id)/teams/$($adoTeam.id)/members?api-version=7.1" -Headers $adoHeaders
         
-        if ($team.parentTeam) {
-            # Note: This requires getting the parent team ID first. Simplification: skip parent for now or handle later.
-            Write-Host "   [INFO] Parent team specified ($($team.parentTeam)). Manual nesting may be required." -ForegroundColor Gray
+        foreach ($member in $members.value) {
+            $email = $member.identity.uniqueName # This is usually the email
+            if ($userMap.ContainsKey($email.ToLower())) {
+                $ghUser = $userMap[$email.ToLower()]
+                Write-Host "   Mapping: $email -> $ghUser" -ForegroundColor Gray
+                
+                # C. Add to GitHub Team
+                $role = if ($map.maintainers -contains $ghUser) { "maintainer" } else { "member" }
+                try {
+                    Invoke-RestMethod -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$teamName/memberships/$ghUser" -Headers $ghHeaders -Method Put -Body (@{ role = $role } | ConvertTo-Json) -ContentType "application/json"
+                    Write-Host "      [ADDED] $ghUser as $role" -ForegroundColor Green
+                }
+                catch {
+                    Write-Warning "      [FAILED] Could not add $ghUser to team."
+                }
+            }
+            else {
+                Write-Host "   [SKIP] No mapping found for $email" -ForegroundColor DarkGray
+            }
         }
-        
-        try {
-            $newTeam = Invoke-RestMethod -Uri "https://api.github.com/orgs/$GitHubOrg/teams" -Headers $headers -Method Post -Body ($createBody | ConvertTo-Json) -ContentType "application/json"
-            Write-Host "   [SUCCESS] Created team: $($newTeam.name)" -ForegroundColor Green
-        }
-        catch {
-            Write-Error "   [FAILED] Could not create team '$teamName': $($_.Exception.Message)"
-        }
+    }
+    catch {
+        Write-Error "   [ERROR] Could not fetch ADO members for $($map.adoTeam): $($_.Exception.Message)"
     }
 }
 
-Write-Host "`nTeam synchronization complete." -ForegroundColor Cyan
+Write-Host "`nSync Complete!" -ForegroundColor Cyan
