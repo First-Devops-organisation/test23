@@ -414,9 +414,9 @@ function Invoke-GhRestWithRetry {
             $statusCode = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { 0 }
             if ($statusCode -eq 403 -or $statusCode -eq 429) {
                 $retryAfter = $_.Exception.Response.Headers["Retry-After"]
-                $waitSec = if ($retryAfter) { [int]$retryAfter + 5 } else { [math]::Pow(2, $i) * 20 }
+                $waitSec = if ($retryAfter) { [int]$retryAfter + 5 } else { [math]::Pow(2, $i) * 10 }
                 Write-Log -Message "REST Secondary rate limit (HTTP $statusCode). Waiting ${waitSec}s (attempt $i/$RetryCount)" -Level "WARN"
-                Start-Sleep -Seconds ([math]::Min($waitSec, 900))
+                Start-Sleep -Seconds ([math]::Min($waitSec, 300))
                 continue
             }
             throw
@@ -468,6 +468,8 @@ function Add-GhIssueComment {
     $headers = Get-GhRestHeaders -Pat $Pat
     $jsonBody = @{ body = $Body } | ConvertTo-Json -Depth 5
     $uri = "https://api.github.com/repos/$Org/$Repo/issues/$IssueNumber/comments"
+    # Proactive sleep before every comment to avoid secondary rate limits
+    Start-Sleep -Seconds 5
     try {
         return Invoke-GhRestWithRetry -Uri $uri -Method POST -Headers $headers -Body $jsonBody
     } catch {
