@@ -120,20 +120,30 @@ foreach ($build in $builds.value) {
         continue
     }
 
-    Write-Host "      Creating GitHub Release: $releaseTag" -ForegroundColor Cyan
+    Write-Host "      GitHub Release: $releaseTag" -ForegroundColor Cyan
     
-    # Check if release already exists
-    $checkRelease = gh release view $releaseTag --repo "$GitHubOrg/$GitHubRepo" 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    # Check if release already exists (using a safe check)
+    $releaseExists = $false
+    try {
+        # Redirecting stderr to stdout to prevent NativeCommandError in Strict Mode
+        $null = gh release view $releaseTag --repo "$GitHubOrg/$GitHubRepo" 2>&1
+        if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+    } catch {
+        $releaseExists = $false
+    }
+
+    if ($releaseExists) {
         Write-Host "      Release exists. Updating assets..." -ForegroundColor Yellow
         gh release upload $releaseTag --repo "$GitHubOrg/$GitHubRepo" --clobber $artifactFiles
     } else {
+        Write-Host "      Creating new release..." -ForegroundColor Gray
         gh release create $releaseTag `
             --repo "$GitHubOrg/$GitHubRepo" `
             --title "$PipelineName Build #$buildId" `
             --notes "Migrated from Azure DevOps build $buildId." `
             -- $artifactFiles
     }
+
 
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "      Failed to complete GitHub Release for Build $buildId"
