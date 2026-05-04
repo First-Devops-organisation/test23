@@ -36,8 +36,8 @@
     }
   ],
   "exclusions": {
-    "repos": ["ssr-v19"],
-    "branches": []
+    "repos": [],
+    "branches": ["test"]
   },
   "output": {
     "reportDir": "./output/reports",
