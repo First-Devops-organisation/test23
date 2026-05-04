@@ -1,0 +1,701 @@
+2026-05-02 13:13:14,236  INFO      ======================================================================
+2026-05-02 13:13:14,236  INFO        ADO Migration Pipeline (ENHANCED)
+2026-05-02 13:13:14,236  INFO        Source      : gopinathmulumudi/migrationtest
+2026-05-02 13:13:14,236  INFO        Target      : migratefromado3/boards
+2026-05-02 13:13:14,236  INFO        Mode        : DRY RUN
+2026-05-02 13:13:14,236  INFO        Attachments : ON
+2026-05-02 13:13:14,236  INFO        Boards      : ON
+2026-05-02 13:13:14,236  INFO        Sprints     : ON
+2026-05-02 13:13:14,236  INFO        Relations   : ON
+2026-05-02 13:13:14,236  INFO        Queries     : ON
+2026-05-02 13:13:14,236  INFO        Delivery Plans : ON
+2026-05-02 13:13:14,236  INFO      ======================================================================
+2026-05-02 13:13:14,236  INFO      Step 1/9  Fetching work item IDs …
+2026-05-02 13:13:15,357  INFO                5 to migrate (0 done).
+2026-05-02 13:13:15,357  INFO      Step 2/9  Fetching work item details …
+2026-05-02 13:13:15,977  INFO                5/5 …
+2026-05-02 13:13:15,977  INFO      Step 3/9  Syncing labels …
+2026-05-02 13:13:15,977  INFO      Step 4/9  Skipped attachment release.
+2026-05-02 13:13:15,977  INFO      Step 5/9  Migrating work items …
+2026-05-02 13:13:15,977  INFO        [1/5] ADO#203  sample story
+2026-05-02 13:13:16,461  INFO        [DRY RUN] sample story
+2026-05-02 13:13:17,262  INFO        [2/5] ADO#204  sample story 2
+2026-05-02 13:13:17,380  INFO        [DRY RUN] sample story 2
+2026-05-02 13:13:18,182  INFO        [3/5] ADO#205  sample story 3
+2026-05-02 13:13:18,329  INFO        [DRY RUN] sample story 3
+2026-05-02 13:13:19,133  INFO        [4/5] ADO#206  sample story 4
+2026-05-02 13:13:19,230  INFO        [DRY RUN] sample story 4
+2026-05-02 13:13:20,045  INFO        [5/5] ADO#207  Sample Task - 123
+2026-05-02 13:13:20,168  INFO        [DRY RUN] Sample Task - 123
+2026-05-02 13:13:20,969  INFO      Step 5/9  Work items: 5 OK / 0 failed.
+2026-05-02 13:13:20,970  INFO      Step 6/9  Migrating boards ==>> GitHub Projects v2 …
+2026-05-02 13:13:20,971  INFO      Board migration: fetching ADO boards …
+2026-05-02 13:13:22,163  INFO      Found 3 board(s) across 1 team(s).
+2026-05-02 13:13:22,163  INFO      Found 3 board(s).
+2026-05-02 13:13:22,163  INFO      
+== Board: 'Stories' (team: migrationtest Team) ==
+2026-05-02 13:13:22,615  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:13:23,028  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/migrationtest%20Team/_apis/work/boards/1b05919b-05d9-4721-85f5-254a9104eca7/workitems?api-version=7.1-preview.1
+2026-05-02 13:13:23,666  INFO        [DRY RUN] Would create project 'migrationtest – Stories' with 4 columns.
+2026-05-02 13:13:23,666  INFO      
+== Board: 'Features' (team: migrationtest Team) ==
+2026-05-02 13:13:24,101  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:13:24,372  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/migrationtest%20Team/_apis/work/boards/5fc2bd19-a471-45ba-a84f-c8796b24f210/workitems?api-version=7.1-preview.1
+2026-05-02 13:13:24,806  INFO        [DRY RUN] Would create project 'migrationtest – Features' with 4 columns.
+2026-05-02 13:13:24,806  INFO      
+== Board: 'Epics' (team: migrationtest Team) ==
+2026-05-02 13:13:25,213  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:13:25,508  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/migrationtest%20Team/_apis/work/boards/ff4abe10-56e3-4d8a-a327-01c3ede2e36e/workitems?api-version=7.1-preview.1
+2026-05-02 13:13:25,981  INFO        [DRY RUN] Would create project 'migrationtest – Epics' with 4 columns.
+2026-05-02 13:13:25,981  INFO      Step 7/9  Migrating work item relationships …
+2026-05-02 13:13:25,982  INFO      Step 7/9  Migrating work item relations …
+2026-05-02 13:13:25,982  WARNING     No migrated work items to create relations for
+2026-05-02 13:13:25,982  INFO      Step 8/9  Migrating sprints & iterations …
+2026-05-02 13:13:25,983  INFO      Step 6/7  Migrating sprints & iterations …
+2026-05-02 13:13:26,582  INFO      Team 'migrationtest Team': 3 sprint(s)
+2026-05-02 13:13:26,582  INFO        [DRY RUN] Milestone: Iteration 1
+2026-05-02 13:13:26,582  INFO        [DRY RUN] Milestone: Iteration 2
+2026-05-02 13:13:26,582  INFO        [DRY RUN] Milestone: Iteration 3
+2026-05-02 13:13:26,582  INFO        Created 0 milestone(s)
+2026-05-02 13:13:26,582  INFO        Sprint assignment: 0 assigned / 0 unassigned
+2026-05-02 13:13:26,582  INFO      Step 9a/9 Exporting saved queries …
+2026-05-02 13:13:26,872  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:13:26,874  INFO      Exported 1 queries to query_map.json
+2026-05-02 13:13:27,221  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:13:27,221  INFO      Generated filter guide: GITHUB_FILTERS.md
+2026-05-02 13:13:27,221  INFO                Query exports done (see query_map.json, GITHUB_FILTERS.md)
+2026-05-02 13:13:27,221  INFO      Step 9b/9 Exporting delivery plans …
+2026-05-02 13:13:27,378  INFO      Fetched 1 delivery plan(s)
+2026-05-02 13:13:27,378  INFO      Exporting delivery plans (1 found) …
+2026-05-02 13:13:27,672  INFO      No timeline items to export
+2026-05-02 13:13:27,905  INFO      Generated Mermaid timeline: timeline.mmd
+2026-05-02 13:13:28,062  INFO      Generated roadmap: ROADMAP.md
+2026-05-02 13:13:28,211  INFO      Exported delivery plan summary to .
+2026-05-02 13:13:28,211  INFO                Delivery plan exports done (see timeline.csv, ROADMAP.md)
+2026-05-02 13:13:28,211  INFO      
+Step 9c/9 Complete.
+2026-05-02 13:13:28,211  INFO        Issues     : 0
+2026-05-02 13:13:28,211  INFO        Projects   : 0
+2026-05-02 13:13:28,211  INFO        Sprints    : 0
+2026-05-02 13:13:28,211  INFO      
+2026-05-02 13:13:28,211  INFO      Next steps:
+2026-05-02 13:13:28,211  INFO        1. Review GitHub issues and projects
+2026-05-02 13:13:28,211  INFO        2. Check GITHUB_FILTERS.md for saved query conversions
+2026-05-02 13:13:28,211  INFO        3. Check ROADMAP.md for delivery plan timeline
+2026-05-02 13:13:28,211  INFO        4. Check critical_path.json for critical dependencies
+2026-05-02 13:19:31,943  INFO      ======================================================================
+2026-05-02 13:19:31,943  INFO        ADO Migration Pipeline (ENHANCED)
+2026-05-02 13:19:31,943  INFO        Source      : gopinathmulumudi/migrationtest
+2026-05-02 13:19:31,943  INFO        Target      : migratefromado3/boards
+2026-05-02 13:19:31,943  INFO        Mode        : DRY RUN
+2026-05-02 13:19:31,943  INFO        Attachments : ON
+2026-05-02 13:19:31,943  INFO        Boards      : ON
+2026-05-02 13:19:31,943  INFO        Sprints     : ON
+2026-05-02 13:19:31,943  INFO        Relations   : ON
+2026-05-02 13:19:31,943  INFO        Queries     : ON
+2026-05-02 13:19:31,943  INFO        Delivery Plans : ON
+2026-05-02 13:19:31,943  INFO      ======================================================================
+2026-05-02 13:19:31,943  INFO      Step 1/9  Fetching work item IDs …
+2026-05-02 13:19:32,420  INFO                5 to migrate (0 done).
+2026-05-02 13:19:32,420  INFO      Step 2/9  Fetching work item details …
+2026-05-02 13:19:32,788  INFO                5/5 …
+2026-05-02 13:19:32,788  INFO      Step 3/9  Syncing labels …
+2026-05-02 13:19:32,788  INFO      Step 4/9  Skipped attachment release.
+2026-05-02 13:19:32,788  INFO      Step 5/9  Migrating work items …
+2026-05-02 13:19:32,788  INFO        [1/5] ADO#203  sample story
+2026-05-02 13:19:33,391  INFO        [DRY RUN] sample story
+2026-05-02 13:19:34,193  INFO        [2/5] ADO#204  sample story 2
+2026-05-02 13:19:34,303  INFO        [DRY RUN] sample story 2
+2026-05-02 13:19:35,105  INFO        [3/5] ADO#205  sample story 3
+2026-05-02 13:19:35,889  INFO        [DRY RUN] sample story 3
+2026-05-02 13:19:36,696  INFO        [4/5] ADO#206  sample story 4
+2026-05-02 13:19:36,825  INFO        [DRY RUN] sample story 4
+2026-05-02 13:19:37,627  INFO        [5/5] ADO#207  Sample Task - 123
+2026-05-02 13:19:37,756  INFO        [DRY RUN] Sample Task - 123
+2026-05-02 13:19:38,566  INFO      Step 5/9  Work items: 5 OK / 0 failed.
+2026-05-02 13:19:38,566  INFO      Step 6/9  Migrating boards ==>> GitHub Projects v2 …
+2026-05-02 13:19:38,566  INFO      Board migration: fetching ADO boards …
+2026-05-02 13:19:39,428  INFO      Found 3 board(s) across 1 team(s).
+2026-05-02 13:19:39,428  INFO      Found 3 board(s).
+2026-05-02 13:19:39,428  INFO      
+== Board: 'Stories' (team: migrationtest Team) ==
+2026-05-02 13:19:39,950  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:19:39,950  WARNING   Board items endpoint failed, using WIQL fallback: Invalid URL 'work/boards/1b05919b-05d9-4721-85f5-254a9104eca7/workitems?api-version=7.1-preview.1': No scheme supplied. Perhaps you meant https://work/boards/1b05919b-05d9-4721-85f5-254a9104eca7/workitems?api-version=7.1-preview.1?
+2026-05-02 13:19:40,575  INFO        [DRY RUN] Would create project 'migrationtest – Stories' with 4 columns.
+2026-05-02 13:19:40,575  INFO      
+== Board: 'Features' (team: migrationtest Team) ==
+2026-05-02 13:19:40,866  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:19:40,882  WARNING   Board items endpoint failed, using WIQL fallback: Invalid URL 'work/boards/5fc2bd19-a471-45ba-a84f-c8796b24f210/workitems?api-version=7.1-preview.1': No scheme supplied. Perhaps you meant https://work/boards/5fc2bd19-a471-45ba-a84f-c8796b24f210/workitems?api-version=7.1-preview.1?
+2026-05-02 13:19:41,495  INFO        [DRY RUN] Would create project 'migrationtest – Features' with 4 columns.
+2026-05-02 13:19:41,495  INFO      
+== Board: 'Epics' (team: migrationtest Team) ==
+2026-05-02 13:19:41,796  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:19:41,796  WARNING   Board items endpoint failed, using WIQL fallback: Invalid URL 'work/boards/ff4abe10-56e3-4d8a-a327-01c3ede2e36e/workitems?api-version=7.1-preview.1': No scheme supplied. Perhaps you meant https://work/boards/ff4abe10-56e3-4d8a-a327-01c3ede2e36e/workitems?api-version=7.1-preview.1?
+2026-05-02 13:19:42,532  INFO        [DRY RUN] Would create project 'migrationtest – Epics' with 4 columns.
+2026-05-02 13:19:42,532  INFO      Step 7/9  Migrating work item relationships …
+2026-05-02 13:19:42,532  INFO      Step 7/9  Migrating work item relations …
+2026-05-02 13:19:42,532  WARNING     No migrated work items to create relations for
+2026-05-02 13:19:42,532  INFO      Step 8/9  Migrating sprints & iterations …
+2026-05-02 13:19:42,532  INFO      Step 6/7  Migrating sprints & iterations …
+2026-05-02 13:19:43,100  INFO      Team 'migrationtest Team': 3 sprint(s)
+2026-05-02 13:19:43,100  INFO        [DRY RUN] Milestone: Iteration 1
+2026-05-02 13:19:43,100  INFO        [DRY RUN] Milestone: Iteration 2
+2026-05-02 13:19:43,100  INFO        [DRY RUN] Milestone: Iteration 3
+2026-05-02 13:19:43,100  INFO        Created 0 milestone(s)
+2026-05-02 13:19:43,100  INFO        Sprint assignment: 0 assigned / 0 unassigned
+2026-05-02 13:19:43,100  INFO      Step 9a/9 Exporting saved queries …
+2026-05-02 13:19:43,284  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:19:43,284  INFO      Exported 1 queries to query_map.json
+2026-05-02 13:19:43,564  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:19:43,564  INFO      Generated filter guide: GITHUB_FILTERS.md
+2026-05-02 13:19:43,564  INFO                Query exports done (see query_map.json, GITHUB_FILTERS.md)
+2026-05-02 13:19:43,564  INFO      Step 9b/9 Exporting delivery plans …
+2026-05-02 13:19:43,711  INFO      Fetched 1 delivery plan(s)
+2026-05-02 13:19:43,714  INFO      Exporting delivery plans (1 found) …
+2026-05-02 13:19:44,077  INFO      No timeline items to export
+2026-05-02 13:19:44,222  INFO      Generated Mermaid timeline: timeline.mmd
+2026-05-02 13:19:44,475  INFO      Generated roadmap: ROADMAP.md
+2026-05-02 13:19:44,639  INFO      Exported delivery plan summary to .
+2026-05-02 13:19:44,639  INFO                Delivery plan exports done (see timeline.csv, ROADMAP.md)
+2026-05-02 13:19:44,639  INFO      
+Step 9c/9 Complete.
+2026-05-02 13:19:44,639  INFO        Issues     : 0
+2026-05-02 13:19:44,639  INFO        Projects   : 0
+2026-05-02 13:19:44,639  INFO        Sprints    : 0
+2026-05-02 13:19:44,639  INFO      
+2026-05-02 13:19:44,639  INFO      Next steps:
+2026-05-02 13:19:44,639  INFO        1. Review GitHub issues and projects
+2026-05-02 13:19:44,639  INFO        2. Check GITHUB_FILTERS.md for saved query conversions
+2026-05-02 13:19:44,639  INFO        3. Check ROADMAP.md for delivery plan timeline
+2026-05-02 13:19:44,639  INFO        4. Check critical_path.json for critical dependencies
+2026-05-02 13:20:32,315  INFO      ======================================================================
+2026-05-02 13:20:32,315  INFO        ADO Migration Pipeline (ENHANCED)
+2026-05-02 13:20:32,315  INFO        Source      : gopinathmulumudi/migrationtest
+2026-05-02 13:20:32,321  INFO        Target      : migratefromado3/boards
+2026-05-02 13:20:32,321  INFO        Mode        : DRY RUN
+2026-05-02 13:20:32,321  INFO        Attachments : ON
+2026-05-02 13:20:32,321  INFO        Boards      : ON
+2026-05-02 13:20:32,321  INFO        Sprints     : ON
+2026-05-02 13:20:32,322  INFO        Relations   : ON
+2026-05-02 13:20:32,322  INFO        Queries     : ON
+2026-05-02 13:20:32,322  INFO        Delivery Plans : ON
+2026-05-02 13:20:32,322  INFO      ======================================================================
+2026-05-02 13:20:32,322  INFO      Step 1/9  Fetching work item IDs …
+2026-05-02 13:20:32,481  INFO                5 to migrate (0 done).
+2026-05-02 13:20:32,481  INFO      Step 2/9  Fetching work item details …
+2026-05-02 13:20:32,868  INFO                5/5 …
+2026-05-02 13:20:32,868  INFO      Step 3/9  Syncing labels …
+2026-05-02 13:20:32,868  INFO      Step 4/9  Skipped attachment release.
+2026-05-02 13:20:32,868  INFO      Step 5/9  Migrating work items …
+2026-05-02 13:20:32,868  INFO        [1/5] ADO#203  sample story
+2026-05-02 13:20:33,771  INFO        [DRY RUN] sample story
+2026-05-02 13:20:34,578  INFO        [2/5] ADO#204  sample story 2
+2026-05-02 13:20:34,717  INFO        [DRY RUN] sample story 2
+2026-05-02 13:20:35,519  INFO        [3/5] ADO#205  sample story 3
+2026-05-02 13:20:35,652  INFO        [DRY RUN] sample story 3
+2026-05-02 13:20:36,454  INFO        [4/5] ADO#206  sample story 4
+2026-05-02 13:20:36,564  INFO        [DRY RUN] sample story 4
+2026-05-02 13:20:37,366  INFO        [5/5] ADO#207  Sample Task - 123
+2026-05-02 13:20:37,507  INFO        [DRY RUN] Sample Task - 123
+2026-05-02 13:20:38,309  INFO      Step 5/9  Work items: 5 OK / 0 failed.
+2026-05-02 13:20:38,309  INFO      Step 6/9  Migrating boards ==>> GitHub Projects v2 …
+2026-05-02 13:20:38,309  INFO      Board migration: fetching ADO boards …
+2026-05-02 13:20:38,761  INFO      Found 3 board(s) across 1 team(s).
+2026-05-02 13:20:38,761  INFO      Found 3 board(s).
+2026-05-02 13:20:38,761  INFO      
+== Board: 'Stories' (team: migrationtest Team) ==
+2026-05-02 13:20:39,102  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:20:39,102  WARNING   Board items endpoint failed, using WIQL fallback: Invalid URL '_base/work/boards/1b05919b-05d9-4721-85f5-254a9104eca7/workitems?api-version=7.1-preview.1': No scheme supplied. Perhaps you meant https://_base/work/boards/1b05919b-05d9-4721-85f5-254a9104eca7/workitems?api-version=7.1-preview.1?
+2026-05-02 13:20:39,572  INFO        [DRY RUN] Would create project 'migrationtest – Stories' with 4 columns.
+2026-05-02 13:20:39,572  INFO      
+== Board: 'Features' (team: migrationtest Team) ==
+2026-05-02 13:20:40,024  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:20:40,024  WARNING   Board items endpoint failed, using WIQL fallback: Invalid URL '_base/work/boards/5fc2bd19-a471-45ba-a84f-c8796b24f210/workitems?api-version=7.1-preview.1': No scheme supplied. Perhaps you meant https://_base/work/boards/5fc2bd19-a471-45ba-a84f-c8796b24f210/workitems?api-version=7.1-preview.1?
+2026-05-02 13:20:40,457  INFO        [DRY RUN] Would create project 'migrationtest – Features' with 4 columns.
+2026-05-02 13:20:40,473  INFO      
+== Board: 'Epics' (team: migrationtest Team) ==
+2026-05-02 13:20:40,708  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:20:40,708  WARNING   Board items endpoint failed, using WIQL fallback: Invalid URL '_base/work/boards/ff4abe10-56e3-4d8a-a327-01c3ede2e36e/workitems?api-version=7.1-preview.1': No scheme supplied. Perhaps you meant https://_base/work/boards/ff4abe10-56e3-4d8a-a327-01c3ede2e36e/workitems?api-version=7.1-preview.1?
+2026-05-02 13:20:41,251  INFO        [DRY RUN] Would create project 'migrationtest – Epics' with 4 columns.
+2026-05-02 13:20:41,251  INFO      Step 7/9  Migrating work item relationships …
+2026-05-02 13:20:41,251  INFO      Step 7/9  Migrating work item relations …
+2026-05-02 13:20:41,251  WARNING     No migrated work items to create relations for
+2026-05-02 13:20:41,251  INFO      Step 8/9  Migrating sprints & iterations …
+2026-05-02 13:20:41,251  INFO      Step 6/7  Migrating sprints & iterations …
+2026-05-02 13:20:41,658  INFO      Team 'migrationtest Team': 3 sprint(s)
+2026-05-02 13:20:41,658  INFO        [DRY RUN] Milestone: Iteration 1
+2026-05-02 13:20:41,658  INFO        [DRY RUN] Milestone: Iteration 2
+2026-05-02 13:20:41,658  INFO        [DRY RUN] Milestone: Iteration 3
+2026-05-02 13:20:41,658  INFO        Created 0 milestone(s)
+2026-05-02 13:20:41,658  INFO        Sprint assignment: 0 assigned / 0 unassigned
+2026-05-02 13:20:41,658  INFO      Step 9a/9 Exporting saved queries …
+2026-05-02 13:20:41,835  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:20:41,835  INFO      Exported 1 queries to query_map.json
+2026-05-02 13:20:42,004  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:20:42,004  INFO      Generated filter guide: GITHUB_FILTERS.md
+2026-05-02 13:20:42,004  INFO                Query exports done (see query_map.json, GITHUB_FILTERS.md)
+2026-05-02 13:20:42,004  INFO      Step 9b/9 Exporting delivery plans …
+2026-05-02 13:20:42,153  INFO      Fetched 1 delivery plan(s)
+2026-05-02 13:20:42,155  INFO      Exporting delivery plans (1 found) …
+2026-05-02 13:20:42,418  INFO      No timeline items to export
+2026-05-02 13:20:42,585  INFO      Generated Mermaid timeline: timeline.mmd
+2026-05-02 13:20:42,724  INFO      Generated roadmap: ROADMAP.md
+2026-05-02 13:20:42,857  INFO      Exported delivery plan summary to .
+2026-05-02 13:20:42,857  INFO                Delivery plan exports done (see timeline.csv, ROADMAP.md)
+2026-05-02 13:20:42,857  INFO      
+Step 9c/9 Complete.
+2026-05-02 13:20:42,857  INFO        Issues     : 0
+2026-05-02 13:20:42,857  INFO        Projects   : 0
+2026-05-02 13:20:42,857  INFO        Sprints    : 0
+2026-05-02 13:20:42,857  INFO      
+2026-05-02 13:20:42,857  INFO      Next steps:
+2026-05-02 13:20:42,857  INFO        1. Review GitHub issues and projects
+2026-05-02 13:20:42,857  INFO        2. Check GITHUB_FILTERS.md for saved query conversions
+2026-05-02 13:20:42,857  INFO        3. Check ROADMAP.md for delivery plan timeline
+2026-05-02 13:20:42,857  INFO        4. Check critical_path.json for critical dependencies
+2026-05-02 13:21:26,777  INFO      ======================================================================
+2026-05-02 13:21:26,777  INFO        ADO Migration Pipeline (ENHANCED)
+2026-05-02 13:21:26,777  INFO        Source      : gopinathmulumudi/migrationtest
+2026-05-02 13:21:26,777  INFO        Target      : migratefromado3/boards
+2026-05-02 13:21:26,777  INFO        Mode        : DRY RUN
+2026-05-02 13:21:26,777  INFO        Attachments : ON
+2026-05-02 13:21:26,777  INFO        Boards      : ON
+2026-05-02 13:21:26,777  INFO        Sprints     : ON
+2026-05-02 13:21:26,777  INFO        Relations   : ON
+2026-05-02 13:21:26,777  INFO        Queries     : ON
+2026-05-02 13:21:26,777  INFO        Delivery Plans : ON
+2026-05-02 13:21:26,777  INFO      ======================================================================
+2026-05-02 13:21:26,777  INFO      Step 1/9  Fetching work item IDs …
+2026-05-02 13:21:26,952  INFO                5 to migrate (0 done).
+2026-05-02 13:21:26,953  INFO      Step 2/9  Fetching work item details …
+2026-05-02 13:21:27,223  INFO                5/5 …
+2026-05-02 13:21:27,223  INFO      Step 3/9  Syncing labels …
+2026-05-02 13:21:27,223  INFO      Step 4/9  Skipped attachment release.
+2026-05-02 13:21:27,223  INFO      Step 5/9  Migrating work items …
+2026-05-02 13:21:27,223  INFO        [1/5] ADO#203  sample story
+2026-05-02 13:21:27,852  INFO        [DRY RUN] sample story
+2026-05-02 13:21:28,661  INFO        [2/5] ADO#204  sample story 2
+2026-05-02 13:21:28,807  INFO        [DRY RUN] sample story 2
+2026-05-02 13:21:29,608  INFO        [3/5] ADO#205  sample story 3
+2026-05-02 13:21:29,775  INFO        [DRY RUN] sample story 3
+2026-05-02 13:21:30,576  INFO        [4/5] ADO#206  sample story 4
+2026-05-02 13:21:30,709  INFO        [DRY RUN] sample story 4
+2026-05-02 13:21:31,513  INFO        [5/5] ADO#207  Sample Task - 123
+2026-05-02 13:21:31,610  INFO        [DRY RUN] Sample Task - 123
+2026-05-02 13:21:32,422  INFO      Step 5/9  Work items: 5 OK / 0 failed.
+2026-05-02 13:21:32,422  INFO      Step 6/9  Migrating boards ==>> GitHub Projects v2 …
+2026-05-02 13:21:32,422  INFO      Board migration: fetching ADO boards …
+2026-05-02 13:21:32,846  INFO      Found 3 board(s) across 1 team(s).
+2026-05-02 13:21:32,846  INFO      Found 3 board(s).
+2026-05-02 13:21:32,846  INFO      
+== Board: 'Stories' (team: migrationtest Team) ==
+2026-05-02 13:21:33,107  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:21:33,322  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/_apis/work/boards/1b05919b-05d9-4721-85f5-254a9104eca7/workitems?api-version=7.1-preview.1
+2026-05-02 13:21:33,640  INFO        [DRY RUN] Would create project 'migrationtest – Stories' with 4 columns.
+2026-05-02 13:21:33,640  INFO      
+== Board: 'Features' (team: migrationtest Team) ==
+2026-05-02 13:21:33,935  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:21:34,236  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/_apis/work/boards/5fc2bd19-a471-45ba-a84f-c8796b24f210/workitems?api-version=7.1-preview.1
+2026-05-02 13:21:34,560  INFO        [DRY RUN] Would create project 'migrationtest – Features' with 4 columns.
+2026-05-02 13:21:34,560  INFO      
+== Board: 'Epics' (team: migrationtest Team) ==
+2026-05-02 13:21:34,739  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:21:35,036  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/_apis/work/boards/ff4abe10-56e3-4d8a-a327-01c3ede2e36e/workitems?api-version=7.1-preview.1
+2026-05-02 13:21:35,388  INFO        [DRY RUN] Would create project 'migrationtest – Epics' with 4 columns.
+2026-05-02 13:21:35,388  INFO      Step 7/9  Migrating work item relationships …
+2026-05-02 13:21:35,388  INFO      Step 7/9  Migrating work item relations …
+2026-05-02 13:21:35,388  WARNING     No migrated work items to create relations for
+2026-05-02 13:21:35,388  INFO      Step 8/9  Migrating sprints & iterations …
+2026-05-02 13:21:35,388  INFO      Step 6/7  Migrating sprints & iterations …
+2026-05-02 13:21:35,746  INFO      Team 'migrationtest Team': 3 sprint(s)
+2026-05-02 13:21:35,749  INFO        [DRY RUN] Milestone: Iteration 1
+2026-05-02 13:21:35,749  INFO        [DRY RUN] Milestone: Iteration 2
+2026-05-02 13:21:35,754  INFO        [DRY RUN] Milestone: Iteration 3
+2026-05-02 13:21:35,754  INFO        Created 0 milestone(s)
+2026-05-02 13:21:35,754  INFO        Sprint assignment: 0 assigned / 0 unassigned
+2026-05-02 13:21:35,756  INFO      Step 9a/9 Exporting saved queries …
+2026-05-02 13:21:35,931  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:21:35,940  INFO      Exported 1 queries to query_map.json
+2026-05-02 13:21:36,102  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:21:36,105  INFO      Generated filter guide: GITHUB_FILTERS.md
+2026-05-02 13:21:36,107  INFO                Query exports done (see query_map.json, GITHUB_FILTERS.md)
+2026-05-02 13:21:36,107  INFO      Step 9b/9 Exporting delivery plans …
+2026-05-02 13:21:36,259  INFO      Fetched 1 delivery plan(s)
+2026-05-02 13:21:36,259  INFO      Exporting delivery plans (1 found) …
+2026-05-02 13:21:36,424  INFO      No timeline items to export
+2026-05-02 13:21:36,591  INFO      Generated Mermaid timeline: timeline.mmd
+2026-05-02 13:21:36,764  INFO      Generated roadmap: ROADMAP.md
+2026-05-02 13:21:36,975  INFO      Exported delivery plan summary to .
+2026-05-02 13:21:36,991  INFO                Delivery plan exports done (see timeline.csv, ROADMAP.md)
+2026-05-02 13:21:36,991  INFO      
+Step 9c/9 Complete.
+2026-05-02 13:21:36,991  INFO        Issues     : 0
+2026-05-02 13:21:36,991  INFO        Projects   : 0
+2026-05-02 13:21:36,991  INFO        Sprints    : 0
+2026-05-02 13:21:36,991  INFO      
+2026-05-02 13:21:36,993  INFO      Next steps:
+2026-05-02 13:21:36,993  INFO        1. Review GitHub issues and projects
+2026-05-02 13:21:36,993  INFO        2. Check GITHUB_FILTERS.md for saved query conversions
+2026-05-02 13:21:36,993  INFO        3. Check ROADMAP.md for delivery plan timeline
+2026-05-02 13:21:36,993  INFO        4. Check critical_path.json for critical dependencies
+2026-05-02 13:22:17,981  INFO      ======================================================================
+2026-05-02 13:22:17,981  INFO        ADO Migration Pipeline (ENHANCED)
+2026-05-02 13:22:17,981  INFO        Source      : gopinathmulumudi/migrationtest
+2026-05-02 13:22:17,981  INFO        Target      : migratefromado3/boards
+2026-05-02 13:22:17,981  INFO        Mode        : DRY RUN
+2026-05-02 13:22:17,981  INFO        Attachments : ON
+2026-05-02 13:22:17,981  INFO        Boards      : ON
+2026-05-02 13:22:17,981  INFO        Sprints     : ON
+2026-05-02 13:22:17,981  INFO        Relations   : ON
+2026-05-02 13:22:17,981  INFO        Queries     : ON
+2026-05-02 13:22:17,981  INFO        Delivery Plans : ON
+2026-05-02 13:22:17,981  INFO      ======================================================================
+2026-05-02 13:22:17,981  INFO      Step 1/9  Fetching work item IDs …
+2026-05-02 13:22:18,192  INFO                5 to migrate (0 done).
+2026-05-02 13:22:18,192  INFO      Step 2/9  Fetching work item details …
+2026-05-02 13:22:18,362  INFO                5/5 …
+2026-05-02 13:22:18,362  INFO      Step 3/9  Syncing labels …
+2026-05-02 13:22:18,362  INFO      Step 4/9  Skipped attachment release.
+2026-05-02 13:22:18,362  INFO      Step 5/9  Migrating work items …
+2026-05-02 13:22:18,362  INFO        [1/5] ADO#203  sample story
+2026-05-02 13:22:18,947  INFO        [DRY RUN] sample story
+2026-05-02 13:22:19,748  INFO        [2/5] ADO#204  sample story 2
+2026-05-02 13:22:19,867  INFO        [DRY RUN] sample story 2
+2026-05-02 13:22:20,669  INFO        [3/5] ADO#205  sample story 3
+2026-05-02 13:22:20,812  INFO        [DRY RUN] sample story 3
+2026-05-02 13:22:21,619  INFO        [4/5] ADO#206  sample story 4
+2026-05-02 13:22:21,779  INFO        [DRY RUN] sample story 4
+2026-05-02 13:22:22,587  INFO        [5/5] ADO#207  Sample Task - 123
+2026-05-02 13:22:22,732  INFO        [DRY RUN] Sample Task - 123
+2026-05-02 13:22:23,534  INFO      Step 5/9  Work items: 5 OK / 0 failed.
+2026-05-02 13:22:23,535  INFO      Step 6/9  Migrating boards ==>> GitHub Projects v2 …
+2026-05-02 13:22:23,535  INFO      Board migration: fetching ADO boards …
+2026-05-02 13:22:23,926  INFO      Found 3 board(s) across 1 team(s).
+2026-05-02 13:22:23,926  INFO      Found 3 board(s).
+2026-05-02 13:22:23,926  INFO      
+== Board: 'Stories' (team: migrationtest Team) ==
+2026-05-02 13:22:24,114  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:22:24,361  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/_apis/work/boards/1b05919b-05d9-4721-85f5-254a9104eca7/workitems?api-version=7.0
+2026-05-02 13:22:24,704  INFO        [DRY RUN] Would create project 'migrationtest – Stories' with 4 columns.
+2026-05-02 13:22:24,704  INFO      
+== Board: 'Features' (team: migrationtest Team) ==
+2026-05-02 13:22:24,855  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:22:25,096  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/_apis/work/boards/5fc2bd19-a471-45ba-a84f-c8796b24f210/workitems?api-version=7.0
+2026-05-02 13:22:25,395  INFO        [DRY RUN] Would create project 'migrationtest – Features' with 4 columns.
+2026-05-02 13:22:25,395  INFO      
+== Board: 'Epics' (team: migrationtest Team) ==
+2026-05-02 13:22:25,627  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:22:25,849  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/_apis/work/boards/ff4abe10-56e3-4d8a-a327-01c3ede2e36e/workitems?api-version=7.0
+2026-05-02 13:22:26,158  INFO        [DRY RUN] Would create project 'migrationtest – Epics' with 4 columns.
+2026-05-02 13:22:26,158  INFO      Step 7/9  Migrating work item relationships …
+2026-05-02 13:22:26,158  INFO      Step 7/9  Migrating work item relations …
+2026-05-02 13:22:26,158  WARNING     No migrated work items to create relations for
+2026-05-02 13:22:26,158  INFO      Step 8/9  Migrating sprints & iterations …
+2026-05-02 13:22:26,158  INFO      Step 6/7  Migrating sprints & iterations …
+2026-05-02 13:22:26,536  INFO      Team 'migrationtest Team': 3 sprint(s)
+2026-05-02 13:22:26,537  INFO        [DRY RUN] Milestone: Iteration 1
+2026-05-02 13:22:26,537  INFO        [DRY RUN] Milestone: Iteration 2
+2026-05-02 13:22:26,537  INFO        [DRY RUN] Milestone: Iteration 3
+2026-05-02 13:22:26,539  INFO        Created 0 milestone(s)
+2026-05-02 13:22:26,539  INFO        Sprint assignment: 0 assigned / 0 unassigned
+2026-05-02 13:22:26,539  INFO      Step 9a/9 Exporting saved queries …
+2026-05-02 13:22:26,696  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:22:26,696  INFO      Exported 1 queries to query_map.json
+2026-05-02 13:22:26,830  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:22:26,832  INFO      Generated filter guide: GITHUB_FILTERS.md
+2026-05-02 13:22:26,832  INFO                Query exports done (see query_map.json, GITHUB_FILTERS.md)
+2026-05-02 13:22:26,832  INFO      Step 9b/9 Exporting delivery plans …
+2026-05-02 13:22:26,979  INFO      Fetched 1 delivery plan(s)
+2026-05-02 13:22:26,979  INFO      Exporting delivery plans (1 found) …
+2026-05-02 13:22:27,147  INFO      No timeline items to export
+2026-05-02 13:22:27,281  INFO      Generated Mermaid timeline: timeline.mmd
+2026-05-02 13:22:27,433  INFO      Generated roadmap: ROADMAP.md
+2026-05-02 13:22:27,567  INFO      Exported delivery plan summary to .
+2026-05-02 13:22:27,567  INFO                Delivery plan exports done (see timeline.csv, ROADMAP.md)
+2026-05-02 13:22:27,567  INFO      
+Step 9c/9 Complete.
+2026-05-02 13:22:27,567  INFO        Issues     : 0
+2026-05-02 13:22:27,567  INFO        Projects   : 0
+2026-05-02 13:22:27,567  INFO        Sprints    : 0
+2026-05-02 13:22:27,567  INFO      
+2026-05-02 13:22:27,567  INFO      Next steps:
+2026-05-02 13:22:27,567  INFO        1. Review GitHub issues and projects
+2026-05-02 13:22:27,567  INFO        2. Check GITHUB_FILTERS.md for saved query conversions
+2026-05-02 13:22:27,567  INFO        3. Check ROADMAP.md for delivery plan timeline
+2026-05-02 13:22:27,567  INFO        4. Check critical_path.json for critical dependencies
+2026-05-02 13:23:13,176  INFO      ======================================================================
+2026-05-02 13:23:13,176  INFO        ADO Migration Pipeline (ENHANCED)
+2026-05-02 13:23:13,176  INFO        Source      : gopinathmulumudi/migrationtest
+2026-05-02 13:23:13,176  INFO        Target      : migratefromado3/boards
+2026-05-02 13:23:13,176  INFO        Mode        : DRY RUN
+2026-05-02 13:23:13,176  INFO        Attachments : ON
+2026-05-02 13:23:13,176  INFO        Boards      : ON
+2026-05-02 13:23:13,176  INFO        Sprints     : ON
+2026-05-02 13:23:13,188  INFO        Relations   : ON
+2026-05-02 13:23:13,188  INFO        Queries     : ON
+2026-05-02 13:23:13,188  INFO        Delivery Plans : ON
+2026-05-02 13:23:13,188  INFO      ======================================================================
+2026-05-02 13:23:13,188  INFO      Step 1/9  Fetching work item IDs …
+2026-05-02 13:23:13,415  INFO                5 to migrate (0 done).
+2026-05-02 13:23:13,415  INFO      Step 2/9  Fetching work item details …
+2026-05-02 13:23:13,838  INFO                5/5 …
+2026-05-02 13:23:13,838  INFO      Step 3/9  Syncing labels …
+2026-05-02 13:23:13,838  INFO      Step 4/9  Skipped attachment release.
+2026-05-02 13:23:13,838  INFO      Step 5/9  Migrating work items …
+2026-05-02 13:23:13,854  INFO        [1/5] ADO#203  sample story
+2026-05-02 13:23:14,389  INFO        [DRY RUN] sample story
+2026-05-02 13:23:15,192  INFO        [2/5] ADO#204  sample story 2
+2026-05-02 13:23:15,308  INFO        [DRY RUN] sample story 2
+2026-05-02 13:23:16,116  INFO        [3/5] ADO#205  sample story 3
+2026-05-02 13:23:16,220  INFO        [DRY RUN] sample story 3
+2026-05-02 13:23:17,026  INFO        [4/5] ADO#206  sample story 4
+2026-05-02 13:23:17,136  INFO        [DRY RUN] sample story 4
+2026-05-02 13:23:17,938  INFO        [5/5] ADO#207  Sample Task - 123
+2026-05-02 13:23:18,121  INFO        [DRY RUN] Sample Task - 123
+2026-05-02 13:23:18,928  INFO      Step 5/9  Work items: 5 OK / 0 failed.
+2026-05-02 13:23:18,928  INFO      Step 6/9  Migrating boards ==>> GitHub Projects v2 …
+2026-05-02 13:23:18,928  INFO      Board migration: fetching ADO boards …
+2026-05-02 13:23:19,389  INFO      Found 3 board(s) across 1 team(s).
+2026-05-02 13:23:19,389  INFO      Found 3 board(s).
+2026-05-02 13:23:19,389  INFO      
+== Board: 'Stories' (team: migrationtest Team) ==
+2026-05-02 13:23:19,567  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:23:19,782  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/migrationtest%20Team/_apis/work/workitems?api-version=7.0
+2026-05-02 13:23:20,111  INFO        [DRY RUN] Would create project 'migrationtest – Stories' with 4 columns.
+2026-05-02 13:23:20,111  INFO      
+== Board: 'Features' (team: migrationtest Team) ==
+2026-05-02 13:23:20,388  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:23:20,632  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/migrationtest%20Team/_apis/work/workitems?api-version=7.0
+2026-05-02 13:23:20,953  INFO        [DRY RUN] Would create project 'migrationtest – Features' with 4 columns.
+2026-05-02 13:23:20,953  INFO      
+== Board: 'Epics' (team: migrationtest Team) ==
+2026-05-02 13:23:21,201  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-02 13:23:21,454  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/gopinathmulumudi/migrationtest/migrationtest%20Team/_apis/work/workitems?api-version=7.0
+2026-05-02 13:23:21,729  INFO        [DRY RUN] Would create project 'migrationtest – Epics' with 4 columns.
+2026-05-02 13:23:21,729  INFO      Step 7/9  Migrating work item relationships …
+2026-05-02 13:23:21,729  INFO      Step 7/9  Migrating work item relations …
+2026-05-02 13:23:21,729  WARNING     No migrated work items to create relations for
+2026-05-02 13:23:21,729  INFO      Step 8/9  Migrating sprints & iterations …
+2026-05-02 13:23:21,729  INFO      Step 6/7  Migrating sprints & iterations …
+2026-05-02 13:23:22,114  INFO      Team 'migrationtest Team': 3 sprint(s)
+2026-05-02 13:23:22,114  INFO        [DRY RUN] Milestone: Iteration 1
+2026-05-02 13:23:22,114  INFO        [DRY RUN] Milestone: Iteration 2
+2026-05-02 13:23:22,114  INFO        [DRY RUN] Milestone: Iteration 3
+2026-05-02 13:23:22,114  INFO        Created 0 milestone(s)
+2026-05-02 13:23:22,114  INFO        Sprint assignment: 0 assigned / 0 unassigned
+2026-05-02 13:23:22,114  INFO      Step 9a/9 Exporting saved queries …
+2026-05-02 13:23:22,270  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:23:22,270  INFO      Exported 1 queries to query_map.json
+2026-05-02 13:23:22,451  INFO      Fetched 1 saved query(ies)
+2026-05-02 13:23:22,457  INFO      Generated filter guide: GITHUB_FILTERS.md
+2026-05-02 13:23:22,457  INFO                Query exports done (see query_map.json, GITHUB_FILTERS.md)
+2026-05-02 13:23:22,457  INFO      Step 9b/9 Exporting delivery plans …
+2026-05-02 13:23:22,617  INFO      Fetched 1 delivery plan(s)
+2026-05-02 13:23:22,617  INFO      Exporting delivery plans (1 found) …
+2026-05-02 13:23:22,768  INFO      No timeline items to export
+2026-05-02 13:23:22,964  INFO      Generated Mermaid timeline: timeline.mmd
+2026-05-02 13:23:23,102  INFO      Generated roadmap: ROADMAP.md
+2026-05-02 13:23:23,285  INFO      Exported delivery plan summary to .
+2026-05-02 13:23:23,285  INFO                Delivery plan exports done (see timeline.csv, ROADMAP.md)
+2026-05-02 13:23:23,285  INFO      
+Step 9c/9 Complete.
+2026-05-02 13:23:23,285  INFO        Issues     : 0
+2026-05-02 13:23:23,285  INFO        Projects   : 0
+2026-05-02 13:23:23,285  INFO        Sprints    : 0
+2026-05-02 13:23:23,285  INFO      
+2026-05-02 13:23:23,285  INFO      Next steps:
+2026-05-02 13:23:23,285  INFO        1. Review GitHub issues and projects
+2026-05-02 13:23:23,285  INFO        2. Check GITHUB_FILTERS.md for saved query conversions
+2026-05-02 13:23:23,285  INFO        3. Check ROADMAP.md for delivery plan timeline
+2026-05-02 13:23:23,285  INFO        4. Check critical_path.json for critical dependencies
+2026-05-04 22:55:40,239  INFO      ======================================================================
+2026-05-04 22:55:40,242  INFO        ADO Migration Pipeline (ENHANCED)
+2026-05-04 22:55:40,242  INFO        Source      : YashTech-DevOps/YASH-DevOps-Serverless
+2026-05-04 22:55:40,242  INFO        Target      : Urvashi773/ado-migration-poc
+2026-05-04 22:55:40,242  INFO        Mode        : DRY RUN
+2026-05-04 22:55:40,242  INFO        Attachments : ON
+2026-05-04 22:55:40,242  INFO        Boards      : ON
+2026-05-04 22:55:40,242  INFO        Sprints     : ON
+2026-05-04 22:55:40,242  INFO        Relations   : ON
+2026-05-04 22:55:40,242  INFO        Queries     : ON
+2026-05-04 22:55:40,242  INFO        Delivery Plans : ON
+2026-05-04 22:55:40,242  INFO      ======================================================================
+2026-05-04 22:55:40,242  INFO      Step 1/9  Fetching work item IDs …
+2026-05-04 22:55:41,983  INFO                5 to migrate (0 done).
+2026-05-04 22:55:41,983  INFO      Step 2/9  Fetching work item details …
+2026-05-04 22:55:44,202  INFO                5/5 …
+2026-05-04 22:55:44,202  INFO      Step 3/9  Syncing labels …
+2026-05-04 22:55:44,202  INFO      Step 4/9  Skipped attachment release.
+2026-05-04 22:55:44,202  INFO      Step 5/9  Migrating work items …
+2026-05-04 22:55:44,204  INFO        [1/5] ADO#2976  DBOPs 
+2026-05-04 22:55:47,513  INFO        [DRY RUN] DBOPs 
+2026-05-04 22:55:48,316  INFO        [2/5] ADO#2977  ApiOps Azure 
+2026-05-04 22:55:51,655  INFO        [DRY RUN] ApiOps Azure 
+2026-05-04 22:55:52,459  INFO        [3/5] ADO#2978  ApiOps Aws
+2026-05-04 22:55:53,542  INFO        [DRY RUN] ApiOps Aws
+2026-05-04 22:55:54,345  INFO        [4/5] ADO#2979  Demo's
+2026-05-04 22:55:55,529  INFO        [DRY RUN] Demo's
+2026-05-04 22:55:56,331  INFO        [5/5] ADO#2980  DBOps on AZure Sql server via Powershell module
+2026-05-04 22:55:57,376  INFO        [DRY RUN] DBOps on AZure Sql server via Powershell module
+2026-05-04 22:55:58,183  INFO      Step 5/9  Work items: 5 OK / 0 failed.
+2026-05-04 22:55:58,183  INFO      Step 6/9  Migrating boards ==>> GitHub Projects v2 …
+2026-05-04 22:55:58,183  INFO      Board migration: fetching ADO boards …
+2026-05-04 22:56:03,609  INFO      Found 3 board(s) across 1 team(s).
+2026-05-04 22:56:03,609  INFO      Found 3 board(s).
+2026-05-04 22:56:03,610  INFO      
+== Board: 'Stories' (team: YASH-DevOps-Serverless Team) ==
+2026-05-04 22:56:05,864  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-04 22:56:08,215  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/YashTech-DevOps/YASH-DevOps-Serverless/YASH-DevOps-Serverless%20Team/_apis/work/boards/4fa27f63-9b83-4a09-954b-722838fb391d/workitems?api-version=7.1-preview.1
+2026-05-04 22:56:12,116  INFO        [DRY RUN] Would create project 'YASH-DevOps-Serverless – Stories' with 4 columns.
+2026-05-04 22:56:12,116  INFO      
+== Board: 'Epics' (team: YASH-DevOps-Serverless Team) ==
+2026-05-04 22:56:14,108  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-04 22:56:16,404  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/YashTech-DevOps/YASH-DevOps-Serverless/YASH-DevOps-Serverless%20Team/_apis/work/boards/c5da81d9-58b6-4ebc-8b19-e8146cb2e1a5/workitems?api-version=7.1-preview.1
+2026-05-04 22:56:20,192  INFO        [DRY RUN] Would create project 'YASH-DevOps-Serverless – Epics' with 4 columns.
+2026-05-04 22:56:20,192  INFO      
+== Board: 'Features' (team: YASH-DevOps-Serverless Team) ==
+2026-05-04 22:56:22,260  INFO        Columns: ['New', 'Active', 'Resolved', 'Closed']
+2026-05-04 22:56:24,594  WARNING   Board items endpoint failed, using WIQL fallback: 404 Client Error: Not Found for url: https://dev.azure.com/YashTech-DevOps/YASH-DevOps-Serverless/YASH-DevOps-Serverless%20Team/_apis/work/boards/240be590-9ff0-493b-9007-8312bdc5c356/workitems?api-version=7.1-preview.1
+2026-05-04 22:56:27,979  INFO        [DRY RUN] Would create project 'YASH-DevOps-Serverless – Features' with 4 columns.
+2026-05-04 22:56:27,979  INFO      Step 7/9  Migrating work item relationships …
+2026-05-04 22:56:27,981  INFO      Step 7/9  Migrating work item relations …
+2026-05-04 22:56:27,981  WARNING     No migrated work items to create relations for
+2026-05-04 22:56:27,981  INFO      Step 8/9  Migrating sprints & iterations …
+2026-05-04 22:56:27,981  INFO      Step 6/7  Migrating sprints & iterations …
+2026-05-04 22:56:30,594  INFO      Team 'YASH-DevOps-Serverless Team': 13 sprint(s)
+2026-05-04 22:56:30,594  INFO        [DRY RUN] Milestone: Serverless_S1
+2026-05-04 22:56:30,594  INFO        [DRY RUN] Milestone: Serverless_S2
+2026-05-04 22:56:30,600  INFO        [DRY RUN] Milestone: Serverless_S3
+2026-05-04 22:56:30,600  INFO        [DRY RUN] Milestone: Serverless_S4
+2026-05-04 22:56:30,600  INFO        [DRY RUN] Milestone: Serverless_S5
+2026-05-04 22:56:30,600  INFO        [DRY RUN] Milestone: Serverless_S6
+2026-05-04 22:56:30,600  INFO        [DRY RUN] Milestone: Serverless_S7
+2026-05-04 22:56:30,601  INFO        [DRY RUN] Milestone: Serverless_S8
+2026-05-04 22:56:30,601  INFO        [DRY RUN] Milestone: Serverless_S9
+2026-05-04 22:56:30,601  INFO        [DRY RUN] Milestone: Serverless_S10
+2026-05-04 22:56:30,601  INFO        [DRY RUN] Milestone: Serverless_S11
+2026-05-04 22:56:30,602  INFO        [DRY RUN] Milestone: S12
+2026-05-04 22:56:30,602  INFO        [DRY RUN] Milestone: Sprint 1
+2026-05-04 22:56:30,603  INFO        Created 0 milestone(s)
+2026-05-04 22:56:30,603  INFO        Sprint assignment: 0 assigned / 0 unassigned
+2026-05-04 22:56:30,603  INFO      Step 9a/9 Exporting saved queries …
+2026-05-04 22:56:32,702  INFO      Fetched 0 saved query(ies)
+2026-05-04 22:56:32,714  INFO      Exported 0 queries to query_map.json
+2026-05-04 22:56:34,327  INFO      Fetched 0 saved query(ies)
+2026-05-04 22:56:34,332  INFO      Generated filter guide: GITHUB_FILTERS.md
+2026-05-04 22:56:34,333  INFO                Query exports done (see query_map.json, GITHUB_FILTERS.md)
+2026-05-04 22:56:34,333  INFO      Step 9b/9 Exporting delivery plans …
+2026-05-04 22:56:35,940  INFO      Fetched 0 delivery plan(s)
+2026-05-04 22:56:35,942  INFO      Exporting delivery plans (0 found) …
+2026-05-04 22:56:35,942  INFO      No timeline items to export
+2026-05-04 22:56:35,946  INFO      Generated Mermaid timeline: timeline.mmd
+2026-05-04 22:56:35,949  INFO      Generated roadmap: ROADMAP.md
+2026-05-04 22:56:35,949  INFO      Exported delivery plan summary to .
+2026-05-04 22:56:35,950  INFO                Delivery plan exports done (see timeline.csv, ROADMAP.md)
+2026-05-04 22:56:35,950  INFO      
+Step 9c/9 Complete.
+2026-05-04 22:56:35,951  INFO        Issues     : 0
+2026-05-04 22:56:35,951  INFO        Projects   : 0
+2026-05-04 22:56:35,951  INFO        Sprints    : 0
+2026-05-04 22:56:35,951  INFO      
+2026-05-04 22:56:35,951  INFO      Next steps:
+2026-05-04 22:56:35,952  INFO        1. Review GitHub issues and projects
+2026-05-04 22:56:35,952  INFO        2. Check GITHUB_FILTERS.md for saved query conversions
+2026-05-04 22:56:35,952  INFO        3. Check ROADMAP.md for delivery plan timeline
+2026-05-04 22:56:35,952  INFO        4. Check critical_path.json for critical dependencies
+2026-05-04 22:57:38,705  INFO      ======================================================================
+2026-05-04 22:57:38,706  INFO        ADO Migration Pipeline (ENHANCED)
+2026-05-04 22:57:38,707  INFO        Source      : YashTech-DevOps/YASH-DevOps-Serverless
+2026-05-04 22:57:38,707  INFO        Target      : Urvashi773/ado-migration-poc
+2026-05-04 22:57:38,707  INFO        Mode        : LIVE
+2026-05-04 22:57:38,707  INFO        Attachments : ON
+2026-05-04 22:57:38,707  INFO        Boards      : ON
+2026-05-04 22:57:38,707  INFO        Sprints     : ON
+2026-05-04 22:57:38,709  INFO        Relations   : ON
+2026-05-04 22:57:38,709  INFO        Queries     : ON
+2026-05-04 22:57:38,709  INFO        Delivery Plans : ON
+2026-05-04 22:57:38,710  INFO      ======================================================================
+2026-05-04 22:57:38,710  INFO      Step 1/9  Fetching work item IDs …
+2026-05-04 22:57:40,324  INFO                208 to migrate (0 done).
+2026-05-04 22:57:40,326  INFO      Step 2/9  Fetching work item details …
+2026-05-04 22:57:42,189  INFO                200/208 …
+2026-05-04 22:57:45,211  INFO                208/208 …
+2026-05-04 22:57:45,211  INFO      Step 3/9  Syncing labels …
+2026-05-04 22:58:27,419  INFO      Step 4/9  Preparing attachment release …
+2026-05-04 22:58:30,306  INFO        Created migration release (id=317332482)
+2026-05-04 22:58:30,314  INFO      Step 5/9  Migrating work items …
+2026-05-04 22:58:30,314  INFO        [1/208] ADO#2976  DBOPs 
+2026-05-04 22:58:37,553  INFO          [OK] GH#893
+2026-05-04 22:58:37,553  INFO        [2/208] ADO#2977  ApiOps Azure 
+2026-05-04 22:58:45,239  INFO          [OK] GH#894
+2026-05-04 22:58:45,240  INFO        [3/208] ADO#2978  ApiOps Aws
+2026-05-04 22:58:51,392  INFO          [OK] GH#895
+2026-05-04 22:58:51,392  INFO        [4/208] ADO#2979  Demo's
+2026-05-04 22:58:57,432  INFO          [OK] GH#896
+2026-05-04 22:58:57,434  INFO        [5/208] ADO#2980  DBOps on AZure Sql server via Powershell module
+2026-05-04 22:59:04,166  INFO          [OK] GH#897
+2026-05-04 22:59:04,167  INFO        [6/208] ADO#2981  DBOps on Oracle  via Powershell module
+2026-05-04 22:59:11,017  INFO          [OK] GH#898
+2026-05-04 22:59:11,019  INFO        [7/208] ADO#2982  DBOps on postgressSQL via Powershell module
+2026-05-04 22:59:16,021  INFO          [OK] GH#899
+2026-05-04 22:59:16,021  INFO        [8/208] ADO#2983  DbOps on MySql via powershell module
+2026-05-04 22:59:23,655  INFO          [OK] GH#900
+2026-05-04 22:59:23,655  INFO        [9/208] ADO#2984  ApiOps : GHAS Implementation for DevSecOps
+2026-05-04 22:59:28,586  INFO          [OK] GH#901
+2026-05-04 22:59:28,590  INFO        [10/208] ADO#2985  Azure APIOPs backlog item
+2026-05-04 22:59:33,641  INFO          [OK] GH#902
+2026-05-04 22:59:33,642  INFO        [11/208] ADO#2986  ApiOps : Deployed Api Testing Via DevTesOps
+2026-05-04 22:59:38,217  INFO          [OK] GH#903
+2026-05-04 22:59:38,217  INFO        [12/208] ADO#2987  ApiOps walkthrough and APi method exploration (get /POs
+2026-05-04 22:59:46,930  INFO          [OK] GH#904
+2026-05-04 22:59:46,931  INFO        [13/208] ADO#2988  ApiOps walkthrough and APi method exploration (get /POs
+2026-05-04 22:59:53,611  INFO          [OK] GH#905
+2026-05-04 22:59:53,611  INFO        [14/208] ADO#2989  ApiOps walkthrough and APi method exploration (get /POs
+2026-05-04 23:00:00,382  INFO          [OK] GH#906
+2026-05-04 23:00:00,382  INFO        [15/208] ADO#2990  APiOps Boto3 method assigning to lambda 
+2026-05-04 23:00:07,223  INFO          [OK] GH#907
+2026-05-04 23:00:07,223  INFO        [16/208] ADO#2991  ApiOps_AWS : ApiOPs walkthrough and api method explorat
+2026-05-04 23:00:14,469  INFO          [OK] GH#908
+2026-05-04 23:00:14,469  INFO        [17/208] ADO#2992  Serverless DevSecOps : GHAS with in the Team
+2026-05-04 23:00:18,880  INFO          [OK] GH#909
+2026-05-04 23:00:18,880  INFO        [18/208] ADO#3003  API & API Methods
+2026-05-04 23:00:25,532  INFO          [OK] GH#910
+2026-05-04 23:00:25,532  INFO        [19/208] ADO#3058  API Authentication
+2026-05-04 23:00:32,635  INFO          [OK] GH#911
+2026-05-04 23:00:32,640  INFO        [20/208] ADO#3059  Azure APIM Overview
+2026-05-04 23:00:38,763  INFO          [OK] GH#912
+2026-05-04 23:00:38,763  INFO        [21/208] ADO#3060  APIM Policies
+2026-05-04 23:00:46,513  INFO          [OK] GH#913
+2026-05-04 23:00:46,520  INFO        [22/208] ADO#3061  Swagger file
+2026-05-04 23:00:54,645  INFO          [OK] GH#914
+2026-05-04 23:00:54,646  INFO        [23/208] ADO#3062  GHAS for DevSecOps
+2026-05-04 23:00:59,689  INFO          [OK] GH#915
+2026-05-04 23:00:59,689  INFO        [24/208] ADO#3063  API walkthrough and  API Policies 
+2026-05-04 23:01:05,869  INFO          [OK] GH#916
+2026-05-04 23:01:05,869  INFO        [25/208] ADO#3064  Create Extractor function for api gateway
+2026-05-04 23:01:12,726  INFO          [OK] GH#917
+2026-05-04 23:01:12,727  INFO        [26/208] ADO#3065  install oracle using powershell
+2026-05-04 23:01:19,371  INFO          [OK] GH#918
+2026-05-04 23:01:19,375  INFO        [27/208] ADO#3066  Applying API Policies in Azure APIM
+2026-05-04 23:01:27,532  INFO          [OK] GH#919
+2026-05-04 23:01:27,532  INFO        [28/208] ADO#3067  Create function to extract API Swagger
+2026-05-04 23:01:35,631  INFO          [OK] GH#920
+2026-05-04 23:01:35,632  INFO        [29/208] ADO#3068  APIOPs Developer Portal
+2026-05-04 23:01:41,078  INFO          [OK] GH#921
+2026-05-04 23:01:41,080  INFO        [30/208] ADO#3069  Installation of PSFramework
+2026-05-04 23:01:50,032  INFO          [OK] GH#922
+2026-05-04 23:01:50,033  INFO        [31/208] ADO#3070  Creating APIM & overview on portal
+2026-05-04 23:01:57,660  INFO          [OK] GH#923
+2026-05-04 23:01:57,660  INFO        [32/208] ADO#3071  ApiOps: Authentications and Policies
+2026-05-04 23:02:03,321  INFO          [OK] GH#924
+2026-05-04 23:02:03,321  INFO        [33/208] ADO#3072  Exploration of Devsecops tools for API
+2026-05-04 23:02:09,544  INFO          [OK] GH#925
+2026-05-04 23:02:09,544  INFO        [34/208] ADO#3073  Security and vulnerability tools exploration and instal
+2026-05-04 23:02:15,592  INFO          [OK] GH#926
+2026-05-04 23:02:15,592  INFO        [35/208] ADO#3074  Ad-hoc deployment using folder myscripts
+2026-05-04 23:02:23,396  INFO          [OK] GH#927
+2026-05-04 23:02:23,406  INFO        [36/208] ADO#3075  ApiOps AWS: API Gateway
+2026-05-04 23:02:29,374  INFO          [OK] GH#928
+2026-05-04 23:02:29,378  INFO        [37/208] ADO#3076  Execute a list of files as an Ad-hoc query
+2026-05-04 23:02:36,539  INFO          [OK] GH#929
+2026-05-04 23:02:36,539  INFO        [38/208] ADO#3077  Deployment using packaging system
