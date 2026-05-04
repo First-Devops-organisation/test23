@@ -1,0 +1,16 @@
+# Azure DevOps → GitHub Enterprise Migration Tool (Enhanced)
+# Python 3.8+ required
+
+# Core dependencies
+requests>=2.28.0           # HTTP client
+python-dotenv>=0.19.0      # Environment variable management
+
+# Optional but recommended
+markdownify>=0.10.0        # HTML to Markdown conversion (for work item descriptions)
+
+# For development/testing (optional)
+pytest>=7.0                # Unit testing
+pytest-cov>=3.0            # Code coverage
+
+# Note: Mermaid diagrams and CSV exports use built-in Python libraries
+# No additional dependencies needed for those features
