@@ -42,6 +42,7 @@ $ghRepo           = $config.target.repository
 $ghProjNum        = $config.target.projectNumber
 $ghProjectOwner = [string]$config.target.projectOwner
 $ghProjectOwnerType = [string]$config.target.projectOwnerType
+$ghCodeRepo       = if ($config.target.codeRepository) { $config.target.codeRepository } else { "$ghOrg/$ghRepo" }
 if ([string]::IsNullOrEmpty($ghProjectOwner)) { $ghProjectOwner = $ghOrg }
 if ([string]::IsNullOrEmpty($ghProjectOwnerType)) { $ghProjectOwnerType = "user" }
 $ghPat            = if ($config.target.pat -match '^\$\(') { $env:GH_PAT } else { $config.target.pat }
@@ -358,17 +359,18 @@ foreach ($item in $sortedItems) {
     if ($linkedPRs.Count -gt 0 -or $linkedCommits.Count -gt 0) {
         $body += "## Development Links`n`n"
         if ($linkedPRs.Count -gt 0) {
-            $body += "**Pull Requests (from ADO)**`n"
+            $body += "**Pull Requests (ADO origin)**`n"
             foreach ($prId in $linkedPRs) {
-                # Note: Will need PR mapping file to link to new GitHub PR ID
-                $body += "- ADO PR #$prId`n"
+                # Link to GitHub PRs via the code repo so native sidebar picks up
+                $body += "- https://github.com/$ghCodeRepo/pull/$prId`n"
             }
             $body += "`n"
         }
         if ($linkedCommits.Count -gt 0) {
             $body += "**Commits**`n"
             foreach ($commit in $linkedCommits) {
-                $body += "- $commit`n"
+                # Full URL allows GitHub to auto-link into the Development sidebar
+                $body += "- https://github.com/$ghCodeRepo/commit/$commit`n"
             }
             $body += "`n"
         }

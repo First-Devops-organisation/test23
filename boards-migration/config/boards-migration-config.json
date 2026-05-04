@@ -8,11 +8,12 @@
   },
   "target": {
     "type": "GitHub",
-    "organization": "Urvashi773",
-    "repository": "ado-migration-poc",
-    "projectNumber": 2,
-    "projectOwner": "Urvashi773",
-    "projectOwnerType": "user",
+    "organization": "Second-Devops-organisation1",
+    "repository": "ankit-secrets",
+    "projectNumber": 1,
+    "projectOwner": "Second-Devops-organisation1",
+    "projectOwnerType": "organization",
+    "codeRepository": "Second-Devops-organisation1/ankit-secrets",
     "pat": "$(GH_PAT)"
   },
   "migration": {
