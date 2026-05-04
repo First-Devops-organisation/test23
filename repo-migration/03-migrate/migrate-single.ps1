@@ -740,18 +740,20 @@ else {
             if ($prs.Count -gt 0) { $allPRs += $prs; $page++ } else { break }
         } while ($prs.Count -eq 100)
 
+        # Filter to valid PR objects only (some API results may lack expected properties)
+        $allPRs = @($allPRs | Where-Object { $_ -and $_.PSObject.Properties['state'] })
         $totalPRs    = $allPRs.Count
         $totalOpen   = @($allPRs | Where-Object { $_.state -eq "open" }).Count
-        $totalMerged = @($allPRs | Where-Object { $_.merged_at }).Count
+        $totalMerged = @($allPRs | Where-Object { $_.PSObject.Properties['merged_at'] -and $_.merged_at }).Count
         $totalClosed = $totalPRs - $totalOpen - $totalMerged
 
         # PR breakdown by source branch (head)
         $prByHead = @{}
         foreach ($pr in $allPRs) {
-            $head = $pr.head.ref
+            $head = if ($pr.PSObject.Properties['head'] -and $pr.head -and $pr.head.PSObject.Properties['ref']) { $pr.head.ref } else { 'unknown' }
             if (-not $prByHead.ContainsKey($head)) { $prByHead[$head] = @{ Open=0; Merged=0; Closed=0 } }
             if     ($pr.state -eq "open") { $prByHead[$head].Open++ }
-            elseif ($pr.merged_at)        { $prByHead[$head].Merged++ }
+            elseif ($pr.PSObject.Properties['merged_at'] -and $pr.merged_at) { $prByHead[$head].Merged++ }
             else                          { $prByHead[$head].Closed++ }
         }
         $prHeadMd = "| Source Branch (head) | Open | Merged | Closed | Total |`n|---|---|---|---|---|`n"
@@ -765,10 +767,10 @@ else {
         # PR breakdown by target branch (base)
         $prByBase = @{}
         foreach ($pr in $allPRs) {
-            $base = $pr.base.ref
+            $base = if ($pr.PSObject.Properties['base'] -and $pr.base -and $pr.base.PSObject.Properties['ref']) { $pr.base.ref } else { 'unknown' }
             if (-not $prByBase.ContainsKey($base)) { $prByBase[$base] = @{ Open=0; Merged=0; Closed=0 } }
             if     ($pr.state -eq "open") { $prByBase[$base].Open++ }
-            elseif ($pr.merged_at)        { $prByBase[$base].Merged++ }
+            elseif ($pr.PSObject.Properties['merged_at'] -and $pr.merged_at) { $prByBase[$base].Merged++ }
             else                          { $prByBase[$base].Closed++ }
         }
         $prBaseMd = "| Target Branch (base) | Open | Merged | Closed | Total |`n|---|---|---|---|---|`n"
