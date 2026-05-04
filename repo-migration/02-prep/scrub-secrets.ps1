@@ -61,11 +61,9 @@ foreach ($d in @($reportDir, $logDir, $cloneDir, $scrubbedDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
 }
 
-# ------ Verify git-filter-repo ---------------------------------------------------------------------------------------------------------------------------------------------------------
-$filterRepo = Get-Command git-filter-repo -ErrorAction SilentlyContinue
-if (-not $filterRepo) {
-    Write-Error "git-filter-repo not found. Install: pip install git-filter-repo"
-}
+# NOTE: git-filter-repo is NOT needed in this script.
+# This script only generates the expressions file (replacement rules).
+# The actual git-filter-repo execution happens in migrate-single.ps1 (Stage 3).
 
 # ------ Load findings ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 $findingsPath = Join-Path $reportDir "secret-scan-findings.json"
