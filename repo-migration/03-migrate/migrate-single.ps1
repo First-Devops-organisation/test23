@@ -469,7 +469,7 @@ else {
         Write-Warning "  Could not fetch repo info via API -------- skipping audit."
     }
     else {
-        $defaultBranch = $repoInfo.default_branch
+        $defaultBranch = if ($repoInfo.PSObject.Properties['default_branch']) { $repoInfo.default_branch } else { "main" }
         $defaultBranch | Out-File "$auditDir\gh-default-branch.txt" -Encoding utf8
         Write-Host "  Default branch: $defaultBranch"
 
