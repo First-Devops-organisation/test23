@@ -312,26 +312,6 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PowerShell@2
-      displayName: 'Build Board (Python Injector)'
-      inputs:
-        targetType: inline
-        script: |
-          $base = "$(workingDir)"
-          $scriptPath = Join-Path $base "run-python-board-injector.ps1"
-          $configPath = Join-Path $base "config" "${{ parameters.configFile }}"
-          
-          if (Test-Path $scriptPath) {
-            Write-Host "Running Python Board Injector..."
-            & $scriptPath -ConfigPath $configPath
-          } else {
-            Write-Host "Python Board Injector script not found. Skipping."
-          }
-        pwsh: true
-      env:
-        ADO_PAT: $(ADO_PAT)
-        GH_PAT: $(GH_PAT)
-
-    - task: PowerShell@2
       displayName: 'Reconcile PR Links'
       inputs:
         targetType: inline
