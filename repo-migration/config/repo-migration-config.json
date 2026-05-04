@@ -37,7 +37,7 @@
   ],
   "exclusions": {
     "repos": [],
-    "branches": ["test"]
+    "branches": []
   },
   "output": {
     "reportDir": "./output/reports",
