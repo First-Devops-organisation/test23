@@ -47,7 +47,7 @@ parameters:
     default: true
 
 variables:
-  - group: ankit-adotogit    # ADO_Org, GitHub_Org, GH_PAT, REPORT_DIR, etc.
+  - group: urvashi-adotogit - Copy    # ADO_Org, GitHub_Org, GH_PAT, REPORT_DIR, etc.
 
 stages:
   # ===========================================================================
