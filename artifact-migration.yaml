@@ -1,10 +1,10 @@
 
+
 trigger: none
 
-
+# This pulls all the variables from your screenshot into the pipeline
 variables:
-  - group: artifact-migration
-
+  - group: migration-secrets 
 
 jobs:
   - job: MigrateArtifacts
@@ -17,17 +17,18 @@ jobs:
       - task: PowerShell@2
         displayName: "Execute Artifact Migration Script"
         env:
-          ADO_PAT: $(ADO_PAT)
+          # These must be added to your Variable Group as secrets
+          ADO_PAT: $(ADO_PAT) 
           GH_TOKEN: $(GH_PAT)
         inputs:
           targetType: 'filePath'
           filePath: 'repo-migration/03-migrate/migrate-artifacts.ps1'
           arguments: >
-            -LastBuilds ${{ parameters.LastBuilds }}
+            -LastBuilds "$(LastBuilds)"
             -OrgName "$(ADO_ORG)"
             -ProjectName "$(ADO_PROJECT)"
-            -PipelineName "${{ parameters.PipelineName }}"
+            -PipelineName "$(PipelineName)"
             -GitHubOrg "$(GH_ORG)"
-            -GitHubRepo "${{ parameters.GitHubRepo }}"
-            -Version "${{ parameters.Version }}"
+            -GitHubRepo "$(GitHubRepo)"
+            -Version "$(Version)"
             -Pat "$(ADO_PAT)"
