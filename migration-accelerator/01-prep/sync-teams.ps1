@@ -21,7 +21,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$GitHubPat,
     [Parameter(Mandatory = $true)]
-    [string]$AdoOrg, # Renamed from AdoOrgUrl to match Var Group
+    [string]$AdoOrg,
     [Parameter(Mandatory = $true)]
     [string]$AdoPat,
     [string]$TeamMappingFile = "./config/team-mappings.json",
@@ -44,9 +44,16 @@ $adoHeaders = @{ Authorization = "Basic $base64AdoAuth" }
 Write-Host "Loading user mappings from $UserMappingFile..." -ForegroundColor Gray
 if (-not (Test-Path $UserMappingFile)) { Write-Error "User mapping file not found!"; exit 1 }
 $userMap = @{}
-Import-Csv $UserMappingFile | ForEach-Object {
-    if ($_.ado_email -and $_.github_username) {
-        $userMap[$_.ado_email.ToLower()] = $_.github_username
+
+# Load CSV and handle potential header case differences
+$csvData = Import-Csv $UserMappingFile
+foreach ($row in $csvData) {
+    # Match the new headers: ADOEmail and GitHubUsername
+    $email = if ($row.ADOEmail) { $row.ADOEmail } elseif ($row.ado_email) { $row.ado_email }
+    $ghUser = if ($row.GitHubUsername) { $row.GitHubUsername } elseif ($row.github_username) { $row.github_username }
+    
+    if ($email -and $ghUser) {
+        $userMap[$email.ToLower().Trim()] = $ghUser.Trim()
     }
 }
 
@@ -84,9 +91,9 @@ foreach ($map in $mappings) {
         $members = Invoke-RestMethod -Uri "$AdoOrg/_apis/projects/$($project.id)/teams/$($adoTeam.id)/members?api-version=7.1" -Headers $adoHeaders
         
         foreach ($member in $members.value) {
-            $email = $member.identity.uniqueName # This is usually the email
-            if ($userMap.ContainsKey($email.ToLower())) {
-                $ghUser = $userMap[$email.ToLower()]
+            $email = $member.identity.uniqueName.ToLower().Trim()
+            if ($userMap.ContainsKey($email)) {
+                $ghUser = $userMap[$email]
                 Write-Host "   Mapping: $email -> $ghUser" -ForegroundColor Gray
                 
                 # C. Add to GitHub Team
