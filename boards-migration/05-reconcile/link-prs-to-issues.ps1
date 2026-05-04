@@ -108,15 +108,14 @@ foreach ($pr in $allPRs) {
     }
 
     # Check if PR body already has Closes references (avoid duplicates)
-    $closesLine  = $closesRefs -join ", "
     $existingBody = "$($pr.body)"
-    if ($existingBody -match "Closes #\d+") {
-        Write-Host "  PR #$prNumber already has Closes references. Skipping to avoid duplicates." -ForegroundColor Cyan
-        $skipped++
-        continue
+    if ($existingBody -match "<!-- Reconciled by ADO Migration Script -->") {
+        # Strip old reconciled block
+        $existingBody = $existingBody -replace "(?s)\n\n---\n<!-- Reconciled by ADO Migration Script -->.*$", ""
     }
 
     # Build new PR body with Closes references appended
+    $closesLine  = $closesRefs -join ", "
     $newBody = $existingBody.TrimEnd()
     $newBody += "`n`n---`n<!-- Reconciled by ADO Migration Script -->`n$closesLine"
 
