@@ -305,16 +305,26 @@ if ($migState -eq "COMPLETE" -and -not $DryRun) {
     
     if (Test-Path $ConfigPath) {
         $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-        $excludedBranches = if ($cfg.exclusions -and $cfg.exclusions.branches) { $cfg.exclusions.branches } else { @() }
         
-        if ($excludedBranches.Count -gt 0) {
-            Write-Host "  Found $($excludedBranches.Count) branch(es) to exclude in config." -ForegroundColor Yellow
+        # Safe property access for Strict Mode
+        $excludedBranches = @()
+        if ($cfg.PSObject.Properties['exclusions'] -and $cfg.exclusions.PSObject.Properties['branches']) {
+            $excludedBranches = @($cfg.exclusions.branches)
+        }
+        
+        if ($excludedBranches.Length -gt 0) {
+            Write-Host "  Found $($excludedBranches.Length) branch(es) to exclude in config." -ForegroundColor Yellow
             foreach ($branch in $excludedBranches) {
+                if ([string]::IsNullOrWhiteSpace($branch)) { continue }
                 Write-Host "  --> Target: $branch" -ForegroundColor Cyan
                 
                 # 1. Check if branch exists
-                $exists = gh api "repos/$GHOrg/$GHRepo/branches/$branch" --silent 2>&1
-                if ($LASTEXITCODE -eq 0) {
+                $ErrorActionPreference = 'SilentlyContinue'
+                $branchCheck = gh api "repos/$GHOrg/$GHRepo/branches/$branch" --silent 2>&1
+                $exists = ($LASTEXITCODE -eq 0)
+                $ErrorActionPreference = 'Stop'
+
+                if ($exists) {
                     Write-Host "      Found branch on GitHub. Deleting..." -ForegroundColor Gray
                     # 2. Attempt deletion
                     $deleteOut = gh repo branch delete $branch --repo "$GHOrg/$GHRepo" --yes 2>&1
@@ -335,6 +345,7 @@ if ($migState -eq "COMPLETE" -and -not $DryRun) {
     }
     Write-Host ("=" * 60) -ForegroundColor Cyan
 }
+
 
 
 
