@@ -311,6 +311,27 @@ stages:
         ADO_PAT: $(ADO_PAT)
         GH_PAT: $(GH_PAT)
 
+    - task: PowerShell@2
+      displayName: 'Reconcile PR Links'
+      inputs:
+        targetType: inline
+        script: |
+          $base = "$(workingDir)"
+          $scriptPath = Join-Path $base "05-reconcile" "link-prs-to-issues.ps1"
+          $configPath = Join-Path $base "config" "${{ parameters.configFile }}"
+          $logPath = Join-Path $base "reports" "migration-log.json"
+          
+          if (Test-Path $logPath) {
+            Write-Host "Running PR Reconciliation Script..."
+            & $scriptPath -ConfigPath $configPath -MigrationLogPath $logPath
+          } else {
+            Write-Host "No migration-log.json found. Skipping PR reconciliation."
+          }
+        pwsh: true
+      env:
+        GH_PAT: $(GH_PAT)
+        
+
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Migration Log'
       inputs:
