@@ -3,18 +3,8 @@ trigger: none
 pool:
   vmImage: 'windows-latest'
 
-parameters:
-  - name: GitHubOrg
-    type: string
-    default: 'my-github-org'
-  - name: GitHubEnterprise
-    type: string
-    default: ''
-
 variables:
-  # Ensure you map the GH_PAT secret variable in your pipeline configuration
-  # - name: GH_PAT
-  #   value: $(YOUR_SECRET_GH_PAT)
+  - group: 'setup-github-org' # <--- CHANGE THIS to the actual name of your Variable Group
 
 steps:
 - task: PowerShell@2
@@ -22,7 +12,6 @@ steps:
   inputs:
     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/setup-github-org.ps1'
     arguments: >
-      -GitHubOrg "${{ parameters.GitHubOrg }}"
+      -GitHubOrg "$(GH_Org)"
       -GitHubPat "$(GH_PAT)"
-      -GitHubEnterprise "${{ parameters.GitHubEnterprise }}"
     pwsh: true
