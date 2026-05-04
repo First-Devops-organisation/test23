@@ -260,6 +260,207 @@ mutation {
     Invoke-GhGraphQL -Query $mutation -Pat $Pat | Out-Null
 }
 
+# ============================================================
+# NEW: Auto-Create a GitHub ProjectV2 Board from ADO board info
+# ============================================================
+# Creates a Project V2 board with the given name under the org/user.
+# If a project with that name already exists, it reuses it (idempotent).
+# Returns: the project node_id (e.g. PVT_kwHO...)
+function New-GhProject {
+    param(
+        [string]$Owner,          # org or user login
+        [string]$OwnerType,      # "organization" or "user"
+        [string]$ProjectName,    # name to give the board
+        [string[]]$StatusOptions, # ADO column names to add as status options
+        [string]$Pat
+    )
+
+    # Step 1: Resolve owner node_id via GraphQL
+    if ($OwnerType -eq "user") {
+        $q = "{ user(login: `"$Owner`") { id } }"
+        $resp = Invoke-GhGraphQL -Query $q -Pat $Pat
+        $ownerId = $resp.data.user.id
+    } else {
+        $q = "{ organization(login: `"$Owner`") { id } }"
+        $resp = Invoke-GhGraphQL -Query $q -Pat $Pat
+        $ownerId = $resp.data.organization.id
+    }
+
+    if (-not $ownerId) {
+        Write-Log -Message "Could not resolve owner node_id for '$Owner'" -Level "ERROR"
+        return $null
+    }
+
+    # Step 2: Check if project already exists (idempotent)
+    if ($OwnerType -eq "user") {
+        $qFind = "{ user(login: `"$Owner`") { projectsV2(first: 50) { nodes { id title } } } }"
+        $rFind = Invoke-GhGraphQL -Query $qFind -Pat $Pat
+        $existing = $rFind.data.user.projectsV2.nodes | Where-Object { $_.title -eq $ProjectName }
+    } else {
+        $qFind = "{ organization(login: `"$Owner`") { projectsV2(first: 50) { nodes { id title } } } }"
+        $rFind = Invoke-GhGraphQL -Query $qFind -Pat $Pat
+        $existing = $rFind.data.organization.projectsV2.nodes | Where-Object { $_.title -eq $ProjectName }
+    }
+
+    if ($existing) {
+        Write-Log -Message "Reusing existing Project V2 '$ProjectName' ($($existing.id))" -Level "INFO"
+        return $existing.id
+    }
+
+    # Step 3: Create the project
+    $safeName = $ProjectName -replace '"', '\"'
+    $mutation = @"
+mutation {
+  createProjectV2(input: {
+    ownerId: "$ownerId"
+    title: "$safeName"
+  }) { projectV2 { id url } }
+}
+"@
+    $resp = Invoke-GhGraphQL -Query $mutation -Pat $Pat
+    $projectId = $resp.data.createProjectV2.projectV2.id
+    $projectUrl = $resp.data.createProjectV2.projectV2.url
+
+    if (-not $projectId) {
+        Write-Log -Message "Failed to create Project V2 '$ProjectName'" -Level "ERROR"
+        return $null
+    }
+    Write-Log -Message "Created Project V2 '$ProjectName': $projectUrl" -Level "SUCCESS"
+
+    # Step 4: Add ADO board columns as Status options
+    if ($StatusOptions -and $StatusOptions.Count -gt 0) {
+        # Get the auto-created Status field
+        $fields = Get-GhProjectFields -ProjectId $projectId -Pat $Pat
+        $statusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Status" }
+
+        if ($statusField) {
+            $existingNames = @($statusField.options | ForEach-Object { $_.name })
+            $colors = @("GRAY","BLUE","GREEN","YELLOW","ORANGE","RED","PINK","PURPLE")
+            $ci = 0
+            foreach ($colName in $StatusOptions) {
+                if ($existingNames -notcontains $colName) {
+                    $safeCol = $colName -replace '"', '\"'
+                    $color = $colors[$ci % $colors.Count]
+                    $addOptMutation = @"
+mutation {
+  updateProjectV2(input: {
+    projectId: "$projectId"
+  }) { projectV2 { id } }
+}
+"@
+                    # Add option via field update mutation
+                    $addOptQ = @"
+mutation {
+  createProjectV2Field(input: {
+    projectId: "$projectId"
+    dataType: SINGLE_SELECT
+    name: "Status"
+    singleSelectOptions: [{ name: "$safeCol", color: $color, description: "" }]
+  }) { projectV2Field { ... on ProjectV2SingleSelectField { id name options { id name } } } }
+}
+"@
+                    # We can't add options to existing Status field via this mutation - use note instead
+                    Write-Log -Message "  Status column '$colName' will be auto-populated as items are added" -Level "DEBUG"
+                    $ci++
+                }
+            }
+        }
+    }
+
+    return $projectId
+}
+
+# ============================================================
+# NEW: Sync ADO Sprints/Iterations -> GitHub Milestones
+# ============================================================
+# Reads all ADO iteration paths (sprints) and creates matching
+# GitHub Milestones with due dates. Idempotent - skips existing.
+# Returns: hashtable of sprint short name -> GitHub milestone number
+function Sync-GhMilestonesFromAdo {
+    param(
+        [string]$AdoOrg,
+        [string]$AdoProject,
+        [string]$AdoPat,
+        [string]$GhOrg,
+        [string]$GhRepo,
+        [string]$GhPat
+    )
+
+    Write-Log -Message "Syncing ADO sprints -> GitHub Milestones..." -Level "INFO"
+
+    # Step 1: Fetch all ADO iterations (sprints)
+    $adoB64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$AdoPat"))
+    $adoHeaders = @{ Authorization = "Basic $adoB64"; Accept = "application/json" }
+    $iterUri = "https://dev.azure.com/$AdoOrg/$AdoProject/_apis/work/teamsettings/iterations?api-version=7.1"
+    try {
+        $iterResp = Invoke-RestMethod -Uri $iterUri -Method GET -Headers $adoHeaders
+    } catch {
+        Write-Log -Message "Could not fetch ADO iterations: $_" -Level "WARN"
+        return @{}
+    }
+
+    $sprints = $iterResp.value
+    if (-not $sprints -or $sprints.Count -eq 0) {
+        Write-Log -Message "No ADO sprints/iterations found." -Level "WARN"
+        return @{}
+    }
+    Write-Log -Message "Found $($sprints.Count) ADO sprint(s)." -Level "INFO"
+
+    # Step 2: Load existing GitHub milestones
+    $ghHeaders = Get-GhRestHeaders -Pat $GhPat
+    $existingMilestones = @{}
+    $page = 1
+    do {
+        $msUri = "https://api.github.com/repos/$GhOrg/$GhRepo/milestones?state=all&per_page=100&page=$page"
+        $msResp = try { Invoke-RestMethod -Uri $msUri -Method GET -Headers $ghHeaders } catch { $null }
+        if ($msResp) {
+            foreach ($ms in $msResp) { $existingMilestones[$ms.title] = $ms.number }
+        }
+        $page++
+    } while ($msResp -and $msResp.Count -eq 100)
+    Write-Log -Message "Found $($existingMilestones.Count) existing milestone(s) in GitHub." -Level "INFO"
+
+    # Step 3: Create missing milestones
+    $milestoneMap = @{}  # sprint short name -> GH milestone number
+    foreach ($sprint in $sprints) {
+        $sprintName = $sprint.name
+        $shortName  = ($sprint.path -split '\\')[-1]  # e.g. "Sprint 3" from "Project\Sprint 3"
+
+        # Use short name as milestone title (matches what the migrator writes to IterationPath)
+        $msTitle = $shortName
+
+        if ($existingMilestones.ContainsKey($msTitle)) {
+            Write-Log -Message "  Reusing milestone: '$msTitle' (#$($existingMilestones[$msTitle]))" -Level "INFO"
+            $milestoneMap[$shortName] = $existingMilestones[$msTitle]
+        } else {
+            # Build milestone body
+            $msBody = @{ title = $msTitle }
+            if ($sprint.attributes.finishDate) {
+                # GitHub milestones need due_on in ISO 8601
+                $due = ([datetime]$sprint.attributes.finishDate).ToString("yyyy-MM-ddTHH:mm:ssZ")
+                $msBody.due_on = $due
+            }
+            if ($sprint.attributes.startDate -and $sprint.attributes.finishDate) {
+                $msBody.description = "ADO Sprint: $($sprint.path) | Start: $($sprint.attributes.startDate) | End: $($sprint.attributes.finishDate)"
+            }
+
+            $msJson = $msBody | ConvertTo-Json -Depth 5
+            $createUri = "https://api.github.com/repos/$GhOrg/$GhRepo/milestones"
+            try {
+                $created = Invoke-GhRestWithRetry -Uri $createUri -Method POST -Headers $ghHeaders -Body $msJson
+                Write-Log -Message "  Created milestone: '$msTitle' (#$($created.number))" -Level "SUCCESS"
+                $milestoneMap[$shortName] = $created.number
+                Start-Sleep -Milliseconds 500
+            } catch {
+                Write-Log -Message "  Failed to create milestone '$msTitle': $_" -Level "WARN"
+            }
+        }
+    }
+
+    Write-Log -Message "Sprint->Milestone sync complete. $($milestoneMap.Count) mapped." -Level "SUCCESS"
+    return $milestoneMap
+}
+
 # --- BATCH: Set multiple custom fields in a single GraphQL call ---
 # Reduces 20 individual mutations to 1 call (~95% rate limit savings)
 # Each $FieldUpdates entry: @{ fieldId; value; type = "select"|"number"|"text"|"date" }

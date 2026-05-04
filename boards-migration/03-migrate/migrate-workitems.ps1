@@ -224,22 +224,47 @@ Write-Log -Message "Items sorted by hierarchy. Migration order ready." -Level "I
 # --- ADO ID â†’ GitHub Issue Number tracking ---
 $adoToGhMap = @{}  # adoId â†’ @{ issueNumber; issueNodeId; issueUrl }
 
-# --- Fetch GitHub Milestones for mapping ---
-Write-Log -Message "Fetching GitHub milestones..." -Level "INFO"
-$ghMilestones = @{}
-$page = 1
+# --- AUTO-CREATE Project V2 board if no projectNumber configured ---
+if (-not $ghProjNum -or $ghProjNum -eq 0) {
+    Write-Log -Message "No projectNumber in config - auto-creating GitHub Project V2 board..." -Level "INFO"
+    $boardName = "$adoProject Board"
+    $adoColumns = @("New", "Active", "Resolved", "Closed")  # Default ADO columns
+    $ghProjectId = New-GhProject -Owner $ghProjectOwner -OwnerType $ghProjectOwnerType `
+        -ProjectName $boardName -StatusOptions $adoColumns -Pat $ghPat
+    if ($ghProjectId) {
+        Write-Log -Message "Auto-created board '$boardName' ($ghProjectId)" -Level "SUCCESS"
+        # Re-load fields for the new project
+        $fields = Get-GhProjectFields -ProjectId $ghProjectId -Pat $ghPat
+        $statusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Status" }
+        if ($statusField) { $statusOptions = $statusField.options }
+    } else {
+        Write-Log -Message "Could not auto-create board - items will still be migrated as issues." -Level "WARN"
+    }
+}
+
+# --- SYNC ADO Sprints -> GitHub Milestones (auto-creates from ADO iteration paths) ---
+Write-Log -Message "Auto-syncing ADO sprints to GitHub Milestones..." -Level "INFO"
+$ghMilestones = Sync-GhMilestonesFromAdo `
+    -AdoOrg $adoOrg -AdoProject $adoProject -AdoPat $adoPat `
+    -GhOrg $ghOrg -GhRepo $ghRepo -GhPat $ghPat
+
+# Merge with any existing manually-created milestones (for backward compatibility)
+$extraPage = 1
 do {
-    $uri = "https://api.github.com/repos/$ghOrg/$ghRepo/milestones?state=all&per_page=100&page=$page"
+    $uri = "https://api.github.com/repos/$ghOrg/$ghRepo/milestones?state=all&per_page=100&page=$extraPage"
     $ghHeaders = Get-GhRestHeaders -Pat $ghPat
     $resp = try { Invoke-RestMethod -Uri $uri -Method GET -Headers $ghHeaders } catch { $null }
     if ($resp) {
         foreach ($ms in $resp) {
-            $ghMilestones[$ms.title] = $ms.number
+            if (-not $ghMilestones.ContainsKey($ms.title)) {
+                $ghMilestones[$ms.title] = $ms.number
+            }
         }
     }
-    $page++
+    $extraPage++
 } while ($resp -and $resp.Count -eq 100)
-Write-Log -Message "Loaded $($ghMilestones.Count) milestones." -Level "INFO"
+Write-Log -Message "Total milestones available for mapping: $($ghMilestones.Count)" -Level "INFO"
+
 
 # ============================================================
 #  MAIN MIGRATION LOOP
