@@ -1,9 +1,0 @@
-# Ignore generated outputs
-output/
-logs/
-tmp/
-*.log
-
-# Ignore secrets (NEVER commit tokens)
-.env
-*.pat
