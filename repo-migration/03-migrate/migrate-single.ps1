@@ -38,6 +38,7 @@ param(
     [string]$ADORepo,
     [Parameter(Mandatory = $true)]  [string]$GHOrg,
     [Parameter(Mandatory = $false)] [string]$GHRepo     = $ADORepo,
+    [Parameter(Mandatory = $false)] [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json",
     [Parameter(Mandatory = $false)] [string]$OutputDir  = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)]
     [ValidateSet('private', 'internal', 'public')]
@@ -293,6 +294,39 @@ else {
     }
     # --- END SMART RETRY LOGIC ---
 }
+
+# ════════════════════════════════════════════════════════════════════════════
+# STEP 3.5 – Branch Exclusions Cleanup
+# ════════════════════════════════════════════════════════════════════════════
+if ($migState -eq "COMPLETE" -and -not $DryRun) {
+    Write-Host "`n[Step 3.5] Branch Exclusions Cleanup..." -ForegroundColor Cyan
+    if (Test-Path $ConfigPath) {
+        Write-Host "  Using config: $ConfigPath" -ForegroundColor Gray
+        $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+        $excludedBranches = if ($cfg.exclusions -and $cfg.exclusions.branches) { $cfg.exclusions.branches } else { @() }
+        
+        if ($excludedBranches.Count -gt 0) {
+            Write-Host "  Found $($excludedBranches.Count) branch(es) to exclude." -ForegroundColor Yellow
+            foreach ($branch in $excludedBranches) {
+                Write-Host "  Attempting to delete branch: $branch"
+                $ErrorActionPreference = 'SilentlyContinue'
+                # Use --include to see response headers/body if needed for debugging
+                $deleteResult = gh api -X DELETE "repos/$GHOrg/$GHRepo/git/refs/heads/$branch" 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "    [SUCCESS] Deleted branch '$branch' from GitHub." -ForegroundColor Green
+                } else {
+                    Write-Host "    [SKIPPED] Could not delete '$branch'. It may not exist or the PAT lacks permissions. Detail: $deleteResult" -ForegroundColor Gray
+                }
+                $ErrorActionPreference = 'Stop'
+            }
+        } else {
+            Write-Host "  No branches found in exclusions list." -ForegroundColor Gray
+        }
+    } else {
+        Write-Warning "  [Step 3.5] Config file not found at '$ConfigPath'. Skipping cleanup."
+    }
+}
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # STEP 4 – Branch-wise post-migration audit
