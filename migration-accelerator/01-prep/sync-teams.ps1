@@ -45,17 +45,21 @@ Write-Host "Loading user mappings from $UserMappingFile..." -ForegroundColor Gra
 if (-not (Test-Path $UserMappingFile)) { Write-Error "User mapping file not found!"; exit 1 }
 $userMap = @{}
 
-# Load CSV and handle potential header case differences
-$csvData = Import-Csv $UserMappingFile
+# Robust CSV Loading
+$csvContent = Get-Content $UserMappingFile | Where-Object { $_.Trim() -ne "" }
+$csvData = $csvContent | ConvertFrom-Csv
+
 foreach ($row in $csvData) {
-    # Match the new headers: ADOEmail and GitHubUsername
-    $email = if ($row.ADOEmail) { $row.ADOEmail } elseif ($row.ado_email) { $row.ado_email }
-    $ghUser = if ($row.GitHubUsername) { $row.GitHubUsername } elseif ($row.github_username) { $row.github_username }
+    # Match various possible header names
+    $email = ($row.ADOEmail, $row.ado_email, $row.Email) | Where-Object { $_ } | Select-Object -First 1
+    $ghUser = ($row.GitHubUsername, $row.github_username, $row.Username) | Where-Object { $_ } | Select-Object -First 1
     
     if ($email -and $ghUser) {
         $userMap[$email.ToLower().Trim()] = $ghUser.Trim()
     }
 }
+
+Write-Host "   Loaded $($userMap.Count) user mappings." -ForegroundColor Gray
 
 # --- 2. Load Team Mappings ---
 $mappingData = Get-Content $TeamMappingFile -Raw | ConvertFrom-Json
@@ -87,6 +91,11 @@ foreach ($map in $mappings) {
         $teams = Invoke-RestMethod -Uri "$AdoOrg/_apis/projects/$($project.id)/teams?api-version=7.1" -Headers $adoHeaders
         $adoTeam = $teams.value | Where-Object { $_.name -eq $map.adoTeam }
         
+        if (-not $adoTeam) {
+            Write-Error "      [ERROR] Could not find ADO team: $($map.adoTeam) in project $($map.adoProject)"
+            continue
+        }
+
         # Get Members
         $members = Invoke-RestMethod -Uri "$AdoOrg/_apis/projects/$($project.id)/teams/$($adoTeam.id)/members?api-version=7.1" -Headers $adoHeaders
         
@@ -112,7 +121,7 @@ foreach ($map in $mappings) {
         }
     }
     catch {
-        Write-Error "   [ERROR] Could not fetch ADO members for $($map.adoTeam): $($_.Exception.Message)"
+        Write-Error "   [ERROR] Could not process ADO members for $($map.adoTeam): $($_.Exception.Message)"
     }
 }
 
