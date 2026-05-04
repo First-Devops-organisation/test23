@@ -285,46 +285,11 @@ foreach ($group in $byRepo) {
         continue
     }
 
-    # ------ Clone repo (mirror --- all branches, all history) ---------------------------------------------------------
-    $clonePath = Join-Path $cloneDir "$repoName-scrub"
-    if (Test-Path $clonePath) { Remove-Item -Recurse -Force $clonePath }
-
-    Write-Host "    Cloning $repoName (mirror)..." -ForegroundColor Gray
-    $cloneUrl   = $repoInfo.RemoteUrl -replace '://[^@]+@', '://'
-    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("pat:${adoPat}"))
-    $cloneArgs  = @('-c', "http.extraHeader=Authorization: Basic $base64Auth",
-                    'clone', '--mirror', '--quiet', $cloneUrl, $clonePath)
-    $cloneOutput = & git @cloneArgs 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "    Clone failed for $repoName --- skipping"
-        continue
-    }
-
-    # ------ Run git-filter-repo --replace-text ------------------------------------------------------------------------------------------------
-    Write-Host "    Running git-filter-repo (redacting $($sortedExpressions.Count) secrets)..." -ForegroundColor Gray
-    $absExpressionsFile = (Resolve-Path $expressionsFile).Path
-
-    Push-Location $clonePath
-    try {
-        & git filter-repo --replace-text "$absExpressionsFile" --force 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "    git-filter-repo returned exit code $LASTEXITCODE"
-        } else {
-            Write-Host "    Secrets redacted from ALL history" -ForegroundColor Green
-        }
-    }
-    catch {
-        Write-Warning "    git-filter-repo error: $_"
-    }
-    finally {
-        Pop-Location
-    }
-
-    # ------ Move scrubbed clone to output ---------------------------------------------------------------------------------------------------------------
-    $outputRepoDir = Join-Path $scrubbedDir $repoName
-    if (Test-Path $outputRepoDir) { Remove-Item -Recurse -Force $outputRepoDir }
-    Move-Item -Path $clonePath -Destination $outputRepoDir
-    Write-Host "    Scrubbed clone saved: $outputRepoDir" -ForegroundColor Green
+    # ------ LOCAL SCRUBBING SKIPPED -----------------------------------------------
+    # In the new pipeline architecture, this script only generates the expressions file.
+    # The actual scrubbing (clone → git-filter-repo → force-push) is done in Stage 3
+    # by migrate-single.ps1, AFTER the GEI migration completes.
+    Write-Host "    Expressions file ready for Stage 3 (migrate-single.ps1 will apply it)" -ForegroundColor Green
     Write-Host "    Original ADO repo was NOT modified" -ForegroundColor Green
 }
 
