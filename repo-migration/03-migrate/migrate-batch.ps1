@@ -84,13 +84,18 @@ else {
         $batches = @($batches | Where-Object { $_.name -eq $BatchName })
         if ($batches.Count -eq 0) { Write-Error "Batch '$BatchName' not found in config" }
     }
+    $excludeList = if ($config.exclusions -and $config.exclusions.repos) { $config.exclusions.repos } else { @() }
     foreach ($batch in $batches) {
         foreach ($repo in $batch.repos) {
             $name = $repo.ToString().Trim()
+            if ($name -in $excludeList) {
+                Write-Host "  [SKIPPING] $name (listed in exclusions)" -ForegroundColor Gray
+                continue
+            }
             if ($seen.Add($name)) { $repoList.Add(@{ ADORepo = $name; GHRepo = $name }) }
         }
     }
-    Write-Host "Loaded $($repoList.Count) repos from config batch(es)"
+    Write-Host "Loaded $($repoList.Count) repos from config batch(es) (after exclusions)"
 }
 
 if ($repoList.Count -eq 0) { Write-Error "No repos found to migrate." }
