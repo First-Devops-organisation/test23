@@ -221,6 +221,11 @@ else {
         $migState = "COMPLETE"
         $migState | Out-File $stateFile -Encoding utf8
     }
+    elseif (($migOutput -join "") -match "already exists and cannot be created") {
+        Write-Host "  Repo already exists on GitHub (GEI confirmed). Proceeding to scrubbing..." -ForegroundColor Yellow
+        $migState = "COMPLETE"
+        $migState | Out-File $stateFile -Encoding utf8
+    }
     elseif (($migOutput -join "") -match "already been queued") {
         Write-Host "  Migration already queued -------- polling until repo appears..." -ForegroundColor Yellow
         $migState = "WAITING"
@@ -475,8 +480,8 @@ else {
 
         # -- 4b. Branches via REST API (paginated) --------------------------------
         Write-Host "  Fetching branches..."
-        $branchObjs  = Get-GitHubPages "repos/$GHOrg/$GitHub_Repo/branches"
-        $branches    = @($branchObjs | ForEach-Object { $_.name })
+        $branchObjs  = @(Get-GitHubPages "repos/$GHOrg/$GitHub_Repo/branches")
+        $branches    = @($branchObjs | Where-Object { $_ -and $_.PSObject.Properties['name'] } | ForEach-Object { $_.name })
         $branchCount = $branches.Count
         $branches    | Out-File "$auditDir\gh-branches.txt" -Encoding utf8
         Write-Host "  Branches (GitHub): $branchCount"
@@ -490,7 +495,7 @@ else {
                 $brResp = Invoke-WebRequest -Uri "$adoRepoUrl/refs?filter=heads/&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
                 $brJson = $brResp.Content | ConvertFrom-Json
                 $batch  = @($brJson.value)
-                $adoBranches += $batch | ForEach-Object { $_.name -replace '^refs/heads/', '' }
+                $adoBranches += $batch | Where-Object { $_ -and $_.PSObject.Properties['name'] } | ForEach-Object { $_.name -replace '^refs/heads/', '' }
                 $skip += $batch.Count
             } while ($batch.Count -eq 1000)
             Write-Host "  Branches (ADO): $($adoBranches.Count)"
@@ -513,24 +518,26 @@ else {
 
         # -- 4c. Tags via REST API (paginated) -------------------------------------------
         Write-Host "  Fetching tags..."
-        $tagObjs  = Get-GitHubPages "repos/$GHOrg/$GitHub_Repo/tags"
-        $tags     = @($tagObjs | ForEach-Object { $_.name })
+        $tagObjs  = @(Get-GitHubPages "repos/$GHOrg/$GitHub_Repo/tags")
+        $tags     = @($tagObjs | Where-Object { $_ -and $_.PSObject.Properties['name'] } | ForEach-Object { $_.name })
         $tagCount = $tags.Count
         if ($tags.Count -gt 0) { $tags | Out-File "$auditDir\gh-tags.txt" -Encoding utf8 }
         else                   { ""    | Out-File "$auditDir\gh-tags.txt" -Encoding utf8 }
         Write-Host "  Tags: $tagCount"
 
         # -- 4d. Latest commit hash (default branch) -------------------------------------
-        $defaultBranchObj = $branchObjs | Where-Object { $_.name -eq $defaultBranch } | Select-Object -First 1
-        $latestHash = if ($defaultBranchObj) { $defaultBranchObj.commit.sha } else { "N/A" }
+        $defaultBranchObj = $branchObjs | Where-Object { $_ -and $_.PSObject.Properties['name'] -and $_.name -eq $defaultBranch } | Select-Object -First 1
+        $latestHash = if ($defaultBranchObj -and $defaultBranchObj.PSObject.Properties['commit'] -and $defaultBranchObj.commit.PSObject.Properties['sha']) { $defaultBranchObj.commit.sha } else { "N/A" }
         Write-Host "  Latest hash: $latestHash"
 
         # -- 4e. Branch metadata via commit-detail API ---------------------
         Write-Host "  Fetching per-branch commit metadata..."
         $refMeta = @{}
         foreach ($bObj in $branchObjs) {
+            if (-not $bObj -or -not $bObj.PSObject.Properties['name'] -or -not $bObj.PSObject.Properties['commit']) { continue }
             $bName = $bObj.name
-            $bSha  = $bObj.commit.sha
+            $bSha  = if ($bObj.commit.PSObject.Properties['sha']) { $bObj.commit.sha } else { '' }
+            if (-not $bSha) { continue }
             $cRaw  = gh api "repos/$GHOrg/$GitHub_Repo/commits/$bSha" 2>$null
             $cDetail = $null
             if ($cRaw) { $cDetail = $cRaw | ConvertFrom-Json }
