@@ -15,3 +15,13 @@ steps:
       -GitHubOrg "$(GH_Org)"
       -GitHubPat "$(GH_PAT)"
     pwsh: true
+    
+- task: PowerShell@2
+  displayName: '2. Create GitHub Teams from Mapping'
+  inputs:
+    filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/sync-teams.ps1'
+    arguments: >
+      -GitHubOrg "$(GH_Org)"
+      -GitHubPat "$(GH_PAT)"
+      -MappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
+    pwsh: true
