@@ -4,7 +4,7 @@ trigger: none
 
 # This pulls all the variables from your screenshot into the pipeline
 variables:
-  - group: migration-secrets 
+  - group: artifact-migration
 
 jobs:
   - job: MigrateArtifacts
