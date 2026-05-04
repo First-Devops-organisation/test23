@@ -38,10 +38,10 @@
   ],
   "exclusions": {
     "repos": [
-      "old-archived-repo",
-      "test-throwaway-repo"
+      "eShopOnWeb"
+     
     ],
-    "branches": []
+    "branches": [Updating-test-project-Nsubstitute]
   },
   "output": {
     "reportDir": "./output/reports",
