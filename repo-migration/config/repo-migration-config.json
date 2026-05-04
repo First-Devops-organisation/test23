@@ -29,7 +29,6 @@
         "APIOPS-poc",
         "CICD-ADO-Azure",
         "SSPM",
-        "ssr-v19",
         "eShopOnWeb"
         
         
@@ -37,11 +36,8 @@
     }
   ],
   "exclusions": {
-    "repos": [
-     
-     
-    ],
-    "branches": ["Updating-test-project-Nsubstitute"]
+    "repos": ["ssr-v19"],
+    "branches": []
   },
   "output": {
     "reportDir": "./output/reports",
