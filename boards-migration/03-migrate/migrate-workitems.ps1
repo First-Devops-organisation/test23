@@ -336,6 +336,43 @@ foreach ($item in $sortedItems) {
         }
     }
 
+    # Extract Pull Requests and Commits
+    $linkedPRs = @()
+    $linkedCommits = @()
+    if ($item.relations) {
+        foreach ($rel in $item.relations) {
+            if ($rel.rel -eq "ArtifactLink") {
+                # PR link: vstfs:///Git/PullRequestId/PROJECT_ID/REPO_ID/PR_ID
+                if ($rel.url -match "vstfs:///Git/PullRequestId/[^/]+/[^/]+/(\d+)") {
+                    $linkedPRs += $Matches[1]
+                }
+                # Commit link: vstfs:///Git/Commit/PROJECT_ID/REPO_ID/([a-fA-F0-9]+)
+                elseif ($rel.url -match "vstfs:///Git/Commit/[^/]+/[^/]+/([a-fA-F0-9]+)") {
+                    $linkedCommits += $Matches[1]
+                }
+            }
+        }
+    }
+
+    if ($linkedPRs.Count -gt 0 -or $linkedCommits.Count -gt 0) {
+        $body += "## Development Links`n`n"
+        if ($linkedPRs.Count -gt 0) {
+            $body += "**Pull Requests (from ADO)**`n"
+            foreach ($prId in $linkedPRs) {
+                # Note: Will need PR mapping file to link to new GitHub PR ID
+                $body += "- ADO PR #$prId`n"
+            }
+            $body += "`n"
+        }
+        if ($linkedCommits.Count -gt 0) {
+            $body += "**Commits**`n"
+            foreach ($commit in $linkedCommits) {
+                $body += "- $commit`n"
+            }
+            $body += "`n"
+        }
+    }
+
     if ([string]::IsNullOrWhiteSpace($body)) {
         $body = "_No description provided in Azure DevOps._`n`n"
     }
