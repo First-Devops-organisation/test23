@@ -4,24 +4,27 @@ pool:
   vmImage: 'windows-latest'
 
 variables:
-  - group: 'setup-github-org' # <--- CHANGE THIS to the actual name of your Variable Group
+  - group: 'setup-github-org' # Pulls everything from your Library -> setup-github-org
 
 steps:
 - task: PowerShell@2
-  displayName: 'Validate and Setup GitHub Organization'
+  displayName: '1. Validate GitHub Organization'
   inputs:
     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/setup-github-org.ps1'
     arguments: >
       -GitHubOrg "$(GH_Org)"
       -GitHubPat "$(GH_PAT)"
     pwsh: true
-    
+
 - task: PowerShell@2
-  displayName: '2. Create GitHub Teams from Mapping'
+  displayName: '2. Create & Sync GitHub Teams'
   inputs:
     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/sync-teams.ps1'
     arguments: >
       -GitHubOrg "$(GH_Org)"
       -GitHubPat "$(GH_PAT)"
-      -MappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
+      -AdoOrgUrl "$(ADO_Org)"
+      -AdoPat "$(ADO_PAT)"
+      -TeamMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
+      -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
     pwsh: true
