@@ -1,0 +1,33 @@
+
+trigger: none
+
+
+variables:
+  - group: artifact-migration
+
+
+jobs:
+  - job: MigrateArtifacts
+    displayName: "Migrate Artifacts"
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+      - checkout: self
+
+      - task: PowerShell@2
+        displayName: "Execute Artifact Migration Script"
+        env:
+          ADO_PAT: $(ADO_PAT)
+          GH_TOKEN: $(GH_PAT)
+        inputs:
+          targetType: 'filePath'
+          filePath: 'repo-migration/03-migrate/migrate-artifacts.ps1'
+          arguments: >
+            -LastBuilds ${{ parameters.LastBuilds }}
+            -OrgName "$(ADO_ORG)"
+            -ProjectName "$(ADO_PROJECT)"
+            -PipelineName "${{ parameters.PipelineName }}"
+            -GitHubOrg "$(GH_ORG)"
+            -GitHubRepo "${{ parameters.GitHubRepo }}"
+            -Version "${{ parameters.Version }}"
+            -Pat "$(ADO_PAT)"
