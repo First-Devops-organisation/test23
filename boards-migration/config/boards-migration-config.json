@@ -27,11 +27,11 @@
     "preserveParentChild": true,
     "dryRun": false,
     "batchSize": 50,
-    "rateLimitDelayMs": 1000,
+    "rateLimitDelayMs": 3000,
     "retryCount": 3,
-    "retryDelaySeconds": 10,
-    "graphqlDelayMs": 500,
-    "maxRequestsPerMinute": 25,
+    "retryDelaySeconds": 15,
+    "graphqlDelayMs": 1500,
+    "maxRequestsPerMinute": 15,
     "inviteCollaborators": false
   },
   "filters": {
