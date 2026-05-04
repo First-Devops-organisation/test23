@@ -23,7 +23,7 @@ steps:
     arguments: >
       -GitHubOrg "$(GH_Org)"
       -GitHubPat "$(GH_PAT)"
-      -AdoOrgUrl "$(ADO_Org)"
+      -AdoOrg "$(ADO_Org)"
       -AdoPat "$(ADO_PAT)"
       -TeamMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
       -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
