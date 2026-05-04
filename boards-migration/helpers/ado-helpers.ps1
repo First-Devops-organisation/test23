@@ -181,8 +181,11 @@ function Convert-AdoHtmlToMarkdown {
     if ([string]::IsNullOrEmpty($Html)) { return "" }
     $md = $Html
 
+    # Store images as placeholders to survive Pandoc/HTML parsing safely
+    $imgPlaceholders = @{}
+    $imgCounter = 0
+
     # Handle inline images - download from ADO, re-upload to GitHub
-    # Match both <img src="..."> and <img ... src="..."> patterns (self-closing or not)
     $imgPattern = '<img\s[^>]*?src=["\u0027]([^"\u0027]+)["\u0027][^>]*?/?>'
     $imgMatches = [regex]::Matches($md, $imgPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
@@ -195,28 +198,25 @@ function Convert-AdoHtmlToMarkdown {
         $imgUrl = $m.Groups[1].Value
         $altMatch = [regex]::Match($imgTag, 'alt=["\u0027]([^"\u0027]*)["\u0027]')
         $alt = if ($altMatch.Success) { $altMatch.Groups[1].Value } else { "image" }
-        # Also check data-filename attribute (ADO uses this)
         $fnMatch = [regex]::Match($imgTag, 'data-filename=["\u0027]([^"\u0027]*)["\u0027]')
         if ($fnMatch.Success -and $alt -eq "image") { $alt = $fnMatch.Groups[1].Value }
 
         $urlPreview = if ($imgUrl.Length -gt 80) { $imgUrl.Substring(0, 80) + '...' } else { $imgUrl }
         Write-Log -Message "  Image: alt='$alt' url='$urlPreview'" -Level "DEBUG"
 
-        # Skip data URIs - can't re-upload base64 images easily
         if ($imgUrl -match '^data:') {
             Write-Log -Message "  Skipping base64 data URI image" -Level "DEBUG"
-            $md = $md.Replace($imgTag, "_[Embedded image: $alt]_")
+            $placeholder = "@@MIG_IMG_$imgCounter@@"; $imgCounter++
+            $imgPlaceholders[$placeholder] = "_[Embedded image: $alt]_"
+            $md = $md.Replace($imgTag, $placeholder)
             continue
         }
 
-        # Fix relative URLs - prepend ADO org URL
         $fullImgUrl = $imgUrl
         if ($imgUrl -match '^/') {
             $fullImgUrl = "https://dev.azure.com/$AdoOrg$imgUrl"
-            Write-Log -Message "  Fixed relative URL: $fullImgUrl" -Level "DEBUG"
         }
 
-        # Try to download and re-upload ALL images (not just matching patterns)
         if ($Pat -and $GhPat) {
             Write-Log -Message "  Downloading image: $alt" -Level "INFO"
             $localPath = Save-AdoInlineImage -ImageUrl $fullImgUrl -TempDir $TempDir -Pat $Pat
@@ -224,34 +224,62 @@ function Convert-AdoHtmlToMarkdown {
                 $ghUrl = Upload-ImageToGitHub -FilePath $localPath -GhOrg $GhOrg -GhRepo $GhRepo -GhPat $GhPat
                 if ($ghUrl) {
                     Write-Log -Message "  Image migrated: $alt -> $ghUrl" -Level "SUCCESS"
-                    $md = $md.Replace($imgTag, "![$alt]($ghUrl)")
+                    $placeholder = "@@MIG_IMG_$imgCounter@@"; $imgCounter++
+                    $imgPlaceholders[$placeholder] = "![$alt]($ghUrl)"
+                    $md = $md.Replace($imgTag, $placeholder)
                     Remove-Item $localPath -Force -ErrorAction SilentlyContinue
                     continue
                 }
                 Remove-Item $localPath -Force -ErrorAction SilentlyContinue
             }
-            # Re-upload failed
-            Write-Log -Message "  Image migration FAILED for: $alt (URL: $fullImgUrl)" -Level "WARN"
-            $md = $md.Replace($imgTag, "_[Image: $alt - could not be migrated from ADO]_")
+            Write-Log -Message "  Image migration FAILED for: $alt" -Level "WARN"
+            $placeholder = "@@MIG_IMG_$imgCounter@@"; $imgCounter++
+            $imgPlaceholders[$placeholder] = "_[Image: $alt - could not be migrated from ADO]_"
+            $md = $md.Replace($imgTag, $placeholder)
         } else {
-            # No auth - keep original URL
-            $md = $md.Replace($imgTag, "![$alt]($fullImgUrl)")
+            $placeholder = "@@MIG_IMG_$imgCounter@@"; $imgCounter++
+            $imgPlaceholders[$placeholder] = "![$alt]($fullImgUrl)"
+            $md = $md.Replace($imgTag, $placeholder)
         }
     }
 
-    # HTML tag conversions
-    $md = $md -replace '<b>|<strong>', '**'; $md = $md -replace '</b>|</strong>', '**'
-    $md = $md -replace '<i>|<em>', '_'; $md = $md -replace '</i>|</em>', '_'
-    $md = $md -replace '<h1[^>]*>', "`n# "; $md = $md -replace '</h1>', "`n"
-    $md = $md -replace '<h2[^>]*>', "`n## "; $md = $md -replace '</h2>', "`n"
-    $md = $md -replace '<h3[^>]*>', "`n### "; $md = $md -replace '</h3>', "`n"
-    $md = $md -replace '<br\s*/?>', "`n"; $md = $md -replace '<p[^>]*>', "`n"; $md = $md -replace '</p>', "`n"
-    $md = $md -replace '<div[^>]*>', "`n"; $md = $md -replace '</div>', ""
-    $md = $md -replace '<a[^>]+href="([^"]+)"[^>]*>([^<]+)</a>', '[$2]($1)'
-    $md = $md -replace '<li[^>]*>', "- "; $md = $md -replace '</li>', "`n"
-    $md = $md -replace '<[^>]+>', ''
-    try { $md = [System.Web.HttpUtility]::HtmlDecode($md) } catch { }
-    $md = $md -replace "(\r?\n){3,}", "`n`n"
+    # Convert HTML to Markdown
+    $pandocExe = "pandoc"
+    if (-not (Get-Command "pandoc" -ErrorAction SilentlyContinue) -and (Test-Path "C:\Program Files\Pandoc\pandoc.exe")) {
+        $pandocExe = "C:\Program Files\Pandoc\pandoc.exe"
+    }
+
+    if (Get-Command $pandocExe -ErrorAction SilentlyContinue) {
+        Write-Log -Message "  Using Pandoc for HTML to Markdown conversion" -Level "DEBUG"
+        $tmpIn = [System.IO.Path]::GetTempFileName() + '.html'
+        $tmpOut = [System.IO.Path]::GetTempFileName() + '.md'
+        $md | Set-Content -Path $tmpIn -Encoding UTF8
+        & $pandocExe -f html -t gfm --wrap=none -o $tmpOut $tmpIn
+        if (Test-Path $tmpOut) {
+            $md = Get-Content $tmpOut -Raw -Encoding UTF8
+            Remove-Item $tmpIn, $tmpOut -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        # Fallback HTML tag conversions
+        $md = $md -replace '<b>|<strong>', '**'; $md = $md -replace '</b>|</strong>', '**'
+        $md = $md -replace '<i>|<em>', '_'; $md = $md -replace '</i>|</em>', '_'
+        $md = $md -replace '<h1[^>]*>', "`n# "; $md = $md -replace '</h1>', "`n"
+        $md = $md -replace '<h2[^>]*>', "`n## "; $md = $md -replace '</h2>', "`n"
+        $md = $md -replace '<h3[^>]*>', "`n### "; $md = $md -replace '</h3>', "`n"
+        $md = $md -replace '<br\s*/?>', "`n"; $md = $md -replace '<p[^>]*>', "`n"; $md = $md -replace '</p>', "`n"
+        $md = $md -replace '<div[^>]*>', "`n"; $md = $md -replace '</div>', ""
+        $md = $md -replace '<a[^>]+href="([^"]+)"[^>]*>([^<]+)</a>', '[$2]($1)'
+        $md = $md -replace '<li[^>]*>', "- "; $md = $md -replace '</li>', "`n"
+        $md = $md -replace '<[^>]+>', ''
+        try { $md = [System.Web.HttpUtility]::HtmlDecode($md) } catch { }
+        $md = $md -replace "(\r?\n){3,}", "`n`n"
+    }
+
+    # Restore image placeholders
+    foreach ($p in $imgPlaceholders.Keys) {
+        $md = $md.Replace($p, $imgPlaceholders[$p])
+    }
+
     return $md.Trim()
 }
 
