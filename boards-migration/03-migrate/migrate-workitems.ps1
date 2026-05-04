@@ -109,6 +109,7 @@ if ($ghProjNum) {
 
     # Load ALL project fields for enterprise migration
     $adoStatusField = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "ADO Status" }
+    $itemTypeField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Item Type" }
     $severityField  = $fields | Where-Object { $_.__typename -eq "ProjectV2SingleSelectField" -and $_.name -eq "Severity" -and $_.options }
     $storyPtsField  = $fields | Where-Object { $_.name -eq "Story Points" }
     $adoIdField     = $fields | Where-Object { $_.name -eq "ADO ID" }
@@ -155,6 +156,7 @@ if ($ghProjNum) {
 
     # Log all discovered fields
     if ($adoStatusField) { Write-Log -Message "Field 'ADO Status': $($adoStatusField.options.Count) options" -Level "INFO" }
+    if ($itemTypeField)  { Write-Log -Message "Field 'Item Type': $($itemTypeField.options.Count) options" -Level "INFO" }
     if ($severityField)  { Write-Log -Message "Field 'Severity': $($severityField.options.Count) options" -Level "INFO" }
     if ($storyPtsField)  { Write-Log -Message "Field 'Story Points': ready (number)" -Level "INFO" }
     if ($adoIdField)     { Write-Log -Message "Field 'ADO ID': ready" -Level "INFO" }
@@ -475,6 +477,14 @@ foreach ($item in $sortedItems) {
                     $adoOpt = Find-SelectOption $adoStatusField $state
                     if ($adoOpt) {
                         $fieldUpdates += @{ fieldId = $adoStatusField.id; value = $adoOpt.id; type = "select" }
+                    }
+                }
+
+                # Item Type
+                if ($itemTypeField -and $type) {
+                    $typeOpt = Find-SelectOption $itemTypeField $type
+                    if ($typeOpt) {
+                        $fieldUpdates += @{ fieldId = $itemTypeField.id; value = $typeOpt.id; type = "select" }
                     }
                 }
 
