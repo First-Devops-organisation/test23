@@ -75,29 +75,28 @@ foreach ($pkg in $packages) {
 
     foreach ($ver in $versions) {
         $pkgVer = $ver.version
+        $downloadUrl = $null # CRITICAL: Clear variable for each loop
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
         # 4. Use the PyPI 'Simple Index' to find the actual file URL
-        # Normalizing package name for PyPI (lowercase, dots/underscores to hyphens)
         $normalizedPkgName = $pkgName.ToLower().Replace(".", "-").Replace("_", "-")
-        $simpleUrl = "$($baseUrl.Replace('_apis/packaging/feeds', '_packaging'))/pypi/simple/$normalizedPkgName/"
+        # Ensure we use pkgs.dev.azure.com for the simple index
+        $simpleBase = $baseUrl.Replace("feeds.dev.azure.com", "pkgs.dev.azure.com").Replace("_apis/packaging/feeds", "_packaging")
+        $simpleUrl = "$simpleBase/pypi/simple/$normalizedPkgName/"
         
         Write-Host "       Checking Simple Index: $simpleUrl" -ForegroundColor DarkGray
         try {
             $simplePage = Invoke-WebRequest -Uri $simpleUrl -Headers $adoHeaders -UseBasicParsing
-            # Search for the version in the HTML links
-            $regex = "href='([^']+)'[^>]*>$pkgName-$pkgVer"
-            if ($simplePage.Content -match $regex) {
-                $downloadUrl = $matches[1].Split('#')[0] # Remove fragment
-            } else {
-                # Try a broader search
-                $regex = "href='([^']+)'[^>]*>[^<]*$pkgVer"
-                if ($simplePage.Content -match $regex) {
-                    $downloadUrl = $matches[1].Split('#')[0]
+            # Search for the version in the HTML links (matches href='.../animalsounds-1.0.0-py3-none-any.whl')
+            if ($simplePage.Content -match "href='([^']+)'[^>]*>[^<]*$pkgVer") {
+                $downloadUrl = $matches[1].Split('#')[0]
+                if ($downloadUrl -notlike "http*") {
+                    # Handle relative URLs if they exist
+                    $downloadUrl = "$simpleUrl$downloadUrl"
                 }
             }
         } catch {
-             Write-Warning "       [RETRY] Could not access Simple Index for $pkgName. Trying fallback..."
+             Write-Warning "       [RETRY] Could not access Simple Index for $pkgName."
         }
 
         if (-not $downloadUrl) {
