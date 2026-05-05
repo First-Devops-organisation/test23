@@ -1,20 +1,25 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+# Artifact Migration Guide
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
+This guide explains how to migrate build binaries and package feeds from Azure DevOps to GitHub.
 
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+## 1. Build Artifacts Migration
+**Script**: `migrate-artifacts.ps1`  
+**Goal**: Move files produced by pipeline builds into **GitHub Releases**.
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+*   **Process**: Downloads artifacts from ADO Build IDs $\rightarrow$ Uploads them as assets to a GitHub Release tag.
+*   **Tag Format**: `{PipelineName}-build-{BuildID}-{Status}`
+*   **Status Label**: You can use the `Version` parameter to label builds as `stable`, `working`, or `backup`.
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+## 2. NuGet Feed Migration
+**Script**: `migrate-nuget-feed.ps1`  
+**Goal**: Move NuGet packages from Azure Artifacts to **GitHub Packages**.
+
+*   **Process**: Scans your ADO Feed $\rightarrow$ Downloads all versions of all packages (`.nupkg`) $\rightarrow$ Pushes them to the GitHub NuGet registry.
+*   **Registry URL**: `https://nuget.pkg.github.com/{OrgName}/index.json`
+
+## 3. Configuration (Variable Group)
+Ensure your Azure DevOps Variable Group (`artifact-migration`) has these keys:
+*   **ADO_ORG / ADO_PROJECT**: Source location.
+*   **ADO_PAT**: Access to ADO builds/packaging.
+*   **GH_ORG / GH_PAT**: Target GitHub location and permission to create Releases/Packages.
+*   **ADO_FEED**: (For NuGet) The name of the source feed.
