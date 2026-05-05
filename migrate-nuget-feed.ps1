@@ -13,64 +13,76 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# --- 1. Debug: Show incoming values ---
-Write-Host "=== Migration Diagnostics ===" -ForegroundColor Yellow
-Write-Host "  Raw AdoOrg: $AdoOrg"
-Write-Host "  Raw AdoProject: '$AdoProject'"
-Write-Host "  Raw AdoFeed: $AdoFeed"
-Write-Host "  Raw GH Org: $GitHubOrg"
-Write-Host "  PAT Length: $($AdoPat.Length) chars"
-Write-Host "=============================" -ForegroundColor Yellow
-
-# --- 2. Clean Organization Name ---
+# --- 1. Clean Organization Name ---
 $cleanOrg = $AdoOrg.TrimEnd('/')
 if ($cleanOrg -like "*dev.azure.com*") {
     $cleanOrg = $cleanOrg.Split('/')[-1]
 }
 
-# --- 3. Setup Auth ---
-$base64AdoAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$AdoPat"))
-$adoHeaders = @{ 
-    Authorization = "Basic $base64AdoAuth"
-    "X-TFS-FedAuthRedirect" = "Suppress"
-}
+# --- 2. Setup Multiple Auth Strategies ---
+$auth1 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(":$AdoPat"))
+$auth2 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("user:$AdoPat"))
 
-Write-Host "`n=== NuGet Feed Migration: $AdoFeed -> $GitHubOrg ===" -ForegroundColor Cyan
+$strategies = @(
+    @{ name = "Standard (:PAT)"; headers = @{ Authorization = "Basic $auth1"; "User-Agent" = "Mozilla/5.0"; "X-TFS-FedAuthRedirect" = "Suppress" } },
+    @{ name = "Alt (user:PAT)"; headers = @{ Authorization = "Basic $auth2"; "User-Agent" = "Mozilla/5.0"; "X-TFS-FedAuthRedirect" = "Suppress" } }
+)
 
-# --- 4. Auto-Discover Feed Location ---
-$potentialUrls = @()
+Write-Host "=== NuGet Feed Migration: $AdoFeed -> $GitHubOrg ===" -ForegroundColor Cyan
+
+# --- 3. Auto-Discover Feed Location & Auth Strategy ---
+# We try both pkgs. and feeds. subdomains
+$domains = @("pkgs.dev.azure.com", "feeds.dev.azure.com")
+$potentialPaths = @()
 if (-not [string]::IsNullOrWhiteSpace($AdoProject)) {
-    $potentialUrls += "https://pkgs.dev.azure.com/$cleanOrg/$AdoProject/_apis/packaging/feeds/$AdoFeed"
+    $potentialPaths += "$AdoProject/_apis/packaging/feeds/$AdoFeed"
 }
-$potentialUrls += "https://pkgs.dev.azure.com/$cleanOrg/_apis/packaging/feeds/$AdoFeed"
+$potentialPaths += "_apis/packaging/feeds/$AdoFeed"
 
 $baseUrl = $null
 $packages = $null
+$winningHeaders = $null
 
-Write-Host "[Step 1] Discovering Feed Location..." -ForegroundColor Gray
-foreach ($url in $potentialUrls) {
-    try {
-        Write-Host "   Checking: $url" -ForegroundColor DarkGray
-        $response = Invoke-RestMethod -Uri "$url/packages?api-version=7.1-preview.1" -Headers $adoHeaders -Method Get
-        $packages = $response.value
-        $baseUrl = $url
-        Write-Host "   [FOUND] Feed discovered at this location!" -ForegroundColor Green
-        break
+Write-Host "[Step 1] Discovering Feed & Auth Strategy..." -ForegroundColor Gray
+
+foreach ($domain in $domains) {
+    foreach ($path in $potentialPaths) {
+        $url = "https://$domain/$cleanOrg/$path"
+        Write-Host "`n   Checking Location: $url" -ForegroundColor DarkGray
+        
+        foreach ($strategy in $strategies) {
+            try {
+                Write-Host "      Trying Strategy: $($strategy.name)" -ForegroundColor DarkGray
+                $testUrl = "$url/packages?api-version=7.1-preview.1"
+                $response = Invoke-RestMethod -Uri $testUrl -Headers $strategy.headers -Method Get
+                
+                $packages = $response.value
+                $baseUrl = $url
+                $winningHeaders = $strategy.headers
+                Write-Host "      [SUCCESS] Authenticated and found feed!" -ForegroundColor Green
+                break
+            }
+            catch {
+                # Silently continue to next strategy
+            }
+        }
+        if ($baseUrl) { break }
     }
-    catch {
-        Write-Host "   [SKIP] Not found or unauthorized at this URL. (Status: $($_.Exception.Message))" -ForegroundColor DarkGray
-    }
+    if ($baseUrl) { break }
 }
 
 if (-not $baseUrl) {
-    Write-Host "`n[ERROR] Could not connect to the feed at any location." -ForegroundColor Red
-    Write-Host "Possibility 1: The PAT scope 'Packaging (Read)' is missing." -ForegroundColor Yellow
-    Write-Host "Possibility 2: The Feed Name '$AdoFeed' is wrong." -ForegroundColor Yellow
-    Write-Host "Possibility 3: You have no access to the feed settings." -ForegroundColor Yellow
+    Write-Host "`n[ERROR] All 4 authentication attempts failed." -ForegroundColor Red
+    Write-Host "DEBUG INFO:" -ForegroundColor Yellow
+    Write-Host " - Org: $cleanOrg"
+    Write-Host " - Feed: $AdoFeed"
+    Write-Host " - PAT Length: $($AdoPat.Length)"
+    Write-Error "Please check if your Organization Name '$cleanOrg' is exactly correct in your variables."
     exit 1
 }
 
-# --- 5. Process Packages ---
+# --- 4. Process Packages ---
+Write-Host "`n[Step 2] Processing packages..." -ForegroundColor Gray
 Write-Host "   Found $($packages.Count) packages in feed." -ForegroundColor Green
 
 $tempDir = Join-Path $PSScriptRoot "temp_nuget_migration"
@@ -81,7 +93,7 @@ foreach ($pkg in $packages) {
     Write-Host "`nProcessing Package: $pkgName" -ForegroundColor Yellow
 
     $versionsUrl = "$baseUrl/packages/$($pkg.id)/versions?api-version=7.1-preview.1"
-    $versions = (Invoke-RestMethod -Uri $versionsUrl -Headers $adoHeaders).value
+    $versions = (Invoke-RestMethod -Uri $versionsUrl -Headers $winningHeaders).value
 
     foreach ($ver in $versions) {
         $pkgVer = $ver.version
@@ -91,8 +103,9 @@ foreach ($pkg in $packages) {
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
         $downloadUrl = "$baseUrl/nuget/packages/$pkgName/versions/$pkgVer/content"
+
         Write-Host "       Downloading..." -ForegroundColor DarkGray
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $adoHeaders
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $winningHeaders
 
         # Push to GitHub
         Write-Host "       Pushing to GitHub Packages..." -ForegroundColor Gray
