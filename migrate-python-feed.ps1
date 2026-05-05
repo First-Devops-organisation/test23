@@ -107,7 +107,7 @@ foreach ($pkg in $packages) {
             Write-Host "       [SUCCESS] Migrated $pkgName $pkgVer" -ForegroundColor Green
         }
         catch {
-            Write-Warning "       [FAILED] Could not push $pkgName $pkgVer: $($_.Exception.Message)"
+            Write-Warning "       [FAILED] Could not push ${pkgName} ${pkgVer}: $($_.Exception.Message)"
         }
 
         Remove-Item $filePath -Force
