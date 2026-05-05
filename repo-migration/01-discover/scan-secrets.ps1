@@ -292,9 +292,20 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
             }
             if ($isPlaceholder) { continue }
 
-            # Derive secret name from RuleID
-            $secretName = ($f.RuleID -replace '[^a-zA-Z0-9]', '_').ToUpper()
-            if ([string]::IsNullOrWhiteSpace($secretName)) { $secretName = "DETECTED_SECRET" }
+            # Derive secret name — try to extract the actual variable name from the line
+            $secretName = ''
+            # gitleaks provides the matched line — extract the variable name (left of = or :)
+            $matchLine = if ($f.PSObject.Properties['Match']) { $f.Match } else { '' }
+            if (-not [string]::IsNullOrWhiteSpace($matchLine)) {
+                if ($matchLine -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*[:=]') {
+                    $secretName = $Matches[1].ToUpper()
+                }
+            }
+            # Fallback to RuleID if no variable name found
+            if ([string]::IsNullOrWhiteSpace($secretName)) {
+                $secretName = ($f.RuleID -replace '[^a-zA-Z0-9]', '_').ToUpper()
+            }
+            if ([string]::IsNullOrWhiteSpace($secretName)) { $secretName = 'DETECTED_SECRET' }
 
             $glCount++
             $findings.Add([PSCustomObject]@{
@@ -369,9 +380,14 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
                                 if ($skip) { continue }
 
                                 $kwCount++
+                                # Extract actual variable name from the line (left of = or :)
+                                $actualName = $kw.Name
+                                if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*[:=]') {
+                                    $actualName = $Matches[1].ToUpper()
+                                }
                                 $findings.Add([PSCustomObject]@{
                                     Repo        = $repo.Name
-                                    SecretName  = $kw.Name
+                                    SecretName  = $actualName
                                     SecretValue = $val
                                     File        = $filePath
                                     LineNumber  = $lineNum
