@@ -75,7 +75,7 @@ foreach ($pkg in $packages) {
             Write-Host "       [SUCCESS] Migrated $fileName" -ForegroundColor Green
         }
         catch {
-            Write-Warning "       [FAILED] Could not push $fileName: $($_.Exception.Message)"
+            Write-Warning "       [FAILED] Could not push ${fileName}: $($_.Exception.Message)"
         }
 
         # Cleanup file after push to save space
