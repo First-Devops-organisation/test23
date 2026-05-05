@@ -1,0 +1,31 @@
+trigger: none
+
+variables:
+  - group: artifact-migration
+
+jobs:
+  - job: MigrateNuGetFeed
+    displayName: "Migrate NuGet Feed to GitHub"
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+      - checkout: self
+
+      - task: UseDotNet@2
+        displayName: 'Install .NET Core SDK'
+        inputs:
+          packageType: 'sdk'
+          version: '6.x'
+
+      - task: PowerShell@2
+        displayName: "Execute NuGet Migration Script"
+        inputs:
+          targetType: 'filePath'
+          filePath: 'migrate-nuget-feed.ps1'
+          arguments: >
+            -AdoOrg "$(ADO_ORG)"
+            -AdoFeed "$(ADO_FEED)"
+            -AdoPat "$(ADO_PAT)"
+            -GitHubOrg "$(GH_ORG)"
+            -GitHubPat "$(GH_PAT)"
+        pwsh: true
