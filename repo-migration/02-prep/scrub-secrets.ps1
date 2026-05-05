@@ -51,6 +51,11 @@ foreach ($d in @($reportDir, $logDir, $cloneDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
 }
 
+# Resolve to absolute paths — git-filter-repo runs inside clone dir, so relative paths break
+$reportDir = (Resolve-Path $reportDir).Path
+$logDir    = (Resolve-Path $logDir).Path
+$cloneDir  = (Resolve-Path $cloneDir).Path
+
 # ── Resolve GitHub org ───────────────────────────────────────────────────────
 if ([string]::IsNullOrWhiteSpace($GitHubOrg)) {
     $GitHubOrg = if ($config.target.organization -match '^\$\(') { $env:GitHub_Org } else { $config.target.organization }
