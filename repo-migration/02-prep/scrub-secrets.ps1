@@ -273,7 +273,8 @@ foreach ($group in $byRepo) {
         $replacement = "`${{ secrets.$($entry.Key) }}"
         $expressions += "literal:$($entry.Value)==>${replacement}"
     }
-    $expressions | Out-File $replacementsFile -Encoding utf8
+    # Write WITHOUT BOM — git-filter-repo (Python) fails with UTF-8 BOM
+    [System.IO.File]::WriteAllLines($replacementsFile, $expressions, [System.Text.UTF8Encoding]::new($false))
 
     Write-Host "  Applying $($expressions.Count) replacements via git-filter-repo..."
 
@@ -292,6 +293,21 @@ foreach ($group in $byRepo) {
         if ($LASTEXITCODE -ne 0) { throw ($output | Out-String) }
 
         Write-Host "  git-filter-repo completed successfully" -ForegroundColor Green
+
+        # ── Verify secrets were actually removed from HEAD ────────────────
+        $verifyFailed = $false
+        foreach ($entry in $sortedEntries) {
+            $found = & git log --all -S $entry.Value --oneline 2>$null
+            if ($found) {
+                Write-Warning "  VERIFICATION FAILED: '$($entry.Key)' still found in history!"
+                $verifyFailed = $true
+            }
+        }
+        if ($verifyFailed) {
+            Write-Warning "  Some secrets may not have been fully scrubbed. Check replacements file."
+        } else {
+            Write-Host "  VERIFIED: All secrets removed from Git history" -ForegroundColor Green
+        }
 
         # Re-add GitHub remote and force-push scrubbed history
         Write-Host "  Force-pushing cleaned history to GitHub..."
