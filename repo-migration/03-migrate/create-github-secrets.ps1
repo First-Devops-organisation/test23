@@ -39,7 +39,7 @@ if ([string]::IsNullOrWhiteSpace($GitHubOrg) -or [string]::IsNullOrWhiteSpace($G
     if (Test-Path $ConfigPath) {
         $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
         if ([string]::IsNullOrWhiteSpace($GitHubOrg)) {
-            $GitHubOrg = if ($config.target.organization -match '^\$\(') { $env:GH_ORG } else { $config.target.organization }
+            $GitHubOrg = if ($config.target.organization -match '^\$\(') { $env:GitHub_Org } else { $config.target.organization }
         }
         if ([string]::IsNullOrWhiteSpace($GitHubRepo)) {
             $GitHubRepo = if ($config.migration.singleRepo) { $config.migration.singleRepo } else { "" }
@@ -47,7 +47,7 @@ if ([string]::IsNullOrWhiteSpace($GitHubOrg) -or [string]::IsNullOrWhiteSpace($G
     }
 }
 
-if ([string]::IsNullOrWhiteSpace($GitHubOrg)) { Write-Error "GitHubOrg is required. Set via parameter or GH_ORG env variable." }
+if ([string]::IsNullOrWhiteSpace($GitHubOrg)) { Write-Error "GitHubOrg is required. Set via parameter or GitHub_Org env variable." }
 # GitHubRepo can be empty for batch mode — will process all repos in the JSON
 
 # Normalize org

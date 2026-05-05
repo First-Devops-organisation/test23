@@ -53,9 +53,9 @@ foreach ($d in @($reportDir, $logDir, $cloneDir)) {
 
 # ── Resolve GitHub org ───────────────────────────────────────────────────────
 if ([string]::IsNullOrWhiteSpace($GitHubOrg)) {
-    $GitHubOrg = if ($config.target.organization -match '^\$\(') { $env:GH_ORG } else { $config.target.organization }
+    $GitHubOrg = if ($config.target.organization -match '^\$\(') { $env:GitHub_Org } else { $config.target.organization }
 }
-if ([string]::IsNullOrWhiteSpace($GitHubOrg)) { Write-Error "GitHubOrg is required. Set via parameter or GH_ORG env variable." }
+if ([string]::IsNullOrWhiteSpace($GitHubOrg)) { Write-Error "GitHubOrg is required. Set via parameter or GitHub_Org env variable." }
 # Strip URL prefix if present
 if ($GitHubOrg -match 'github\.com/([^/]+)') { $GitHubOrg = $Matches[1] }
 
