@@ -1,18 +1,6 @@
 <#
 .SYNOPSIS
     Migrates NuGet packages from Azure Artifacts Feed to GitHub Packages.
-.PARAMETER AdoOrg
-    Azure DevOps Organization name or URL.
-.PARAMETER AdoProject
-    Azure DevOps Project name (optional for Org-scoped feeds).
-.PARAMETER AdoFeed
-    Source Feed Name or ID.
-.PARAMETER AdoPat
-    ADO PAT with Packaging (Read) scope.
-.PARAMETER GitHubOrg
-    Target GitHub Organization name.
-.PARAMETER GitHubPat
-    GitHub PAT with write:packages scope.
 #>
 param(
     [Parameter(Mandatory = $true)] [string]$AdoOrg,
@@ -32,8 +20,12 @@ if ($cleanOrg -like "*dev.azure.com*") {
 }
 
 # --- 2. Setup Auth ---
+# Packaging API sometimes prefers basic auth with a clear 'Basic' prefix
 $base64AdoAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$AdoPat"))
-$adoHeaders = @{ Authorization = "Basic $base64AdoAuth" }
+$adoHeaders = @{ 
+    Authorization = "Basic $base64AdoAuth"
+    "X-TFS-FedAuthRedirect" = "Suppress" # Prevents redirecting to login page on 401
+}
 
 # --- 3. Create Temp Directory ---
 $tempDir = Join-Path $PSScriptRoot "temp_nuget_migration"
@@ -41,10 +33,8 @@ if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir | O
 
 Write-Host "=== NuGet Feed Migration: $AdoFeed -> $GitHubOrg ===" -ForegroundColor Cyan
 Write-Host "   ADO Org: $cleanOrg" -ForegroundColor Gray
-if ($AdoProject) { Write-Host "   ADO Project: $AdoProject" -ForegroundColor Gray }
 
 # --- 4. Construct Base URL ---
-# If project is provided, use project-scoped URL, otherwise Org-scoped
 $baseUrl = if ($AdoProject) { 
     "https://pkgs.dev.azure.com/$cleanOrg/$AdoProject/_apis/packaging/feeds/$AdoFeed"
 } else {
@@ -56,12 +46,15 @@ Write-Host "[Step 1] Fetching package list from ADO..." -ForegroundColor Gray
 $packagesUrl = "$baseUrl/packages?api-version=7.1-preview.1"
 
 try {
-    $packagesResponse = Invoke-RestMethod -Uri $packagesUrl -Headers $adoHeaders
+    $packagesResponse = Invoke-RestMethod -Uri $packagesUrl -Headers $adoHeaders -Method Get
     $packages = $packagesResponse.value
 }
 catch {
-    Write-Error "Failed to connect to ADO Packaging API. Error: $($_.Exception.Message)"
-    Write-Host "Try checking if the feed is Project-scoped or Org-scoped." -ForegroundColor Yellow
+    Write-Host "`n[ERROR] Authentication Failed (401)." -ForegroundColor Red
+    Write-Host "1. Please check that your ADO_PAT has 'Packaging (Read)' scope enabled." -ForegroundColor Yellow
+    Write-Host "2. Current Org used: $cleanOrg" -ForegroundColor White
+    Write-Host "3. URL attempted: $packagesUrl" -ForegroundColor White
+    Write-Error "Migration stopped due to authentication failure."
     exit 1
 }
 
@@ -71,7 +64,6 @@ foreach ($pkg in $packages) {
     $pkgName = $pkg.name
     Write-Host "`nProcessing Package: $pkgName" -ForegroundColor Yellow
 
-    # Get all versions for this package
     $versionsUrl = "$baseUrl/packages/$($pkg.id)/versions?api-version=7.1-preview.1"
     $versions = (Invoke-RestMethod -Uri $versionsUrl -Headers $adoHeaders).value
 
@@ -82,8 +74,6 @@ foreach ($pkg in $packages) {
 
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
-        # --- 6. Download .nupkg ---
-        # Note: Download URL format also changes for project-scoped feeds
         $downloadUrl = if ($AdoProject) {
             "https://pkgs.dev.azure.com/$cleanOrg/$AdoProject/_apis/packaging/feeds/$AdoFeed/nuget/packages/$pkgName/versions/$pkgVer/content"
         } else {
@@ -109,11 +99,9 @@ foreach ($pkg in $packages) {
             Write-Warning "       [FAILED] Could not push ${fileName}: $($_.Exception.Message)"
         }
 
-        # Cleanup file after push
         Remove-Item $filePath -Force
     }
 }
 
-# Cleanup
 Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "`n=== Feed Migration Complete! ===" -ForegroundColor Cyan
