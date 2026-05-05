@@ -28,4 +28,4 @@ jobs:
             -AdoPat "$(ADO_PAT)"
             -GitHubOrg "$(GH_ORG)"
             -GitHubPat "$(GH_PAT)"
-        # pwsh: true
+      
