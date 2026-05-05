@@ -77,21 +77,29 @@ foreach ($pkg in $packages) {
         $pkgVer = $ver.version
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
-        # ADO PyPI Content URL
-        $downloadUrl = "$baseUrl/pypi/packages/$pkgName/versions/$pkgVer/content"
-        if ($baseUrl -like "*feeds.dev.azure.com*") {
-            # Switch to pkgs domain for binary content
+        # 4. Get the exact download link from the API
+        $versionMetadata = Invoke-RestMethod -Uri "$baseUrl/packages/$($pkg.id)/versions/$($ver.id)?api-version=7.1-preview.1" -Headers $adoHeaders
+        $downloadUrl = $versionMetadata._links.content.href
+        
+        if (-not $downloadUrl) {
+            Write-Warning "       [SKIP] No download link found for version $pkgVer"
+            continue
+        }
+
+        # Fix domain if necessary
+        if ($baseUrl -like "*feeds.dev.azure.com*" -and $downloadUrl -like "*feeds.dev.azure.com*") {
             $downloadUrl = $downloadUrl.Replace("feeds.dev.azure.com", "pkgs.dev.azure.com")
         }
 
-        # We need to determine if it's a wheel or tar.gz. ADO API usually serves the main asset.
+        # Determine a filename (Python packages usually end in .whl or .tar.gz)
+        # We will name it .pkg and twine will handle it
         $filePath = Join-Path $tempDir "$pkgName-$pkgVer.pkg"
         
-        Write-Host "       Downloading..." -ForegroundColor DarkGray
+        Write-Host "       Downloading from: $downloadUrl" -ForegroundColor DarkGray
         try {
             Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $adoHeaders
         } catch {
-            Write-Warning "       [SKIP] Could not download version $pkgVer from $downloadUrl. (Error: $($_.Exception.Message))"
+            Write-Warning "       [SKIP] Could not download version $pkgVer. (Error: $($_.Exception.Message))"
             continue
         }
 
