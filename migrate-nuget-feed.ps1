@@ -20,45 +20,54 @@ if ($cleanOrg -like "*dev.azure.com*") {
 }
 
 # --- 2. Setup Auth ---
-# Packaging API sometimes prefers basic auth with a clear 'Basic' prefix
 $base64AdoAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$AdoPat"))
 $adoHeaders = @{ 
     Authorization = "Basic $base64AdoAuth"
-    "X-TFS-FedAuthRedirect" = "Suppress" # Prevents redirecting to login page on 401
+    "X-TFS-FedAuthRedirect" = "Suppress"
 }
-
-# --- 3. Create Temp Directory ---
-$tempDir = Join-Path $PSScriptRoot "temp_nuget_migration"
-if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir | Out-Null }
 
 Write-Host "=== NuGet Feed Migration: $AdoFeed -> $GitHubOrg ===" -ForegroundColor Cyan
-Write-Host "   ADO Org: $cleanOrg" -ForegroundColor Gray
 
-# --- 4. Construct Base URL ---
-$baseUrl = if ($AdoProject) { 
-    "https://pkgs.dev.azure.com/$cleanOrg/$AdoProject/_apis/packaging/feeds/$AdoFeed"
-} else {
-    "https://pkgs.dev.azure.com/$cleanOrg/_apis/packaging/feeds/$AdoFeed"
+# --- 3. Auto-Discover Feed Location ---
+$potentialUrls = @()
+if ($AdoProject) {
+    $potentialUrls += "https://pkgs.dev.azure.com/$cleanOrg/$AdoProject/_apis/packaging/feeds/$AdoFeed"
+}
+$potentialUrls += "https://pkgs.dev.azure.com/$cleanOrg/_apis/packaging/feeds/$AdoFeed"
+
+$baseUrl = $null
+$packages = $null
+
+Write-Host "[Step 1] Discovering Feed Location..." -ForegroundColor Gray
+foreach ($url in $potentialUrls) {
+    try {
+        Write-Host "   Trying: $url" -ForegroundColor DarkGray
+        $response = Invoke-RestMethod -Uri "$url/packages?api-version=7.1-preview.1" -Headers $adoHeaders -Method Get
+        $packages = $response.value
+        $baseUrl = $url
+        Write-Host "   [FOUND] Feed discovered at this location!" -ForegroundColor Green
+        break
+    }
+    catch {
+        Write-Host "   [SKIP] Not found or unauthorized at this URL." -ForegroundColor DarkGray
+    }
 }
 
-# --- 5. Get List of Packages ---
-Write-Host "[Step 1] Fetching package list from ADO..." -ForegroundColor Gray
-$packagesUrl = "$baseUrl/packages?api-version=7.1-preview.1"
-
-try {
-    $packagesResponse = Invoke-RestMethod -Uri $packagesUrl -Headers $adoHeaders -Method Get
-    $packages = $packagesResponse.value
-}
-catch {
-    Write-Host "`n[ERROR] Authentication Failed (401)." -ForegroundColor Red
-    Write-Host "1. Please check that your ADO_PAT has 'Packaging (Read)' scope enabled." -ForegroundColor Yellow
-    Write-Host "2. Current Org used: $cleanOrg" -ForegroundColor White
-    Write-Host "3. URL attempted: $packagesUrl" -ForegroundColor White
-    Write-Error "Migration stopped due to authentication failure."
+if (-not $baseUrl) {
+    Write-Host "`n[ERROR] Could not connect to the feed at any location." -ForegroundColor Red
+    Write-Host "Please verify:" -ForegroundColor Yellow
+    Write-Host "1. Your PAT has 'Packaging (Read)' scope." -ForegroundColor White
+    Write-Host "2. The Feed Name '$AdoFeed' is exactly correct (case-sensitive)." -ForegroundColor White
+    Write-Host "3. You have 'Reader' or 'Collaborator' permission on the feed itself." -ForegroundColor White
     exit 1
 }
 
+# --- 4. Process Packages ---
 Write-Host "   Found $($packages.Count) packages in feed." -ForegroundColor Green
+
+# Temp Dir
+$tempDir = Join-Path $PSScriptRoot "temp_nuget_migration"
+if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir | Out-Null }
 
 foreach ($pkg in $packages) {
     $pkgName = $pkg.name
@@ -74,31 +83,23 @@ foreach ($pkg in $packages) {
 
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
-        $downloadUrl = if ($AdoProject) {
-            "https://pkgs.dev.azure.com/$cleanOrg/$AdoProject/_apis/packaging/feeds/$AdoFeed/nuget/packages/$pkgName/versions/$pkgVer/content"
-        } else {
-            "https://pkgs.dev.azure.com/$cleanOrg/_apis/packaging/feeds/$AdoFeed/nuget/packages/$pkgName/versions/$pkgVer/content"
-        }
+        # Download URL matches the base URL we discovered
+        $downloadUrl = "$baseUrl/nuget/packages/$pkgName/versions/$pkgVer/content"
 
         Write-Host "       Downloading..." -ForegroundColor DarkGray
         Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $adoHeaders
 
-        # --- 7. Push to GitHub ---
+        # Push to GitHub
         Write-Host "       Pushing to GitHub Packages..." -ForegroundColor Gray
         $ghSourceUrl = "https://nuget.pkg.github.com/$GitHubOrg/index.json"
         
         try {
-            dotnet nuget push $filePath `
-                --source $ghSourceUrl `
-                --api-key $GitHubPat `
-                --skip-duplicate
-            
+            dotnet nuget push $filePath --source $ghSourceUrl --api-key $GitHubPat --skip-duplicate
             Write-Host "       [SUCCESS] Migrated ${fileName}" -ForegroundColor Green
         }
         catch {
             Write-Warning "       [FAILED] Could not push ${fileName}: $($_.Exception.Message)"
         }
-
         Remove-Item $filePath -Force
     }
 }
