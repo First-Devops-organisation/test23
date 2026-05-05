@@ -102,10 +102,24 @@ foreach ($pkg in $packages) {
 
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
+        # The download URL for NuGet content needs to follow the same domain that worked
         $downloadUrl = "$baseUrl/nuget/packages/$pkgName/versions/$pkgVer/content"
+        if ($baseUrl -like "*feeds.dev.azure.com*") {
+            # For feeds subdomain, we sometimes need to switch to pkgs for the actual binary download
+            $binaryUrl = $downloadUrl.Replace("feeds.dev.azure.com", "pkgs.dev.azure.com")
+            Write-Host "       Downloading (via binary URL)..." -ForegroundColor DarkGray
+            $downloadUrl = $binaryUrl
+        } else {
+            Write-Host "       Downloading..." -ForegroundColor DarkGray
+        }
 
-        Write-Host "       Downloading..." -ForegroundColor DarkGray
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $winningHeaders
+        try {
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $winningHeaders
+        }
+        catch {
+             Write-Warning "       [RETRY] Download failed on primary URL, trying discovery domain..."
+             Invoke-WebRequest -Uri "$baseUrl/nuget/packages/$pkgName/versions/$pkgVer/content" -OutFile $filePath -Headers $winningHeaders
+        }
 
         # Push to GitHub
         Write-Host "       Pushing to GitHub Packages..." -ForegroundColor Gray
