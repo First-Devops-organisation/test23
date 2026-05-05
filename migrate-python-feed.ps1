@@ -79,7 +79,11 @@ foreach ($pkg in $packages) {
 
         # ADO PyPI Content URL
         $downloadUrl = "$baseUrl/pypi/packages/$pkgName/versions/$pkgVer/content"
-        
+        if ($baseUrl -like "*feeds.dev.azure.com*") {
+            # Switch to pkgs domain for binary content
+            $downloadUrl = $downloadUrl.Replace("feeds.dev.azure.com", "pkgs.dev.azure.com")
+        }
+
         # We need to determine if it's a wheel or tar.gz. ADO API usually serves the main asset.
         $filePath = Join-Path $tempDir "$pkgName-$pkgVer.pkg"
         
@@ -87,7 +91,7 @@ foreach ($pkg in $packages) {
         try {
             Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $adoHeaders
         } catch {
-            Write-Warning "       [SKIP] Could not download version $pkgVer"
+            Write-Warning "       [SKIP] Could not download version $pkgVer from $downloadUrl. (Error: $($_.Exception.Message))"
             continue
         }
 
