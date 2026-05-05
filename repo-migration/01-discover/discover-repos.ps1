@@ -35,6 +35,12 @@ $adoPat  = if ($config.source.pat           -match '^\$\(') { $env:ADO_PAT } els
 
 $adoOrg = ($adoOrg ?? '').TrimEnd('/')
 
+# Normalize to full URL — ADO_Org may be just the org name (e.g., "YashTech-DevOps")
+if (-not [string]::IsNullOrWhiteSpace($adoOrg) -and $adoOrg -notmatch '^https?://') {
+    $adoOrg = "https://dev.azure.com/$adoOrg"
+    Write-Host "Normalized ADO org to: $adoOrg" -ForegroundColor Gray
+}
+
 if ([string]::IsNullOrWhiteSpace($adoOrg)) {
     Write-Error "Set the ADO_Org environment variable or update config.source.organization"
 }
