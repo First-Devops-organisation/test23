@@ -68,7 +68,7 @@ if (-not (Test-Path $SecretValuesPath)) {
     return
 }
 
-$allSecrets = Get-Content $SecretValuesPath -Raw | ConvertFrom-Json
+$allSecrets = @(Get-Content $SecretValuesPath -Raw | ConvertFrom-Json)
 if ($allSecrets.Count -eq 0) {
     Write-Host "No secrets to create. secret-values.json is empty." -ForegroundColor Green
     return
