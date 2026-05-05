@@ -24,8 +24,9 @@ jobs:
           filePath: 'migrate-nuget-feed.ps1'
           arguments: >
             -AdoOrg "$(ADO_ORG)"
+            -AdoProject "$(ADO_PROJECT)"
             -AdoFeed "$(ADO_FEED)"
             -AdoPat "$(ADO_PAT)"
             -GitHubOrg "$(GH_ORG)"
             -GitHubPat "$(GH_PAT)"
-      
+        pwsh: true
