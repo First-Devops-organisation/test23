@@ -83,6 +83,10 @@ if (-not (Test-Path $findingsPath)) {
 $findings = Get-Content $findingsPath -Raw | ConvertFrom-Json
 if ($findings.Count -eq 0) {
     Write-Host "No secrets found — nothing to scrub." -ForegroundColor Green
+    # Still create empty secret-values.json so downstream steps don't fail
+    $svPath = Join-Path $reportDir "secret-values.json"
+    "[]" | Out-File $svPath -Encoding utf8
+    Write-Host "  Created empty secret-values.json at $svPath"
     return
 }
 
@@ -94,6 +98,9 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubRepo)) {
 
 if ($findings.Count -eq 0) {
     Write-Host "No findings for selected repo(s) — nothing to scrub." -ForegroundColor Green
+    $svPath = Join-Path $reportDir "secret-values.json"
+    "[]" | Out-File $svPath -Encoding utf8
+    Write-Host "  Created empty secret-values.json at $svPath"
     return
 }
 

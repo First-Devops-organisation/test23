@@ -63,7 +63,9 @@ $env:GH_TOKEN = $ghPat
 
 # ── Load secret values ──────────────────────────────────────────────────────
 if (-not (Test-Path $SecretValuesPath)) {
-    Write-Error "secret-values.json not found at: $SecretValuesPath. Run scrub-secrets.ps1 first."
+    Write-Host "secret-values.json not found at: $SecretValuesPath" -ForegroundColor Yellow
+    Write-Host "No secrets to create — scan likely found no secrets. Skipping." -ForegroundColor Green
+    return
 }
 
 $allSecrets = Get-Content $SecretValuesPath -Raw | ConvertFrom-Json
