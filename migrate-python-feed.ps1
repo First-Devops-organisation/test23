@@ -78,40 +78,25 @@ foreach ($pkg in $packages) {
         $downloadUrl = $null # CRITICAL: Clear variable for each loop
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
-        # 4. Use the PyPI 'Simple Index' to find the actual file URL
-        $normalizedPkgName = $pkgName.ToLower().Replace(".", "-").Replace("_", "-")
-        # Ensure we use pkgs.dev.azure.com for the simple index
-        $simpleBase = $baseUrl.Replace("feeds.dev.azure.com", "pkgs.dev.azure.com").Replace("_apis/packaging/feeds", "_packaging")
-        $simpleUrl = "$simpleBase/pypi/simple/$normalizedPkgName/"
+        # 4. Use 'pip download' to fetch the package (most reliable way)
+        $simpleUrl = "$($baseUrl.Replace('feeds.dev.azure.com', 'pkgs.dev.azure.com').Replace('_apis/packaging/feeds', '_packaging'))/pypi/simple/"
+        $authUrl = $simpleUrl.Replace("https://", "https://token:$($AdoPat)@")
         
-        Write-Host "       Checking Simple Index: $simpleUrl" -ForegroundColor DarkGray
+        Write-Host "       Downloading via pip..." -ForegroundColor DarkGray
         try {
-            $simplePage = Invoke-WebRequest -Uri $simpleUrl -Headers $adoHeaders -UseBasicParsing
-            # Search for the version in the HTML links (matches href='.../animalsounds-1.0.0-py3-none-any.whl')
-            if ($simplePage.Content -match "href='([^']+)'[^>]*>[^<]*$pkgVer") {
-                $downloadUrl = $matches[1].Split('#')[0]
-                if ($downloadUrl -notlike "http*") {
-                    # Handle relative URLs if they exist
-                    $downloadUrl = "$simpleUrl$downloadUrl"
-                }
+            # Download into the temp directory
+            pip download "${pkgName}==${pkgVer}" --index-url $authUrl --dest $tempDir --no-deps --quiet
+            
+            # Find the file that was just downloaded
+            $downloadedFile = Get-ChildItem $tempDir | Where-Object { $_.Name -like "*$pkgVer*" } | Select-Object -First 1
+            if ($downloadedFile) {
+                $filePath = $downloadedFile.FullName
+                Write-Host "       [SUCCESS] Downloaded: $($downloadedFile.Name)" -ForegroundColor DarkGray
+            } else {
+                throw "File not found after pip download"
             }
         } catch {
-             Write-Warning "       [RETRY] Could not access Simple Index for $pkgName."
-        }
-
-        if (-not $downloadUrl) {
-            # Fallback to the constructed URL if simple index fails
-            $downloadUrl = "$baseUrl/pypi/packages/$pkgName/versions/$pkgVer/content".Replace("feeds.dev.azure.com", "pkgs.dev.azure.com")
-        }
-
-        # Determine a filename
-        $filePath = Join-Path $tempDir "$pkgName-$pkgVer.pkg"
-        
-        Write-Host "       Downloading from: $downloadUrl" -ForegroundColor DarkGray
-        try {
-            Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $adoHeaders
-        } catch {
-            Write-Warning "       [SKIP] Could not download version $pkgVer. (Error: $($_.Exception.Message))"
+            Write-Warning "       [SKIP] Pip could not download version $pkgVer. (Error: $($_.Exception.Message))"
             continue
         }
 
