@@ -74,26 +74,37 @@ if (-not $gl) {
 
 # ── Keyword patterns for additional scanning ─────────────────────────────────
 $keywordPatterns = @(
-    @{ Name = 'PASSWORD';           Regex = '(?i)(?:password|passwd|pwd)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'API_KEY';            Regex = '(?i)(?:api[_-]?key)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'SECRET_KEY';         Regex = '(?i)(?:secret[_-]?key)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'TOKEN';              Regex = '(?i)(?:token|auth[_-]?token|access[_-]?token)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'PRIVATE_KEY';        Regex = '(?i)(?:private[_-]?key)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'CLIENT_SECRET';      Regex = '(?i)(?:client[_-]?secret)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'CONNECTION_STRING';  Regex = '(?i)(?:connection[_-]?string|conn[_-]?str)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'CREDENTIAL';         Regex = '(?i)(?:credential|cred)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'SIGNING_KEY';        Regex = '(?i)(?:signing[_-]?key)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'ENCRYPTION_KEY';     Regex = '(?i)(?:encryption[_-]?key)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'DB_PASSWORD';        Regex = '(?i)(?:db[_-]?password|database[_-]?password)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'SMTP_PASSWORD';      Regex = '(?i)(?:smtp[_-]?password|mail[_-]?password)\s*[:=]\s*[''"]?(.+?)[''"]?\s*$' },
-    @{ Name = 'BEARER_TOKEN';       Regex = '(?i)(?:bearer)\s+(\S+)' }
+    @{ Name = 'PASSWORD';           Regex = '(?i)(?:password|passwd|pwd)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'API_KEY';            Regex = '(?i)(?:api[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'SECRET_KEY';         Regex = '(?i)(?:secret[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'SECRET';             Regex = '(?i)(?:[a-z_]*_secret|secret)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'TOKEN';              Regex = '(?i)(?:token|auth[_-]?token|access[_-]?token|jwt[_-]?secret)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'PRIVATE_KEY';        Regex = '(?i)(?:private[_-]?key|ssl[_-]?private[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'SSH_KEY';            Regex = '(?i)(?:ssh[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'CLIENT_SECRET';      Regex = '(?i)(?:client[_-]?secret)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'CONNECTION_STRING';  Regex = '(?i)(?:connection[_-]?string|conn[_-]?str|mongo[_-]?uri|database[_-]?url)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'CREDENTIAL';         Regex = '(?i)(?:credential|cred)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'SIGNING_KEY';        Regex = '(?i)(?:signing[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'ENCRYPTION_KEY';     Regex = '(?i)(?:encryption[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'STORAGE_KEY';        Regex = '(?i)(?:storage[_-]?key|azure[_-]?storage[_-]?key|account[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'DB_PASSWORD';        Regex = '(?i)(?:db[_-]?password|database[_-]?password|mysql[_-]?password)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'SMTP_PASSWORD';      Regex = '(?i)(?:smtp[_-]?password|mail[_-]?password)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'BEARER_TOKEN';       Regex = '(?i)(?:bearer)\s+(\S+)' },
+    @{ Name = 'STRIPE_KEY';         Regex = '(?i)(?:stripe[_-]?(?:secret|api)?[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    @{ Name = 'STRIPE_KEY';         Regex = '(?i)[:=]\s*[''"]*((?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+)[''"]*' },
+    @{ Name = 'MONGO_URI';          Regex = '(?i)[:=]\s*[''"]*(mongodb(?:\+srv)?://[^\s''"]+)[''"]*' },
+    @{ Name = 'JWT_SECRET';         Regex = '(?i)[:=]\s*[''"]*(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)[''"]*' },
+    @{ Name = 'SSH_KEY';            Regex = '(?i)[:=]\s*[''"]*(ssh-(?:rsa|ed25519|dss)\s+[A-Za-z0-9+/=]+(?:\s+\S+)?)[''"]*' },
+    @{ Name = 'GENERIC_KEY';        Regex = '(?i)(?:[a-z_]*[_-]key)\s*[:=]\s*[''"]*(.{12,}?)[''"]*\s*$' }
 )
 
 # Values that are likely placeholders, not real secrets
-$placeholders = @(
-    'changeme', 'password', 'example', 'your-', 'xxx', 'TODO', 'CHANGE_ME',
-    'replace_me', 'insert_here', 'none', 'null', 'empty', 'test', 'dummy',
-    'sample', 'placeholder', 'default', 'xxxxxx', '******', '<', '${', '$('
+# Only exact-match for short values; long values are never filtered as placeholders
+$placeholderExact = @(
+    'changeme', 'password', 'example', 'your-password-here', 'xxx', 'TODO',
+    'CHANGE_ME', 'replace_me', 'insert_here', 'none', 'null', 'empty',
+    'test', 'dummy', 'sample', 'placeholder', 'default', 'admin', 'root',
+    'xxxxxx', '******'
 )
 
 # ── Identify repos to scan ───────────────────────────────────────────────────
@@ -214,7 +225,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     $findings       = $using:allFindings
     $summary        = $using:repoSummary
     $kwPatterns     = $using:keywordPatterns
-    $phValues       = $using:placeholders
+    $phValues       = $using:placeholderExact
 
     $repoLabel  = $repo.Name
     $clonePath  = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8)).git"
@@ -271,10 +282,13 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
             if ($secretVal.Length -lt 4) { continue }
 
-            # Check if placeholder
+            # Check if placeholder — only exact match for short values
             $isPlaceholder = $false
-            foreach ($ph in $phValues) {
-                if ($secretVal -match [regex]::Escape($ph)) { $isPlaceholder = $true; break }
+            $valLower = $secretVal.ToLower().Trim()
+            if ($valLower.Length -le 20) {
+                foreach ($ph in $phValues) {
+                    if ($valLower -eq $ph.ToLower()) { $isPlaceholder = $true; break }
+                }
             }
             if ($isPlaceholder) { continue }
 
@@ -344,10 +358,13 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
                                 if ($val.Length -lt 4) { continue }
 
-                                # Check placeholder
+                                # Check placeholder — only exact match for short values
                                 $skip = $false
-                                foreach ($ph in $phValues) {
-                                    if ($val -match [regex]::Escape($ph)) { $skip = $true; break }
+                                $valLower = $val.ToLower().Trim()
+                                if ($valLower.Length -le 20) {
+                                    foreach ($ph in $phValues) {
+                                        if ($valLower -eq $ph.ToLower()) { $skip = $true; break }
+                                    }
                                 }
                                 if ($skip) { continue }
 

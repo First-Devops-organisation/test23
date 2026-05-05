@@ -110,10 +110,12 @@ if ($findings.Count -eq 0) {
 }
 
 # ── Values that are likely placeholders ───────────────────────────────────────
-$placeholders = @(
-    'changeme', 'password', 'example', 'your-', 'xxx', 'TODO', 'CHANGE_ME',
-    'replace_me', 'insert_here', 'none', 'null', 'empty', 'test', 'dummy',
-    'sample', 'placeholder', 'default', 'xxxxxx', '******', '<', '${', '$('
+# Only exact-match for short values; long values are never filtered
+$placeholderExact = @(
+    'changeme', 'password', 'example', 'your-password-here', 'xxx', 'TODO',
+    'CHANGE_ME', 'replace_me', 'insert_here', 'none', 'null', 'empty',
+    'test', 'dummy', 'sample', 'placeholder', 'default', 'admin', 'root',
+    'xxxxxx', '******'
 )
 
 # Group findings by repo
@@ -153,10 +155,13 @@ foreach ($group in $byRepo) {
 
         if ($val.Length -lt 4) { continue }
 
-        # Skip placeholders
+        # Skip placeholders — only exact match for short values
         $isPlaceholder = $false
-        foreach ($ph in $placeholders) {
-            if ($val -match [regex]::Escape($ph)) { $isPlaceholder = $true; break }
+        $valLower = $val.ToLower().Trim()
+        if ($valLower.Length -le 20) {
+            foreach ($ph in $placeholderExact) {
+                if ($valLower -eq $ph.ToLower()) { $isPlaceholder = $true; break }
+            }
         }
         if ($isPlaceholder) { continue }
 
