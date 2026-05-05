@@ -77,22 +77,35 @@ foreach ($pkg in $packages) {
         $pkgVer = $ver.version
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
-        # 4. Get the exact download link from the API
-        $versionMetadata = Invoke-RestMethod -Uri "$baseUrl/packages/$($pkg.id)/versions/$($ver.id)?api-version=7.1-preview.1" -Headers $adoHeaders
-        $downloadUrl = $versionMetadata._links.content.href
+        # 4. Use the PyPI 'Simple Index' to find the actual file URL
+        # Normalizing package name for PyPI (lowercase, dots/underscores to hyphens)
+        $normalizedPkgName = $pkgName.ToLower().Replace(".", "-").Replace("_", "-")
+        $simpleUrl = "$($baseUrl.Replace('_apis/packaging/feeds', '_packaging'))/pypi/simple/$normalizedPkgName/"
         
+        Write-Host "       Checking Simple Index: $simpleUrl" -ForegroundColor DarkGray
+        try {
+            $simplePage = Invoke-WebRequest -Uri $simpleUrl -Headers $adoHeaders -UseBasicParsing
+            # Search for the version in the HTML links
+            $regex = "href='([^']+)'[^>]*>$pkgName-$pkgVer"
+            if ($simplePage.Content -match $regex) {
+                $downloadUrl = $matches[1].Split('#')[0] # Remove fragment
+            } else {
+                # Try a broader search
+                $regex = "href='([^']+)'[^>]*>[^<]*$pkgVer"
+                if ($simplePage.Content -match $regex) {
+                    $downloadUrl = $matches[1].Split('#')[0]
+                }
+            }
+        } catch {
+             Write-Warning "       [RETRY] Could not access Simple Index for $pkgName. Trying fallback..."
+        }
+
         if (-not $downloadUrl) {
-            Write-Warning "       [SKIP] No download link found for version $pkgVer"
-            continue
+            # Fallback to the constructed URL if simple index fails
+            $downloadUrl = "$baseUrl/pypi/packages/$pkgName/versions/$pkgVer/content".Replace("feeds.dev.azure.com", "pkgs.dev.azure.com")
         }
 
-        # Fix domain if necessary
-        if ($baseUrl -like "*feeds.dev.azure.com*" -and $downloadUrl -like "*feeds.dev.azure.com*") {
-            $downloadUrl = $downloadUrl.Replace("feeds.dev.azure.com", "pkgs.dev.azure.com")
-        }
-
-        # Determine a filename (Python packages usually end in .whl or .tar.gz)
-        # We will name it .pkg and twine will handle it
+        # Determine a filename
         $filePath = Join-Path $tempDir "$pkgName-$pkgVer.pkg"
         
         Write-Host "       Downloading from: $downloadUrl" -ForegroundColor DarkGray
