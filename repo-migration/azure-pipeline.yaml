@@ -47,7 +47,7 @@ parameters:
     default: true
 
 variables:
-  - group: ankit-adotogit  # ADO_Org, ADO_PAT, ADO_Project, ADO_Repo, GitHub_Org, GitHub_Repo, GH_PAT
+  - group: ankit-adotogit
 
 stages:
   # ===========================================================================
