@@ -1,0 +1,45 @@
+name: Multi-Environment Deployment Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+      - release
+      - main
+
+jobs:
+  # ==========================================
+  # DEV DEPLOYMENT
+  # ==========================================
+  deploy_dev:
+    name: Deploy to Dev
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Deploying Code
+        run: echo "Deploying the app to the Dev Environment..."
+
+  # ==========================================
+  # QA DEPLOYMENT
+  # ==========================================
+  deploy_qa:
+    name: Deploy to QA
+    if: github.ref == 'refs/heads/release'
+    runs-on: ubuntu-latest
+    environment: qa
+    steps:
+      - name: Deploying Code
+        run: echo "Deploying the app to the QA Environment..."
+
+  # ==========================================
+  # PRODUCTION DEPLOYMENT
+  # ==========================================
+  deploy_prod:
+    name: Deploy to Production
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploying Code
+        run: echo "Deploying the app to the Production Environment..."
