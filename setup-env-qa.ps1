@@ -51,7 +51,7 @@
 
 
 # ==========================================
-# Setup QA Environment (Fixed for ADO Pipeline)
+# Setup QA Environment (Fixed BOM issue)
 # ==========================================
 [CmdletBinding()]
 param (
@@ -91,9 +91,13 @@ if ($reviewerObjects.Count -gt 0) {
     $envConfig.Add("reviewers", $reviewerObjects)
 }
 
-# 3. Write JSON to a temp file (avoids piping issues on ADO agents)
+# 3. Write JSON WITHOUT BOM (this fixes the 400 error)
+$envJson = $envConfig | ConvertTo-Json -Depth 5
 $envJsonFile = Join-Path $env:TEMP "env-config.json"
-$envConfig | ConvertTo-Json -Depth 5 | Out-File -FilePath $envJsonFile -Encoding utf8
+[System.IO.File]::WriteAllText($envJsonFile, $envJson)
+
+Write-Host "JSON payload:"
+Write-Host $envJson
 
 Write-Host "Applying settings to environment..."
 gh api -X PUT "repos/$GHOrg/$GHRepo/environments/$EnvName" `
@@ -103,8 +107,9 @@ gh api -X PUT "repos/$GHOrg/$GHRepo/environments/$EnvName" `
 Write-Host "Environment '$EnvName' created." -ForegroundColor Green
 
 # 4. Add Branch Rule
+$branchJson = @{ name = $BranchName } | ConvertTo-Json
 $branchJsonFile = Join-Path $env:TEMP "branch-config.json"
-@{ name = $BranchName } | ConvertTo-Json | Out-File -FilePath $branchJsonFile -Encoding utf8
+[System.IO.File]::WriteAllText($branchJsonFile, $branchJson)
 
 Write-Host "Locking to branch: $BranchName..."
 gh api -X POST "repos/$GHOrg/$GHRepo/environments/$EnvName/deployment-branch-policies" `
@@ -113,7 +118,7 @@ gh api -X POST "repos/$GHOrg/$GHRepo/environments/$EnvName/deployment-branch-pol
 
 Write-Host "Rule added: Only the '$BranchName' branch can deploy." -ForegroundColor Green
 
-# 5. Cleanup temp files
+# 5. Cleanup
 Remove-Item $envJsonFile -ErrorAction SilentlyContinue
 Remove-Item $branchJsonFile -ErrorAction SilentlyContinue
 
