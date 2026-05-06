@@ -9,6 +9,22 @@ function Get-AdoAuthHeaders {
     return @{ Authorization = "Basic $base64"; "Content-Type" = "application/json" }
 }
 
+# Returns all work item type names defined in the ADO project process template
+function Get-AdoWorkItemTypes {
+    param([string]$Org, [string]$Project, [string]$Pat)
+    $headers = Get-AdoAuthHeaders -Pat $Pat
+    $uri     = "https://dev.azure.com/$Org/$Project/_apis/wit/workitemtypes?api-version=7.1"
+    try {
+        $response = Invoke-RestMethod -Uri $uri -Method GET -Headers $headers
+        $types = $response.value | ForEach-Object { $_.name } | Sort-Object
+        Write-Log -Message "Discovered $($types.Count) work item types in ADO: $($types -join ', ')" -Level "INFO"
+        return $types
+    } catch {
+        Write-Log -Message "Failed to discover work item types: $_. Falling back to config list." -Level "WARN"
+        return @()
+    }
+}
+
 function Get-AdoWorkItemIds {
     param([string]$Org, [string]$Project, [string]$AreaPath, [bool]$IncludeClosed = $true, [string]$Pat)
     $closedFilter = ""

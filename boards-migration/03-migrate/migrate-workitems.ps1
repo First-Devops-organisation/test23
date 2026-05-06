@@ -1,7 +1,7 @@
-# ============================================================
+﻿# ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
-#  Migrates ADO work items â†’ GitHub Issues + ProjectV2
+#  Migrates ADO work items Ã¢â€ â€™ GitHub Issues + ProjectV2
 #  Handles: hierarchy, comments, images, attachments, status,
 #           assignees, labels, tags, parent-child links
 # ============================================================
@@ -124,7 +124,7 @@ if ($ghProjNum) {
         foreach ($opt in $priorityField.options) {
             Write-Log -Message "  Option: '$($opt.name)' (id: $($opt.id))" -Level "INFO"
         }
-        # Build dynamic mapping: ADO Priority 1-4 → GitHub options by smart matching
+        # Build dynamic mapping: ADO Priority 1-4 â†’ GitHub options by smart matching
         $opts = @($priorityField.options)
         foreach ($adoPri in @(1, 2, 3, 4)) {
             $matched = $null
@@ -141,7 +141,7 @@ if ($ghProjNum) {
             if (-not $matched -and ($adoPri - 1) -lt $opts.Count) { $matched = $opts[$adoPri - 1] }
             if ($matched) {
                 $priorityOptionMap[$adoPri] = $matched
-                Write-Log -Message "  ADO Priority $adoPri → '$($matched.name)'" -Level "INFO"
+                Write-Log -Message "  ADO Priority $adoPri â†’ '$($matched.name)'" -Level "INFO"
             }
         }
     } else {
@@ -220,9 +220,38 @@ $sortedItems = $allItems.Values | Sort-Object {
 }, { $_.id }
 
 Write-Log -Message "Items sorted by hierarchy. Migration order ready." -Level "INFO"
+# --- Dynamic Work Item Type Discovery & Validation ---
+Write-LogSection "Work Item Type Discovery"
+$adoLiveTypes    = Get-AdoWorkItemTypes -Org $adoOrg -Project $adoProject -Pat $adoPat
+$configuredTypes = @($config.filters.workItemTypes | Where-Object { $_ })
 
-# --- ADO ID â†’ GitHub Issue Number tracking ---
-$adoToGhMap = @{}  # adoId â†’ @{ issueNumber; issueNodeId; issueUrl }
+if ($adoLiveTypes.Count -gt 0) {
+    $missingFromConfig = $adoLiveTypes | Where-Object { $_ -notin $configuredTypes }
+    if ($missingFromConfig.Count -gt 0) {
+        Write-Log -Message "ADO types NOT in your config (will be skipped - add to config to migrate them):" -Level "WARN"
+        foreach ($t in $missingFromConfig) { Write-Log -Message "  --> $t" -Level "WARN" }
+    }
+    $notInAdo = $configuredTypes | Where-Object { $_ -notin $adoLiveTypes }
+    if ($notInAdo.Count -gt 0) {
+        Write-Log -Message "Config types NOT found in ADO (possible typo):" -Level "WARN"
+        foreach ($t in $notInAdo) { Write-Log -Message "  --> $t" -Level "WARN" }
+    }
+    $effectiveTypes = if ($configuredTypes.Count -gt 0) {
+        $configuredTypes | Where-Object { $_ -in $adoLiveTypes }
+    } else {
+        Write-Log -Message "No type filter configured - migrating ALL ADO types" -Level "INFO"
+        $adoLiveTypes
+    }
+} else {
+    $effectiveTypes = $configuredTypes
+}
+Write-Log -Message "Effective types ($($effectiveTypes.Count)): $($effectiveTypes -join ', ')" -Level "INFO"
+$sortedItems = @($sortedItems | Where-Object { $_.fields.'System.WorkItemType' -in $effectiveTypes })
+Write-Log -Message "Items after type filter: $($sortedItems.Count)" -Level "INFO"
+
+
+# --- ADO ID Ã¢â€ â€™ GitHub Issue Number tracking ---
+$adoToGhMap = @{}  # adoId Ã¢â€ â€™ @{ issueNumber; issueNodeId; issueUrl }
 
 # --- AUTO-CREATE Project V2 board if no projectNumber configured ---
 if (-not $ghProjNum -or $ghProjNum -eq 0) {
@@ -285,7 +314,7 @@ foreach ($item in $sortedItems) {
 
     # --- Skip if already migrated (resume mode) ---
     if ($migrationLog.ContainsKey("$adoId")) {
-        Write-Log -Message "  Already migrated â†’ skipping" -Level "DEBUG"
+        Write-Log -Message "  Already migrated Ã¢â€ â€™ skipping" -Level "DEBUG"
         $adoToGhMap[$adoId] = $migrationLog["$adoId"]
         $skipped++
         continue
@@ -301,7 +330,7 @@ foreach ($item in $sortedItems) {
     $typeConfig = $typeMappings.types.$type
     if ($typeConfig) { $labels += $typeConfig.githubLabel }
 
-    # Tags â†’ labels
+    # Tags Ã¢â€ â€™ labels
     if ($item.fields.'System.Tags') {
         $tags = $item.fields.'System.Tags' -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne "copied-to-github" }
         foreach ($tag in $tags) { $labels += "tag:$tag" }
@@ -900,3 +929,4 @@ if ($script:unmappedUsers -and $script:unmappedUsers.Count -gt 0) {
 if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 if ($failed -gt 0) { exit 1 }
+
