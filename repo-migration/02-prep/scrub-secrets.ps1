@@ -265,8 +265,59 @@ foreach ($group in $byRepo) {
     # ── Build replacement expressions file ───────────────────────────────
     $replacementsFile = Join-Path $logDir "replacements-$ghRepoName.txt"
 
+    # Verify each secret value actually exists in the GitHub clone
+    # The scan ran on ADO — whitespace/encoding may differ in the GitHub clone
+    Push-Location $clonePath
+    $verifiedMap = [ordered]@{}
+    foreach ($k in $secretMap.Keys) {
+        $scanVal = $secretMap[$k]
+
+        # Try exact match first
+        $grepResult = & git grep -rFl $scanVal -- '*' 2>$null
+        if ($grepResult) {
+            $verifiedMap[$k] = $scanVal
+            Write-Host "    [MATCH] $k — exact value found in clone" -ForegroundColor Green
+        } else {
+            # Try trimmed variations (remove \r, trailing spaces)
+            $trimmedVal = $scanVal -replace '\r', '' -replace '\s+$', ''
+            $grepResult2 = & git grep -rFl $trimmedVal -- '*' 2>$null
+            if ($grepResult2) {
+                $verifiedMap[$k] = $trimmedVal
+                Write-Host "    [MATCH] $k — found after trimming whitespace" -ForegroundColor Yellow
+            } else {
+                # Last resort: search git history with -S (pickaxe)
+                $histResult = & git log --all -S $scanVal --oneline 2>$null
+                if ($histResult) {
+                    $verifiedMap[$k] = $scanVal
+                    Write-Host "    [MATCH] $k — found in historical commits" -ForegroundColor Yellow
+                } else {
+                    # Try to extract the actual value from the file in the clone
+                    $pattern = [regex]::Escape($k) + '\s*[:=]\s*(.*)'
+                    $grepLine = & git grep -rP $pattern -- '*' 2>$null | Select-Object -First 1
+                    if ($grepLine -and $grepLine -match '[:=]\s*(.+)$') {
+                        $actualVal = $Matches[1].Trim() -replace '^[''\"]+', '' -replace '[''\"]+$', ''
+                        if ($actualVal.Length -ge 4 -and $actualVal -ne "`${{ secrets.$k }}") {
+                            $verifiedMap[$k] = $actualVal
+                            Write-Host "    [EXTRACTED] $k — re-extracted from GitHub clone" -ForegroundColor Cyan
+                        } else {
+                            Write-Host "    [SKIP] $k — value already scrubbed or too short" -ForegroundColor Gray
+                        }
+                    } else {
+                        Write-Host "    [WARN] $k — value not found in clone, skipping" -ForegroundColor Red
+                    }
+                }
+            }
+        }
+    }
+    Pop-Location
+
+    if ($verifiedMap.Count -eq 0) {
+        Write-Host "  No verifiable secrets found in GitHub clone. Skipping." -ForegroundColor Gray
+        continue
+    }
+
     # Sort by value length descending (longest first to prevent partial replacements)
-    $sortedEntries = $secretMap.GetEnumerator() | Sort-Object { $_.Value.Length } -Descending
+    $sortedEntries = $verifiedMap.GetEnumerator() | Sort-Object { $_.Value.Length } -Descending
 
     $expressions = @()
     foreach ($entry in $sortedEntries) {
@@ -275,6 +326,22 @@ foreach ($group in $byRepo) {
     }
     # Write WITHOUT BOM — git-filter-repo (Python) fails with UTF-8 BOM
     [System.IO.File]::WriteAllLines($replacementsFile, $expressions, [System.Text.UTF8Encoding]::new($false))
+
+    # Verify replacements file was written correctly (no BOM)
+    $rawBytes = [System.IO.File]::ReadAllBytes($replacementsFile)
+    if ($rawBytes.Length -ge 3 -and $rawBytes[0] -eq 0xEF -and $rawBytes[1] -eq 0xBB -and $rawBytes[2] -eq 0xBF) {
+        Write-Warning "  BOM detected in replacements file! Removing..."
+        [System.IO.File]::WriteAllBytes($replacementsFile, $rawBytes[3..($rawBytes.Length - 1)])
+    }
+
+    Write-Host "  Replacements file: $replacementsFile ($($expressions.Count) entries)" -ForegroundColor Cyan
+    foreach ($expr in $expressions) {
+        # Show first 20 chars of each secret value (masked)
+        $parts = $expr -split '==>'
+        $searchPart = $parts[0] -replace '^literal:', ''
+        $masked = $searchPart.Substring(0, [Math]::Min(15, $searchPart.Length)) + "***"
+        Write-Host "    $masked ==> $($parts[1])" -ForegroundColor Gray
+    }
 
     Write-Host "  Applying $($expressions.Count) replacements via git-filter-repo..."
 
