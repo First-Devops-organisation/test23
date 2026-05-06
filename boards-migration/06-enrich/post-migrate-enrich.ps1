@@ -232,12 +232,12 @@ if ($queryCount -eq 0) {
     $filterLines += ""
     $filterLines += "| What you want | GitHub Search |"
     $filterLines += "|---|---|"
-    $filterLines += "| All open bugs | ``is:open label:\"type:bug\"`` |"
-    $filterLines += "| Active user stories | ``is:open label:\"type:story\" label:\"state:active\"`` |"
-    $filterLines += "| Critical priority | ``is:open label:\"priority:critical\"`` |"
-    $filterLines += "| Assigned to me | ``is:open assignee:@me`` |"
-    $filterLines += "| Current sprint | ``is:open milestone:\"Sprint X\"`` |"
-    $filterLines += "| Unassigned bugs | ``is:open label:\"type:bug\" no:assignee`` |"
+    $filterLines += '| All open bugs | ``is:open label:"type:bug"`` |'
+    $filterLines += '| Active user stories | ``is:open label:"type:story" label:"state:active"`` |'
+    $filterLines += '| Critical priority | ``is:open label:"priority:critical"`` |'
+    $filterLines += '| Assigned to me | ``is:open assignee:@me`` |'
+    $filterLines += '| Current sprint | ``is:open milestone:"Sprint X"`` |'
+    $filterLines += '| Unassigned bugs | ``is:open label:"type:bug" no:assignee`` |'
 }
 
 $filtersPath = Join-Path $reportDir "GITHUB_FILTERS.md"
