@@ -1,11 +1,10 @@
-trigger: none   # Runs manually only
+trigger: none
 
 pool:
   vmImage: 'windows-latest'
 
 variables:
   - group: environment_set_up
-       # Comes from ADO Variable Group or Pipeline Variable
 
 steps:
   - checkout: self
@@ -14,6 +13,14 @@ steps:
     displayName: 'Run QA Environment Setup Script'
     inputs:
       filePath: '$(Build.SourcesDirectory)/setup-env-qa.ps1'
-      
+      arguments: >
+        -GHOrg "$(GHOrg)"
+        -GHRepo "$(GHRepo)"
+        -EnvName "$(EnvName)"
+        -BranchName "$(BranchName)"
+        -ReviewerUsernames $(ReviewerUsernames)
+        -WaitTimer $(WaitTimer)
+        
+
     env:
-      GH_TOKEN: $(GH_PAT)
+      GH_TOKEN: $(GitHubPAT)
