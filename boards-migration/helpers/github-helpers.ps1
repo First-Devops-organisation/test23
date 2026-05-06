@@ -669,8 +669,8 @@ function Add-GhIssueComment {
     $headers = Get-GhRestHeaders -Pat $Pat
     $jsonBody = @{ body = $Body } | ConvertTo-Json -Depth 5
     $uri = "https://api.github.com/repos/$Org/$Repo/issues/$IssueNumber/comments"
-    # Proactive sleep before every comment to avoid secondary rate limits
-    Start-Sleep -Seconds 5
+    # Small courtesy delay - retry logic in Invoke-GhRestWithRetry handles 403s reactively
+    Start-Sleep -Milliseconds 500
     try {
         return Invoke-GhRestWithRetry -Uri $uri -Method POST -Headers $headers -Body $jsonBody
     } catch {

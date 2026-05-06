@@ -1,7 +1,7 @@
 ﻿# ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
-#  Migrates ADO work items Ã¢â€ â€™ GitHub Issues + ProjectV2
+#  Migrates ADO work items ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GitHub Issues + ProjectV2
 #  Handles: hierarchy, comments, images, attachments, status,
 #           assignees, labels, tags, parent-child links
 # ============================================================
@@ -124,7 +124,7 @@ if ($ghProjNum) {
         foreach ($opt in $priorityField.options) {
             Write-Log -Message "  Option: '$($opt.name)' (id: $($opt.id))" -Level "INFO"
         }
-        # Build dynamic mapping: ADO Priority 1-4 â†’ GitHub options by smart matching
+        # Build dynamic mapping: ADO Priority 1-4 Ã¢â€ â€™ GitHub options by smart matching
         $opts = @($priorityField.options)
         foreach ($adoPri in @(1, 2, 3, 4)) {
             $matched = $null
@@ -141,7 +141,7 @@ if ($ghProjNum) {
             if (-not $matched -and ($adoPri - 1) -lt $opts.Count) { $matched = $opts[$adoPri - 1] }
             if ($matched) {
                 $priorityOptionMap[$adoPri] = $matched
-                Write-Log -Message "  ADO Priority $adoPri â†’ '$($matched.name)'" -Level "INFO"
+                Write-Log -Message "  ADO Priority $adoPri Ã¢â€ â€™ '$($matched.name)'" -Level "INFO"
             }
         }
     } else {
@@ -192,33 +192,51 @@ if ($ghProjNum) {
 
     # Load field mappings config if available
     $fieldMappingsPath = Join-Path $scriptRoot "config\field-mappings.json"
-    $fieldMappings = if (Test-Path $fieldMappingsPath) { Read-JsonConfig -Path $fieldMappingsPath } else { $null }
-}
+# ============================================================
+#  Migrate Work Items - Main migration engine
+#  Phase: 03-migrate
+#  Migrates ADO work items â†’ GitHub Issues + ProjectV2
+#  Handles: hierarchy, comments, images, attachments, status,
+#           assignees, labels, tags, parent-child links
+# ============================================================
 
-# --- Ensure repo has at least one commit (required for image/attachment uploads) ---
-Ensure-RepoInitialized -Org $ghOrg -Repo $ghRepo -Pat $ghPat
 
-# --- Query all work items ---
+# --- Query all work items (IDs only via WIQL) ---
 Write-Log -Message "Querying ADO work items..." -Level "INFO"
 $allIds = Get-AdoWorkItemIds -Org $adoOrg -Project $adoProject -AreaPath $areaPath -IncludeClosed $includeClosed -Pat $adoPat
-Write-Log -Message "Total work items to process: $($allIds.Count)" -Level "INFO"
+Write-Log -Message "Total work items found: $($allIds.Count)" -Level "INFO"
 
-# --- Fetch all details and organize by migration order ---
-Write-Log -Message "Fetching work item details..." -Level "INFO"
-$allItems = @{}
-foreach ($id in $allIds) {
-    $details = Get-AdoWorkItemDetails -Org $adoOrg -Project $adoProject -WorkItemId $id -Pat $adoPat
-    if ($details) { $allItems[$id] = $details }
-    Start-Sleep -Milliseconds 100
+# --- Fetch details in BATCHES of 200 (ADO supports up to 200 ids per request) ---
+Write-Log -Message "Fetching work item details in batches of 200..." -Level "INFO"
+$allItems  = @{}
+$batchSize = 200
+for ($bi = 0; $bi -lt $allIds.Count; $bi += $batchSize) {
+    $batch    = $allIds[$bi..([Math]::Min($bi + $batchSize - 1, $allIds.Count - 1))]
+    $idsParam = ($batch -join ",")
+    $batchUri = "https://dev.azure.com/$adoOrg/$adoProject/_apis/wit/workitems?ids=$idsParam&`$expand=all&api-version=7.1"
+    $adoHdr   = Get-AdoAuthHeaders -Pat $adoPat
+    try {
+        $resp = Invoke-RestMethod -Uri $batchUri -Method GET -Headers $adoHdr
+        foreach ($wi in $resp.value) { $allItems[$wi.id] = $wi }
+        Write-Log -Message "  Batch $([Math]::Floor($bi/$batchSize)+1): fetched $($resp.value.Count) items" -Level "INFO"
+    } catch {
+        Write-Log -Message "  Batch failed, falling back to single-fetch for this batch: $_" -Level "WARN"
+        foreach ($fid in $batch) {
+            $d = Get-AdoWorkItemDetails -Org $adoOrg -Project $adoProject -WorkItemId $fid -Pat $adoPat
+            if ($d) { $allItems[$fid] = $d }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    if ($bi + $batchSize -lt $allIds.Count) { Start-Sleep -Milliseconds 200 }
 }
+Write-Log -Message "Fetched $($allItems.Count) work item details." -Level "INFO"
 
-# Sort by migration order (hierarchy: epics first, then features, etc.)
+# Sort by migration order (Epics first, then Features, Stories, Tasks, Bugs...)
 $sortedItems = $allItems.Values | Sort-Object {
-    $type = $_.fields.'System.WorkItemType'
-    $typeConfig = $typeMappings.types.$type
-    if ($typeConfig) { $typeConfig.migrationOrder } else { 99 }
+    $t = $_.fields.'System.WorkItemType'
+    $tc = $typeMappings.types.$t
+    if ($tc) { $tc.migrationOrder } else { 99 }
 }, { $_.id }
-
 Write-Log -Message "Items sorted by hierarchy. Migration order ready." -Level "INFO"
 # --- Dynamic Work Item Type Discovery & Validation ---
 Write-LogSection "Work Item Type Discovery"
@@ -250,8 +268,8 @@ $sortedItems = @($sortedItems | Where-Object { $_.fields.'System.WorkItemType' -
 Write-Log -Message "Items after type filter: $($sortedItems.Count)" -Level "INFO"
 
 
-# --- ADO ID Ã¢â€ â€™ GitHub Issue Number tracking ---
-$adoToGhMap = @{}  # adoId Ã¢â€ â€™ @{ issueNumber; issueNodeId; issueUrl }
+# --- ADO ID ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GitHub Issue Number tracking ---
+$adoToGhMap = @{}  # adoId ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ @{ issueNumber; issueNodeId; issueUrl }
 
 # --- AUTO-CREATE Project V2 board if no projectNumber configured ---
 if (-not $ghProjNum -or $ghProjNum -eq 0) {
@@ -314,7 +332,7 @@ foreach ($item in $sortedItems) {
 
     # --- Skip if already migrated (resume mode) ---
     if ($migrationLog.ContainsKey("$adoId")) {
-        Write-Log -Message "  Already migrated Ã¢â€ â€™ skipping" -Level "DEBUG"
+        Write-Log -Message "  Already migrated ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ skipping" -Level "DEBUG"
         $adoToGhMap[$adoId] = $migrationLog["$adoId"]
         $skipped++
         continue
@@ -330,7 +348,7 @@ foreach ($item in $sortedItems) {
     $typeConfig = $typeMappings.types.$type
     if ($typeConfig) { $labels += $typeConfig.githubLabel }
 
-    # Tags Ã¢â€ â€™ labels
+    # Tags ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ labels
     if ($item.fields.'System.Tags') {
         $tags = $item.fields.'System.Tags' -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne "copied-to-github" }
         foreach ($tag in $tags) { $labels += "tag:$tag" }
@@ -775,7 +793,8 @@ foreach ($item in $sortedItems) {
     $migrationLog["$adoId"] = $adoToGhMap["$adoId"]
     $migrationLog | ConvertTo-Json -Depth 10 | Set-Content -Path $migLogPath -Encoding UTF8
 
-    Start-Sleep -Milliseconds $rateLimitMs
+    # Throttle: 500ms between items (GitHub allows ~5000 req/hour = ~1.4/sec)
+    Start-Sleep -Milliseconds 500
 }
 
 # ============================================================
@@ -929,4 +948,5 @@ if ($script:unmappedUsers -and $script:unmappedUsers.Count -gt 0) {
 if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 if ($failed -gt 0) { exit 1 }
+
 
