@@ -4,7 +4,9 @@
     {
       "adoDisplayName": "Vinay Yadav",
       "adoEmail": "vinay.yadav@yash.com",
-      "adoAlternateEmails": ["vinaysinghyadav121@gmail.com"],
+      "adoAlternateEmails": [
+        "vinaysinghyadav121@gmail.com"
+      ],
       "githubUsername": "vinaysingh121"
     },
     {
@@ -28,7 +30,7 @@
     {
       "adoDisplayName": "Ankit Panwar",
       "adoEmail": "ankit.panwar@yash.com",
-      "adoAlternateEmails": [],
+      "adoAlternateEmails": ["ankit.panwar@yashtechnologies841.onmicrosoft.com"],
       "githubUsername": "ankitpanwar1"
     },
     {
