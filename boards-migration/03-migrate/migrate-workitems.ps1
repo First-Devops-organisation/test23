@@ -192,6 +192,7 @@ if ($ghProjNum) {
 
     # Load field mappings config if available
     $fieldMappingsPath = Join-Path $scriptRoot "config\field-mappings.json"
+}
 # ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
