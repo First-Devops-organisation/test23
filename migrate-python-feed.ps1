@@ -8,7 +8,8 @@ param(
     [Parameter(Mandatory = $true)] [string]$AdoFeed,
     [Parameter(Mandatory = $true)] [string]$AdoPat,
     [Parameter(Mandatory = $true)] [string]$GitHubOrg,
-    [Parameter(Mandatory = $true)] [string]$GitHubPat
+    [Parameter(Mandatory = $true)] [string]$GitHubPat,
+    [Parameter(Mandatory = $false)] [string]$TestPackage # NEW: Allow testing just one package
 )
 
 $ErrorActionPreference = "Stop"
@@ -66,6 +67,12 @@ if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir | O
 
 foreach ($pkg in $packages) {
     $pkgName = $pkg.name
+    
+    # If a TestPackage was provided, skip everything else
+    if (-not [string]::IsNullOrWhiteSpace($TestPackage) -and $pkgName -ne $TestPackage) {
+        continue
+    }
+
     Write-Host "`nProcessing Package: $pkgName" -ForegroundColor Yellow
 
     $versionsUrl = "$baseUrl/packages/$($pkg.id)/versions?api-version=7.1-preview.1"
@@ -104,8 +111,15 @@ foreach ($pkg in $packages) {
              continue
         }
 
-        # Determine a generic filename for twine
-        $filePath = Join-Path $tempDir "$pkgName-$pkgVer.pkg"
+        # Extract the real filename from the URL (e.g., package-1.0.whl)
+        $fileName = $downloadUrl.Split('/')[-1].Split('?')[0]
+        if (-not $fileName -or ($fileName -notlike "*.whl" -and $fileName -notlike "*.tar.gz" -and $fileName -notlike "*.zip")) {
+            # Fallback if URL doesn't have a clean filename
+            if ($downloadUrl -like "*tar.gz*") { $fileName = "$pkgName-$pkgVer.tar.gz" }
+            else { $fileName = "$pkgName-$pkgVer.whl" }
+        }
+        
+        $filePath = Join-Path $tempDir $fileName
         
         Write-Host "       Downloading from: $downloadUrl" -ForegroundColor DarkGray
         try {
