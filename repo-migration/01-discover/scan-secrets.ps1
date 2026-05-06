@@ -73,15 +73,7 @@ if (-not $gl) {
 }
 
 # ── Keyword patterns for additional scanning ─────────────────────────────────
-$keywordPatterns = @(
-    # Catch-all for any variable name containing key, secret, password, token, cred (JSON, YAML, ENV formats)
-    @{ Name = 'DETECTED_SECRET';    Regex = '(?i)^.*(?:key|secret|password|passwd|pwd|token|cred(?:ential)?|auth).*?[:=]\s*[''"]?(.*?)[''"]*[,;\s]*$' },
-    # Specific formats
-    @{ Name = 'STRIPE_KEY';         Regex = '(?i)[:=]\s*[''"]*((?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+)[''"]*' },
-    @{ Name = 'MONGO_URI';          Regex = '(?i)[:=]\s*[''"]*(mongodb(?:\+srv)?://[^\s''"]+)[''"]*' },
-    @{ Name = 'JWT_SECRET';         Regex = '(?i)[:=]\s*[''"]*(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)[''"]*' },
-    @{ Name = 'SSH_KEY';            Regex = '(?i)[:=]\s*[''"]*(ssh-(?:rsa|ed25519|dss)\s+[A-Za-z0-9+/=]+(?:\s+\S+)?)[''"]*' }
-)
+# (Patterns are now defined in Phase 2 via custom-gitleaks-rules.toml)
 
 # Values that are likely placeholders, not real secrets
 # Only exact-match for short values; long values are never filtered as placeholders
@@ -312,86 +304,104 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         Write-Warning "  gitleaks returned exit code $exitCode for $repoLabel"
     }
 
-    # ── Phase 2: Keyword regex scan ──────────────────────────────────────
+    # ── Phase 2: Custom Keyword Gitleaks Scan (All History) ────────────────
     try {
-        $branchRefs = & git -C $clonePath for-each-ref --format='%(refname:short)' 'refs/heads/' 2>$null
-        if (-not $branchRefs) {
-            $branchRefs = & git -C $clonePath branch --list 2>$null
-        }
-        if (-not $branchRefs) { $branchRefs = @() }
-        if ($branchRefs -is [string]) { $branchRefs = @($branchRefs) }
+        $customRulesPath = Join-Path $logDir "custom-gitleaks-rules.toml"
+        $customReportFile = Join-Path $logDir "gitleaks-custom-$($repo.Name).json"
 
-        foreach ($branch in $branchRefs) {
-            $branch = $branch.Trim().TrimStart('* ')
-            if ([string]::IsNullOrWhiteSpace($branch)) { continue }
+        # Create custom rules file to scan entire git history
+        @"
+title = "Custom Keyword Rules"
 
-            # Get list of files in this branch
-            $files = @()
-            try {
-                $files = @(& git -C $clonePath ls-tree -r --name-only $branch 2>$null)
-            } catch { continue }
+[[rules]]
+id = "DETECTED_SECRET"
+description = "Generic secret key"
+regex = '''(?i)(?:key|secret|password|passwd|pwd|token|cred(?:ential)?|auth)[a-zA-Z0-9_]*[''"]?\s*[:=]\s*[''"]?([^''"\s,;]+)[''"]?'''
+secretGroup = 1
 
-            foreach ($filePath in $files) {
-                # Skip binary-like extensions
-                if ($filePath -match '\.(dll|exe|zip|tar|gz|png|jpg|gif|ico|woff|ttf|pdf|lock)$') { continue }
+[[rules]]
+id = "STRIPE_KEY"
+description = "Stripe Key"
+regex = '''(?i)[:=]\s*[''"]*((?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+)[''"]*'''
+secretGroup = 1
 
-                try {
-                    $content = & git -C $clonePath show "${branch}:${filePath}" 2>$null
-                    if (-not $content) { continue }
-                    if ($content -is [string]) { $content = $content -split "`n" }
+[[rules]]
+id = "MONGO_URI"
+description = "MongoDB Connection String"
+regex = '''(?i)[:=]\s*[''"]*(mongodb(?:\+srv)?://[^\s''"]+)[''"]*'''
+secretGroup = 1
 
-                    $lineNum = 0
-                    foreach ($line in $content) {
-                        $lineNum++
-                        foreach ($kw in $kwPatterns) {
-                            if ($line -match $kw.Regex) {
-                                $val = $Matches[1]
-                                if ([string]::IsNullOrWhiteSpace($val)) { continue }
-                                $val = $val.Trim()
-                                $val = $val -replace '[,;\s]+$', ''
-                                $val = $val -replace '^[''"`]+', '' -replace '[''"`]+$', ''
-                                $val = $val.Trim()
+[[rules]]
+id = "JWT_SECRET"
+description = "JWT Token"
+regex = '''(?i)[:=]\s*[''"]*(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)[''"]*'''
+secretGroup = 1
 
-                                if ($val.Length -lt 4) { continue }
+[[rules]]
+id = "SSH_KEY"
+description = "SSH Private Key"
+regex = '''(?i)[:=]\s*[''"]*(ssh-(?:rsa|ed25519|dss)\s+[A-Za-z0-9+/=]+(?:\s+\S+)?)[''"]*'''
+secretGroup = 1
+"@ | Out-File -FilePath $customRulesPath -Encoding utf8
 
-                                # Check placeholder — only exact match for short values
-                                $skip = $false
-                                $valLower = $val.ToLower().Trim()
-                                if ($valLower.Length -le 20) {
-                                    foreach ($ph in $phValues) {
-                                        if ($valLower -eq $ph.ToLower()) { $skip = $true; break }
-                                    }
-                                }
-                                if ($skip) { continue }
+        # Run custom gitleaks over all commits
+        $output2 = & gitleaks detect --source $clonePath --config $customRulesPath --report-path $customReportFile --report-format json --no-banner 2>&1
+        $exitCode2 = $LASTEXITCODE
 
-                                $kwCount++
-                                # Extract actual variable name from the line (left of = or :)
-                                $actualName = $kw.Name
-                                if ($line -match '^\s*[''"]?([A-Za-z_][A-Za-z0-9_]*)[''"]?\s*[:=]') {
-                                    $actualName = $Matches[1].ToUpper()
-                                }
-                                $findings.Add([PSCustomObject]@{
-                                    Repo        = $repo.Name
-                                    SecretName  = $actualName
-                                    SecretValue = $val
-                                    File        = $filePath
-                                    LineNumber  = $lineNum
-                                    Branch      = $branch
-                                    CommitHash  = "HEAD"
-                                    Source      = "keyword"
-                                    RuleID      = $kw.Name
-                                    Author      = "N/A"
-                                    Date        = "N/A"
-                                })
+        if ($exitCode2 -eq 0 -or $exitCode2 -eq 1 -or $exitCode2 -eq 2) {
+            if (Test-Path $customReportFile) {
+                $customData = Get-Content $customReportFile -Raw | ConvertFrom-Json
+                if ($null -ne $customData) {
+                    if ($customData -is [object]) { $customData = @($customData) }
+                    foreach ($f in $customData) {
+                        $val = $f.Secret
+                        if ([string]::IsNullOrWhiteSpace($val)) { continue }
+                        $val = $val.Trim()
+                        $val = $val -replace '[,;\s]+$', ''
+                        $val = $val -replace '^[''"`]+', '' -replace '[''"`]+$', ''
+                        $val = $val.Trim()
+
+                        if ($val.Length -lt 4) { continue }
+
+                        # Check placeholder
+                        $skip = $false
+                        $valLower = $val.ToLower().Trim()
+                        if ($valLower.Length -le 20) {
+                            foreach ($ph in $phValues) {
+                                if ($valLower -eq $ph.ToLower()) { $skip = $true; break }
                             }
                         }
+                        if ($skip) { continue }
+
+                        $secretName = $f.RuleID
+                        $matchLine = if ($f.PSObject.Properties['Match']) { $f.Match } else { '' }
+                        if (-not [string]::IsNullOrWhiteSpace($matchLine)) {
+                            if ($matchLine -match '^\s*[''"]?([A-Za-z_][A-Za-z0-9_]*)[''"]?\s*[:=]') {
+                                $secretName = $Matches[1].ToUpper()
+                            }
+                        }
+
+                        $kwCount++
+                        $findings.Add([PSCustomObject]@{
+                            Repo        = $repo.Name
+                            SecretName  = $secretName
+                            SecretValue = $val
+                            File        = $f.File
+                            LineNumber  = $f.StartLine
+                            Branch      = "HISTORY"
+                            CommitHash  = $f.Commit
+                            Source      = "custom"
+                            RuleID      = $f.RuleID
+                            Author      = $f.Author
+                            Date        = $f.Date
+                        })
                     }
-                } catch { continue }
+                }
             }
         }
     }
     catch {
-        Write-Warning "  Keyword scan failed for ${repoLabel}: $_"
+        Write-Warning "  Custom scan failed for ${repoLabel}: $_"
     }
 
     $total = $glCount + $kwCount

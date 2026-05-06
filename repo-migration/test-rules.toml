@@ -1,0 +1,7 @@
+﻿title = "Custom Keyword Rules"
+
+[[rules]]
+id = "DETECTED_SECRET"
+description = "Variable containing keyword"
+regex = '''(?i)(?:key|secret|password|passwd|pwd|token|cred|auth)[a-zA-Z0-9_]*[''"]?\s*[:=]\s*[''"]?([^''"\s,;]+)[''"]?'''
+secretGroup = 1
