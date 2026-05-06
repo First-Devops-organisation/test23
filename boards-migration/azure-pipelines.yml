@@ -352,6 +352,31 @@ stages:
         GH_PAT: $(GH_PAT)
         
 
+    - task: PowerShell@2
+      displayName: 'Phase 6 — Post-Migration Enrichment'
+      inputs:
+        targetType: inline
+        script: |
+          $base       = "$(workingDir)"
+          $scriptPath = Join-Path $base "06-enrich" "post-migrate-enrich.ps1"
+          $configPath = Join-Path $base "config" "${{ parameters.configFile }}"
+          $logPath    = Join-Path $base "reports" "migration-log.json"
+
+          if (Test-Path $scriptPath) {
+            if (Test-Path $logPath) {
+              Write-Host "Running Phase 6: Post-Migration Enrichment..."
+              & $scriptPath -ConfigPath $configPath -MigrationLogPath $logPath
+            } else {
+              Write-Host "No migration-log.json found. Skipping enrichment."
+            }
+          } else {
+            Write-Host "Enrichment script not found at $scriptPath. Skipping."
+          }
+        pwsh: true
+      env:
+        ADO_PAT: $(ADO_PAT)
+        GH_PAT: $(GH_PAT)
+
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Migration Log'
       inputs:
