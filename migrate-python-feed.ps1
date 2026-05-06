@@ -78,25 +78,41 @@ foreach ($pkg in $packages) {
         $downloadUrl = $null # CRITICAL: Clear variable for each loop
         Write-Host "   --> Version $pkgVer" -ForegroundColor Gray
 
-        # 4. Use 'pip download' to fetch the package (most reliable way)
-        $simpleUrl = "$($baseUrl.Replace('feeds.dev.azure.com', 'pkgs.dev.azure.com').Replace('_apis/packaging/feeds', '_packaging'))/pypi/simple/"
-        $authUrl = $simpleUrl.Replace("https://", "https://token:$($AdoPat)@")
+        # 4. Use the PyPI 'Simple Index' to find the actual file URL (Avoid pip build errors)
+        $normalizedPkgName = $pkgName.ToLower().Replace(".", "-").Replace("_", "-")
+        $simpleBase = $baseUrl.Replace("feeds.dev.azure.com", "pkgs.dev.azure.com").Replace("_apis/packaging/feeds", "_packaging")
+        $simpleUrl = "$simpleBase/pypi/simple/$normalizedPkgName/"
         
-        Write-Host "       Downloading via pip..." -ForegroundColor DarkGray
+        Write-Host "       Checking Simple Index: $simpleUrl" -ForegroundColor DarkGray
         try {
-            # Download into the temp directory
-            pip download "${pkgName}==${pkgVer}" --index-url $authUrl --dest $tempDir --no-deps --quiet
+            $simplePage = Invoke-WebRequest -Uri $simpleUrl -Headers $adoHeaders -UseBasicParsing
             
-            # Find the file that was just downloaded
-            $downloadedFile = Get-ChildItem $tempDir | Where-Object { $_.Name -like "*$pkgVer*" } | Select-Object -First 1
-            if ($downloadedFile) {
-                $filePath = $downloadedFile.FullName
-                Write-Host "       [SUCCESS] Downloaded: $($downloadedFile.Name)" -ForegroundColor DarkGray
+            # Match <a href="..."> containing the version number. Handles both single and double quotes.
+            $pattern = 'href=["'']([^"'']+)["''][^>]*>[^<]*' + [regex]::Escape($pkgVer)
+            
+            if ($simplePage.Content -match $pattern) {
+                $downloadUrl = $matches[1].Split('#')[0]
+                if ($downloadUrl -notlike "http*") {
+                    $downloadUrl = "$simpleUrl$downloadUrl"
+                }
             } else {
-                throw "File not found after pip download"
+                Write-Warning "       [SKIP] Could not find version $pkgVer in Simple Index HTML."
+                continue
             }
         } catch {
-            Write-Warning "       [SKIP] Pip could not download version $pkgVer. (Error: $($_.Exception.Message))"
+             Write-Warning "       [SKIP] Could not access Simple Index for $pkgName. (Error: $($_.Exception.Message))"
+             continue
+        }
+
+        # Determine a generic filename for twine
+        $filePath = Join-Path $tempDir "$pkgName-$pkgVer.pkg"
+        
+        Write-Host "       Downloading from: $downloadUrl" -ForegroundColor DarkGray
+        try {
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $filePath -Headers $adoHeaders
+            Write-Host "       [SUCCESS] Downloaded successfully." -ForegroundColor DarkGray
+        } catch {
+            Write-Warning "       [SKIP] Could not download file. (Error: $($_.Exception.Message))"
             continue
         }
 
