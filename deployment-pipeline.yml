@@ -14,13 +14,12 @@ steps:
     inputs:
       filePath: '$(Build.SourcesDirectory)/setup-env-qa.ps1'
       arguments: >
-        -GHOrg "$(GHOrg)"
+        -GHOrg "$(GH_Org)"
         -GHRepo "$(GHRepo)"
         -EnvName "$(EnvName)"
         -BranchName "$(BranchName)"
-        -ReviewerUsernames $(ReviewerUsernames)
+        -ReviewerUsernames "$(ReviewerUsernames)"
         -WaitTimer $(WaitTimer)
-        
-
+     
     env:
-      GH_TOKEN: $(GitHubPAT)
+      GH_TOKEN: $(GH_PAT)
