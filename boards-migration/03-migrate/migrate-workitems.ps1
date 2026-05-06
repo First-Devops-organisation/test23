@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
 #  Migrates ADO work items ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GitHub Issues + ProjectV2
@@ -701,16 +701,20 @@ foreach ($item in $sortedItems) {
                     $fieldUpdates += @{ fieldId = $iterPathTextField.id; value = "$adoIterPath"; type = "text" }
                 }
 
-                # Start Date / Target Date (text as ISO date)
+                # Start Date / Target Date - must be sent as 'date' type, ISO yyyy-MM-dd format
                 $adoStartDate = $item.fields.'Microsoft.VSTS.Scheduling.StartDate'
                 if ($adoStartDate -and $startDateField) {
-                    $dateStr = try { (Get-Date $adoStartDate -Format "yyyy-MM-dd") } catch { "$adoStartDate" }
-                    $fieldUpdates += @{ fieldId = $startDateField.id; value = $dateStr; type = "text" }
+                    try {
+                        $dateStr = (Get-Date $adoStartDate -Format "yyyy-MM-dd")
+                        if ($dateStr) { $fieldUpdates += @{ fieldId = $startDateField.id; value = $dateStr; type = "date" } }
+                    } catch { Write-Log -Message "  Invalid StartDate value: $adoStartDate" -Level "DEBUG" }
                 }
                 $adoTargetDate = $item.fields.'Microsoft.VSTS.Scheduling.TargetDate'
                 if ($adoTargetDate -and $targetDateField) {
-                    $dateStr = try { (Get-Date $adoTargetDate -Format "yyyy-MM-dd") } catch { "$adoTargetDate" }
-                    $fieldUpdates += @{ fieldId = $targetDateField.id; value = $dateStr; type = "text" }
+                    try {
+                        $dateStr = (Get-Date $adoTargetDate -Format "yyyy-MM-dd")
+                        if ($dateStr) { $fieldUpdates += @{ fieldId = $targetDateField.id; value = $dateStr; type = "date" } }
+                    } catch { Write-Log -Message "  Invalid TargetDate value: $adoTargetDate" -Level "DEBUG" }
                 }
 
                 # Value Stream
