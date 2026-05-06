@@ -74,28 +74,13 @@ if (-not $gl) {
 
 # ── Keyword patterns for additional scanning ─────────────────────────────────
 $keywordPatterns = @(
-    @{ Name = 'PASSWORD';           Regex = '(?i)(?:password|passwd|pwd)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'API_KEY';            Regex = '(?i)(?:api[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'SECRET_KEY';         Regex = '(?i)(?:secret[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'SECRET';             Regex = '(?i)(?:[a-z_]*_secret|secret)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'TOKEN';              Regex = '(?i)(?:token|auth[_-]?token|access[_-]?token|jwt[_-]?secret)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'PRIVATE_KEY';        Regex = '(?i)(?:private[_-]?key|ssl[_-]?private[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'SSH_KEY';            Regex = '(?i)(?:ssh[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'CLIENT_SECRET';      Regex = '(?i)(?:client[_-]?secret)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'CONNECTION_STRING';  Regex = '(?i)(?:connection[_-]?string|conn[_-]?str|mongo[_-]?uri|database[_-]?url)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'CREDENTIAL';         Regex = '(?i)(?:credential|cred)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'SIGNING_KEY';        Regex = '(?i)(?:signing[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'ENCRYPTION_KEY';     Regex = '(?i)(?:encryption[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'STORAGE_KEY';        Regex = '(?i)(?:storage[_-]?key|azure[_-]?storage[_-]?key|account[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'DB_PASSWORD';        Regex = '(?i)(?:db[_-]?password|database[_-]?password|mysql[_-]?password)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'SMTP_PASSWORD';      Regex = '(?i)(?:smtp[_-]?password|mail[_-]?password)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
-    @{ Name = 'BEARER_TOKEN';       Regex = '(?i)(?:bearer)\s+(\S+)' },
-    @{ Name = 'STRIPE_KEY';         Regex = '(?i)(?:stripe[_-]?(?:secret|api)?[_-]?key)\s*[:=]\s*[''"]*(.+?)[''"]*\s*$' },
+    # Catch-all for any variable name containing key, secret, password, token, cred (JSON, YAML, ENV formats)
+    @{ Name = 'DETECTED_SECRET';    Regex = '(?i)^.*(?:key|secret|password|passwd|pwd|token|cred(?:ential)?|auth).*?[:=]\s*[''"]?(.*?)[''"]*[,;\s]*$' },
+    # Specific formats
     @{ Name = 'STRIPE_KEY';         Regex = '(?i)[:=]\s*[''"]*((?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+)[''"]*' },
     @{ Name = 'MONGO_URI';          Regex = '(?i)[:=]\s*[''"]*(mongodb(?:\+srv)?://[^\s''"]+)[''"]*' },
     @{ Name = 'JWT_SECRET';         Regex = '(?i)[:=]\s*[''"]*(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)[''"]*' },
-    @{ Name = 'SSH_KEY';            Regex = '(?i)[:=]\s*[''"]*(ssh-(?:rsa|ed25519|dss)\s+[A-Za-z0-9+/=]+(?:\s+\S+)?)[''"]*' },
-    @{ Name = 'GENERIC_KEY';        Regex = '(?i)(?:[a-z_]*[_-]key)\s*[:=]\s*[''"]*(.{12,}?)[''"]*\s*$' }
+    @{ Name = 'SSH_KEY';            Regex = '(?i)[:=]\s*[''"]*(ssh-(?:rsa|ed25519|dss)\s+[A-Za-z0-9+/=]+(?:\s+\S+)?)[''"]*' }
 )
 
 # Values that are likely placeholders, not real secrets
@@ -276,8 +261,8 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
             # Trim outer quotes/delimiters but preserve internal whitespace
             $secretVal = $secretVal.Trim()
+            $secretVal = $secretVal -replace '[,;\s]+$', ''
             $secretVal = $secretVal -replace '^[''"`]+', '' -replace '[''"`]+$', ''
-            $secretVal = $secretVal -replace '[,;]\s*$', ''
             $secretVal = $secretVal.Trim()
 
             if ($secretVal.Length -lt 4) { continue }
@@ -297,7 +282,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
             # gitleaks provides the matched line — extract the variable name (left of = or :)
             $matchLine = if ($f.PSObject.Properties['Match']) { $f.Match } else { '' }
             if (-not [string]::IsNullOrWhiteSpace($matchLine)) {
-                if ($matchLine -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*[:=]') {
+                if ($matchLine -match '^\s*[''"]?([A-Za-z_][A-Za-z0-9_]*)[''"]?\s*[:=]') {
                     $secretName = $Matches[1].ToUpper()
                 }
             }
@@ -363,8 +348,8 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
                                 $val = $Matches[1]
                                 if ([string]::IsNullOrWhiteSpace($val)) { continue }
                                 $val = $val.Trim()
+                                $val = $val -replace '[,;\s]+$', ''
                                 $val = $val -replace '^[''"`]+', '' -replace '[''"`]+$', ''
-                                $val = $val -replace '[,;]\s*$', ''
                                 $val = $val.Trim()
 
                                 if ($val.Length -lt 4) { continue }
@@ -382,7 +367,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
                                 $kwCount++
                                 # Extract actual variable name from the line (left of = or :)
                                 $actualName = $kw.Name
-                                if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*[:=]') {
+                                if ($line -match '^\s*[''"]?([A-Za-z_][A-Za-z0-9_]*)[''"]?\s*[:=]') {
                                     $actualName = $Matches[1].ToUpper()
                                 }
                                 $findings.Add([PSCustomObject]@{

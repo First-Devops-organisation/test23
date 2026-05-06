@@ -149,8 +149,8 @@ foreach ($group in $byRepo) {
 
         # Trim outer quotes/delimiters, preserve internal whitespace
         $val = $val.Trim()
+        $val = $val -replace '[,;\s]+$', ''
         $val = $val -replace '^[''"`]+', '' -replace '[''"`]+$', ''
-        $val = $val -replace '[,;]\s*$', ''
         $val = $val.Trim()
 
         if ($val.Length -lt 4) { continue }
