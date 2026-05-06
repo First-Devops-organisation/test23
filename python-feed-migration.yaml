@@ -34,4 +34,4 @@ jobs:
             -GitHubOrg "$(GH_ORG)"
             -GitHubPat "$(GH_PAT)"
             -TestPackage "py-project-toml"
-        pwsh: true
+      
