@@ -323,7 +323,7 @@ foreach ($plan in $plans) {
                         "Active"      { "active, " }
                         default       { "" }
                     }
-                    $safeTitle = ($wiTitle -replace '[,:"]', '') .Substring(0, [Math]::Min(40, $wiTitle.Length))
+                    $safeTitle = ($wiTitle -replace '[,:"]', '').Substring(0, [Math]::Min(40, $wiTitle.Length))
                     $ganttItemId = if ($ghNum) { "GH#$ghNum" } else { "ADO#$adoItemId" }
                     $ganttLines += "    $safeTitle ($ganttItemId) : $taskType$startDate, $endDate"
                 }
