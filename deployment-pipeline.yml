@@ -1,45 +1,19 @@
-name: Multi-Environment Deployment Pipeline
+trigger: none   # Runs manually only
 
-on:
-  push:
-    branches:
-      - develop
-      - release
-      - main
+pool:
+  vmImage: 'windows-latest'
 
-jobs:
-  # ==========================================
-  # DEV DEPLOYMENT
-  # ==========================================
-  deploy_dev:
-    name: Deploy to Dev
-    if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-    environment: dev
-    steps:
-      - name: Deploying Code
-        run: echo "Deploying the app to the Dev Environment..."
+variables:
+  - name: GH_PAT
+    value: $(GitHubPAT)   # Comes from ADO Variable Group or Pipeline Variable
 
-  # ==========================================
-  # QA DEPLOYMENT
-  # ==========================================
-  deploy_qa:
-    name: Deploy to QA
-    if: github.ref == 'refs/heads/release'
-    runs-on: ubuntu-latest
-    environment: qa
-    steps:
-      - name: Deploying Code
-        run: echo "Deploying the app to the QA Environment..."
+steps:
+  - checkout: self
 
-  # ==========================================
-  # PRODUCTION DEPLOYMENT
-  # ==========================================
-  deploy_prod:
-    name: Deploy to Production
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Deploying Code
-        run: echo "Deploying the app to the Production Environment..."
+  - task: PowerShell@2
+    displayName: 'Run QA Environment Setup Script'
+    inputs:
+      filePath: '$(Build.SourcesDirectory)/setup-env-qa.ps1'
+      
+    env:
+      GH_TOKEN: $(GH_PAT)
