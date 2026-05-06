@@ -51,41 +51,25 @@
 
 
 # ==========================================
-# Setup GitHub Environment with Multiple Reviewers (Parameterised)
+# Setup QA Environment (Fixed for ADO Pipeline)
 # ==========================================
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory=$true, HelpMessage="The GitHub Organization name")]
-    [string]$GHOrg,
-
-    [Parameter(Mandatory=$true, HelpMessage="The Repository name")]
-    [string]$GHRepo,
-
-    [Parameter(Mandatory=$true, HelpMessage="The Environment name (e.g., dev, qa, production)")]
-    [string]$EnvName,
-
-    [Parameter(Mandatory=$true, HelpMessage="The branch allowed to deploy to this environment")]
-    [string]$BranchName,
-
-    [Parameter(Mandatory=$false, HelpMessage="Array of GitHub usernames to act as reviewers")]
-    [string[]]$ReviewerUsernames = @(),
-
-    [Parameter(Mandatory=$false, HelpMessage="Wait timer in minutes before deployment begins")]
-    [int]$WaitTimer = 0,
-
-    [Parameter(Mandatory=$false, HelpMessage="Prevent the deployer from approving their own deployment")]
-    [switch]$PreventSelfReview
+    [Parameter(Mandatory=$true)][string]$GHOrg,
+    [Parameter(Mandatory=$true)][string]$GHRepo,
+    [Parameter(Mandatory=$true)][string]$EnvName,
+    [Parameter(Mandatory=$true)][string]$BranchName,
+    [Parameter(Mandatory=$false)][string[]]$ReviewerUsernames = @(),
+    [Parameter(Mandatory=$false)][int]$WaitTimer = 0
 )
 
 Write-Host "Setting up '$EnvName' environment..." -ForegroundColor Cyan
 
 # 1. Fetch User IDs for ALL reviewers
 $reviewerObjects = @()
-
 foreach ($username in $ReviewerUsernames) {
     Write-Host "Looking up User ID for $username..."
     $userId = (gh api users/$username --jq '.id' 2>$null)
-    
     if ($userId) {
         Write-Host "  -> Found ID: $userId" -ForegroundColor DarkGray
         $reviewerObjects += @{ type = "User"; id = [int]$userId }
@@ -97,34 +81,40 @@ foreach ($username in $ReviewerUsernames) {
 # 2. Build the Configuration
 $envConfig = @{
     wait_timer = $WaitTimer
-    prevent_self_review = $PreventSelfReview.IsPresent
     deployment_branch_policy = @{
         protected_branches = $false
         custom_branch_policies = $true
     }
 }
 
-# Only add reviewers if any were provided and found
 if ($reviewerObjects.Count -gt 0) {
     $envConfig.Add("reviewers", $reviewerObjects)
 }
 
-$envConfigJson = $envConfig | ConvertTo-Json -Depth 5 -Compress
+# 3. Write JSON to a temp file (avoids piping issues on ADO agents)
+$envJsonFile = Join-Path $env:TEMP "env-config.json"
+$envConfig | ConvertTo-Json -Depth 5 | Out-File -FilePath $envJsonFile -Encoding utf8
 
-# 3. CREATE the Environment
 Write-Host "Applying settings to environment..."
-$envConfigJson | gh api -X PUT "repos/$GHOrg/$GHRepo/environments/$EnvName" `
+gh api -X PUT "repos/$GHOrg/$GHRepo/environments/$EnvName" `
     --header "Accept: application/vnd.github+json" `
-    --input -
+    --input $envJsonFile
 
 Write-Host "Environment '$EnvName' created." -ForegroundColor Green
 
 # 4. Add Branch Rule
-$branchConfig = @{ name = $BranchName } | ConvertTo-Json -Compress
+$branchJsonFile = Join-Path $env:TEMP "branch-config.json"
+@{ name = $BranchName } | ConvertTo-Json | Out-File -FilePath $branchJsonFile -Encoding utf8
 
-$branchConfig | gh api -X POST "repos/$GHOrg/$GHRepo/environments/$EnvName/deployment-branch-policies" `
+Write-Host "Locking to branch: $BranchName..."
+gh api -X POST "repos/$GHOrg/$GHRepo/environments/$EnvName/deployment-branch-policies" `
     --header "Accept: application/vnd.github+json" `
-    --input -
+    --input $branchJsonFile
 
 Write-Host "Rule added: Only the '$BranchName' branch can deploy." -ForegroundColor Green
+
+# 5. Cleanup temp files
+Remove-Item $envJsonFile -ErrorAction SilentlyContinue
+Remove-Item $branchJsonFile -ErrorAction SilentlyContinue
+
 Write-Host "Setup Complete!" -ForegroundColor Cyan
