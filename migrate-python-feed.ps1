@@ -120,19 +120,20 @@ foreach ($pkg in $packages) {
         Write-Host "       Pushing to GitHub PyPI..." -ForegroundColor Gray
         $ghPyPiUrl = "https://pypi.pkg.github.com/$GitHubOrg/"
         
-        # Twine requires username/password. For GitHub, username can be anything (using 'token')
-        # We use environment variables for safety
         $env:TWINE_USERNAME = "token"
         $env:TWINE_PASSWORD = $GitHubPat
         $env:TWINE_REPOSITORY_URL = $ghPyPiUrl
 
-        try {
-            # --skip-existing is the equivalent of --skip-duplicate for twine
-            twine upload $filePath --skip-existing --non-interactive
+        # GitHub Packages does not support --skip-existing. We catch the 409 Conflict manually.
+        $twineOutput = twine upload $filePath --non-interactive 2>&1
+        $exitCode = $LASTEXITCODE
+
+        if ($exitCode -eq 0) {
             Write-Host "       [SUCCESS] Migrated $pkgName $pkgVer" -ForegroundColor Green
-        }
-        catch {
-            Write-Warning "       [FAILED] Could not push ${pkgName} ${pkgVer}: $($_.Exception.Message)"
+        } elseif ($twineOutput -match "409" -or $twineOutput -match "Conflict" -or $twineOutput -match "already exists") {
+            Write-Host "       [SKIP] $pkgName $pkgVer already exists on GitHub." -ForegroundColor DarkGray
+        } else {
+            Write-Warning "       [FAILED] Could not push $pkgName $pkgVer: $twineOutput"
         }
 
         Remove-Item $filePath -Force
