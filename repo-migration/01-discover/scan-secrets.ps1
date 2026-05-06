@@ -201,7 +201,6 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     $adoPat         = $using:adoPat
     $findings       = $using:allFindings
     $summary        = $using:repoSummary
-    $kwPatterns     = $using:keywordPatterns
     $phValues       = $using:placeholderExact
 
     $repoLabel  = $repo.Name
