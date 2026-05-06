@@ -1,7 +1,7 @@
-# ============================================================
+﻿# ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
-#  Migrates ADO work items ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GitHub Issues + ProjectV2
+#  Migrates ADO work items ÃƒÆ’->Â¢ÃƒÂ¢->â€šÂ¬->Â ÃƒÂ¢->â€šÂ¬->â€žÂ¢ GitHub Issues + ProjectV2
 #  Handles: hierarchy, comments, images, attachments, status,
 #           assignees, labels, tags, parent-child links
 # ============================================================
@@ -124,7 +124,7 @@ if ($ghProjNum) {
         foreach ($opt in $priorityField.options) {
             Write-Log -Message "  Option: '$($opt.name)' (id: $($opt.id))" -Level "INFO"
         }
-        # Build dynamic mapping: ADO Priority 1-4 Ã¢â€ â€™ GitHub options by smart matching
+        # Build dynamic mapping: ADO Priority 1-4 -> GitHub options by smart matching
         $opts = @($priorityField.options)
         foreach ($adoPri in @(1, 2, 3, 4)) {
             $matched = $null
@@ -141,7 +141,7 @@ if ($ghProjNum) {
             if (-not $matched -and ($adoPri - 1) -lt $opts.Count) { $matched = $opts[$adoPri - 1] }
             if ($matched) {
                 $priorityOptionMap[$adoPri] = $matched
-                Write-Log -Message "  ADO Priority $adoPri Ã¢â€ â€™ '$($matched.name)'" -Level "INFO"
+                Write-Log -Message "  ADO Priority $adoPri -> '$($matched.name)'" -Level "INFO"
             }
         }
     } else {
@@ -196,7 +196,7 @@ if ($ghProjNum) {
 # ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
-#  Migrates ADO work items â†’ GitHub Issues + ProjectV2
+#  Migrates ADO work items ->â€ â€™ GitHub Issues + ProjectV2
 #  Handles: hierarchy, comments, images, attachments, status,
 #           assignees, labels, tags, parent-child links
 # ============================================================
@@ -269,8 +269,8 @@ $sortedItems = @($sortedItems | Where-Object { $_.fields.'System.WorkItemType' -
 Write-Log -Message "Items after type filter: $($sortedItems.Count)" -Level "INFO"
 
 
-# --- ADO ID ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GitHub Issue Number tracking ---
-$adoToGhMap = @{}  # adoId ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ @{ issueNumber; issueNodeId; issueUrl }
+# --- ADO ID ÃƒÆ’->Â¢ÃƒÂ¢->â€šÂ¬->Â ÃƒÂ¢->â€šÂ¬->â€žÂ¢ GitHub Issue Number tracking ---
+$adoToGhMap = @{}  # adoId ÃƒÆ’->Â¢ÃƒÂ¢->â€šÂ¬->Â ÃƒÂ¢->â€šÂ¬->â€žÂ¢ @{ issueNumber; issueNodeId; issueUrl }
 
 # --- AUTO-CREATE Project V2 board if no projectNumber configured ---
 if (-not $ghProjNum -or $ghProjNum -eq 0) {
@@ -333,7 +333,7 @@ foreach ($item in $sortedItems) {
 
     # --- Skip if already migrated (resume mode) ---
     if ($migrationLog.ContainsKey("$adoId")) {
-        Write-Log -Message "  Already migrated ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ skipping" -Level "DEBUG"
+        Write-Log -Message "  Already migrated ÃƒÆ’->Â¢ÃƒÂ¢->â€šÂ¬->Â ÃƒÂ¢->â€šÂ¬->â€žÂ¢ skipping" -Level "DEBUG"
         $adoToGhMap[$adoId] = $migrationLog["$adoId"]
         $skipped++
         continue
@@ -349,7 +349,7 @@ foreach ($item in $sortedItems) {
     $typeConfig = $typeMappings.types.$type
     if ($typeConfig) { $labels += $typeConfig.githubLabel }
 
-    # Tags ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ labels
+    # Tags ÃƒÆ’->Â¢ÃƒÂ¢->â€šÂ¬->Â ÃƒÂ¢->â€šÂ¬->â€žÂ¢ labels
     if ($item.fields.'System.Tags') {
         $tags = $item.fields.'System.Tags' -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne "copied-to-github" }
         foreach ($tag in $tags) { $labels += "tag:$tag" }
@@ -953,5 +953,6 @@ if ($script:unmappedUsers -and $script:unmappedUsers.Count -gt 0) {
 if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 if ($failed -gt 0) { exit 1 }
+
 
 
