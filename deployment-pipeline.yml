@@ -4,8 +4,8 @@ pool:
   vmImage: 'windows-latest'
 
 variables:
-  - name: GH_PAT
-    value: $(GitHubPAT)   # Comes from ADO Variable Group or Pipeline Variable
+  - group: environment_set_up
+       # Comes from ADO Variable Group or Pipeline Variable
 
 steps:
   - checkout: self
