@@ -133,7 +133,7 @@ foreach ($pkg in $packages) {
         } elseif ($twineOutput -match "409" -or $twineOutput -match "Conflict" -or $twineOutput -match "already exists") {
             Write-Host "       [SKIP] $pkgName $pkgVer already exists on GitHub." -ForegroundColor DarkGray
         } else {
-            Write-Warning "       [FAILED] Could not push $pkgName $pkgVer: $twineOutput"
+            Write-Warning "       [FAILED] Could not push ${pkgName} ${pkgVer}: $twineOutput"
         }
 
         Remove-Item $filePath -Force
