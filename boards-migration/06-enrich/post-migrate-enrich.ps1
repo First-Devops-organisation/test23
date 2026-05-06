@@ -174,7 +174,7 @@ function Convert-WiqlToGhFilter {
 }
 
 # Fetch saved queries from ADO
-$queryUri = "https://dev.azure.com/$adoOrg/$adoProject/_apis/wit/queries?`$depth=2&api-version=7.1"
+$queryUri = "https://dev.azure.com/$adoOrg/$adoProject/_apis/wit/queries?`$expand=all&`$depth=2&api-version=7.1"
 $queryData = try { Invoke-RestMethod -Uri $queryUri -Method GET -Headers $adoHeaders } catch { $null }
 
 $filterLines = @(
