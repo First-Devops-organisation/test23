@@ -315,7 +315,7 @@ title = "Custom Keyword Rules"
 [[rules]]
 id = "DETECTED_SECRET"
 description = "Generic secret key"
-regex = '''(?i)(?:key|secret|password|passwd|pwd|token|cred(?:ential)?|auth)[a-zA-Z0-9_]*[''"]?\s*[:=]\s*[''"]?([^''"\s,;]+)[''"]?'''
+regex = '''(?i)[a-zA-Z_]?[a-zA-Z0-9_]*(?:key|secret|password|passwd|pwd|token|cred(?:ential)?|auth)[a-zA-Z0-9_]*[''"]?\s*[:=]\s*[''"]?([^''"\s,;]+)[''"]?'''
 secretGroup = 1
 
 [[rules]]
