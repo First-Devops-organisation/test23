@@ -63,7 +63,7 @@ stages:
       persistCredentials: true
 
     - task: PowerShell@2
-      displayName: 'Install Azure DevOps CLI Extension'
+      displayName: '[Setup] Install Azure DevOps CLI Extension'
       inputs:
         targetType: inline
         script: |
@@ -72,7 +72,7 @@ stages:
         pwsh: true
 
     - task: PowerShell@2
-      displayName: 'Discover Work Items'
+      displayName: '[Phase 1] Count & List All ADO Work Items'
       inputs:
         filePath: '$(workingDir)\01-discover\discover-workitems.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -82,7 +82,7 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PowerShell@2
-      displayName: 'Analyze Board Structure'
+      displayName: '[Phase 1] Analyze ADO Board & Sprint Structure'
       inputs:
         filePath: '$(workingDir)\01-discover\analyze-board-structure.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -91,14 +91,14 @@ stages:
         ADO_PAT: $(ADO_PAT)
 
     - task: PowerShell@2
-      displayName: 'Generate GitHub Project Setup Guide'
+      displayName: '[Phase 1] Generate GitHub Project Setup Guide'
       inputs:
         filePath: '$(workingDir)\01-discover\generate-setup-guide.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
         pwsh: true
 
     - task: PowerShell@2
-      displayName: 'Discover ADO Workflow Rules'
+      displayName: '[Phase 1] Read ADO Workflow States & Transitions'
       inputs:
         filePath: '$(workingDir)\01-discover\discover-ado-workflows.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -107,7 +107,7 @@ stages:
         ADO_PAT: $(ADO_PAT)
 
     - task: PublishPipelineArtifact@1
-      displayName: 'Publish Discovery Reports'
+      displayName: '[Phase 1] Save Discovery Reports as Pipeline Artifact'
       inputs:
         targetPath: '$(workingDir)\reports'
         artifact: 'discovery-reports'
@@ -130,7 +130,7 @@ stages:
 
     # Download discovery reports from Stage 1
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Discovery Reports'
+      displayName: '[Phase 2] Download Discovery Reports from Phase 1'
       inputs:
         buildType: 'current'
         artifactName: 'discovery-reports'
@@ -139,14 +139,14 @@ stages:
       continueOnError: true
 
     - task: PowerShell@2
-      displayName: 'Install Azure DevOps CLI Extension'
+      displayName: '[Setup] Install Azure DevOps CLI Extension'
       inputs:
         targetType: inline
         script: az extension add --name azure-devops --yes
         pwsh: true
 
     - task: PowerShell@2
-      displayName: 'Validate Mappings'
+      displayName: '[Phase 2] Validate User, Status & Type Mappings'
       inputs:
         filePath: '$(workingDir)\02-prep\validate-mappings.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -156,7 +156,7 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PowerShell@2
-      displayName: 'Setup GitHub Labels'
+      displayName: '[Phase 2] Create GitHub Labels (type, priority, severity)'
       inputs:
         filePath: '$(workingDir)\02-prep\setup-github-labels.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -165,7 +165,7 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PowerShell@2
-      displayName: 'Setup GitHub Milestones'
+      displayName: '[Phase 2] Create GitHub Milestones from ADO Sprints'
       inputs:
         filePath: '$(workingDir)\02-prep\setup-github-milestones.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -175,7 +175,7 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PowerShell@2
-      displayName: 'Deploy Workflow Rules to GitHub'
+      displayName: '[Phase 2] Deploy GitHub Actions Workflow Rules to Repo'
       inputs:
         filePath: '$(workingDir)\02-prep\deploy-github-workflow.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -184,7 +184,7 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PublishPipelineArtifact@1
-      displayName: 'Publish Prep Logs'
+      displayName: '[Phase 2] Save Preparation Logs as Pipeline Artifact'
       inputs:
         targetPath: '$(workingDir)\logs'
         artifact: 'prep-logs'
@@ -207,7 +207,7 @@ stages:
     pool: server
     steps:
     - task: ManualValidation@1
-      displayName: 'Approve Migration Execution'
+      displayName: '[Gate] Human Approval Required Before Migration Starts'
       inputs:
         notifyUsers: ''
         instructions: |
@@ -228,7 +228,7 @@ stages:
       persistCredentials: true
 
     - task: PowerShell@2
-      displayName: 'Install Azure DevOps CLI Extension'
+      displayName: '[Setup] Install Azure DevOps CLI Extension'
       inputs:
         targetType: inline
         script: az extension add --name azure-devops --yes
@@ -236,7 +236,7 @@ stages:
 
     # Download discovery reports for reference
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Discovery Reports'
+      displayName: '[Phase 3] Download Discovery Reports from Phase 1'
       inputs:
         buildType: 'current'
         artifactName: 'discovery-reports'
@@ -248,7 +248,7 @@ stages:
     # Downloads to a temp dir and copies ONLY migration-log.json to avoid
     # overwriting current discovery files (like workitem-inventory.json).
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Previous Migration Log (incremental)'
+      displayName: '[Phase 3] Download Previous Migration Log for Resume/Incremental Mode'
       inputs:
         buildType: 'specific'
         project: '$(System.TeamProjectId)'
@@ -262,7 +262,7 @@ stages:
       continueOnError: true
 
     - task: PowerShell@2
-      displayName: 'Copy Previous Migration Log'
+      displayName: '[Phase 3] Load Previous Migration Log to Enable Resume Mode'
       inputs:
         targetType: inline
         script: |
@@ -281,7 +281,7 @@ stages:
       continueOnError: true  # First run won't have previous artifacts
 
     - task: PowerShell@2
-      displayName: 'Snapshot ADO Data (Pre-Migration Backup)'
+      displayName: '[Phase 3] Take Pre-Migration Snapshot of All ADO Work Items'
       inputs:
         filePath: '$(workingDir)\00-extract\snapshot-ado-data.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -291,7 +291,7 @@ stages:
       condition: eq('${{ parameters.dryRun }}', false)
 
     - task: PowerShell@2
-      displayName: 'Migrate Work Items'
+      displayName: '[Phase 3] Migrate ADO Work Items → GitHub Issues (Core Engine)'
       inputs:
         targetType: inline
         script: |
@@ -312,7 +312,7 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PowerShell@2
-      displayName: 'Build Board (Python Injector)'
+      displayName: '[Phase 3] Inject Items into GitHub Project V2 Board (Board Builder)'
       inputs:
         targetType: inline
         script: |
@@ -332,7 +332,7 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PowerShell@2
-      displayName: 'Reconcile PR Links'
+      displayName: '[Phase 5] Link ADO Pull Requests to Migrated GitHub Issues'
       inputs:
         targetType: inline
         script: |
@@ -353,7 +353,7 @@ stages:
         
 
     - task: PowerShell@2
-      displayName: 'Phase 6 — Post-Migration Enrichment'
+      displayName: '[Phase 6] Enrich Issues: Related Links, Saved Queries & Roadmap'
       inputs:
         targetType: inline
         script: |
@@ -378,7 +378,7 @@ stages:
         GH_PAT: $(GH_PAT)
 
     - task: PublishPipelineArtifact@1
-      displayName: 'Publish Migration Log'
+      displayName: '[Artifact] Save Migration Log & Enrichment Reports (migration-log.json)'
       inputs:
         targetPath: '$(workingDir)\reports'
         artifact: 'migration-reports'
@@ -386,7 +386,7 @@ stages:
       condition: always()
 
     - task: PublishPipelineArtifact@1
-      displayName: 'Publish Migration Logs'
+      displayName: '[Artifact] Save Verbose Debug Logs for Troubleshooting'
       inputs:
         targetPath: '$(workingDir)\logs'
         artifact: 'migration-logs'
@@ -409,7 +409,7 @@ stages:
       persistCredentials: true
 
     - task: PowerShell@2
-      displayName: 'Install Azure DevOps CLI Extension'
+      displayName: '[Setup] Install Azure DevOps CLI Extension'
       inputs:
         targetType: inline
         script: az extension add --name azure-devops --yes
@@ -417,7 +417,7 @@ stages:
 
     # Download migration reports
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Migration Reports'
+      displayName: '[Phase 4] Download Migration Log from Phase 3 for Validation'
       inputs:
         buildType: 'current'
         artifactName: 'migration-reports'
@@ -425,7 +425,7 @@ stages:
       continueOnError: true
 
     - task: PowerShell@2
-      displayName: 'Validate Migration'
+      displayName: '[Phase 4] Compare ADO Item Count vs GitHub Issue Count (Verify Zero Data Loss)'
       inputs:
         filePath: '$(workingDir)\04-validate\validate-migration.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -436,7 +436,7 @@ stages:
       continueOnError: true
 
     - task: PowerShell@2
-      displayName: 'Generate Summary Report'
+      displayName: '[Phase 4] Generate Final Migration Summary Report (Markdown)'
       inputs:
         filePath: '$(workingDir)\04-validate\generate-report.ps1'
         arguments: '-ConfigPath "$(workingDir)\config\${{ parameters.configFile }}"'
@@ -444,7 +444,7 @@ stages:
       condition: always()
 
     - task: PublishPipelineArtifact@1
-      displayName: 'Publish Final Reports'
+      displayName: '[Artifact] Save Final Reports: ROADMAP.md, GITHUB_FILTERS.md, Summary'
       inputs:
         targetPath: '$(workingDir)\reports'
         artifact: 'final-reports'
@@ -453,7 +453,7 @@ stages:
 
     # Publish markdown report as pipeline summary
     - task: PowerShell@2
-      displayName: 'Publish Report to Pipeline Summary'
+      displayName: '[Phase 4] Pin Migration Summary to Pipeline Overview Tab'
       inputs:
         targetType: inline
         script: |
