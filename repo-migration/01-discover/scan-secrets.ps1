@@ -55,10 +55,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$config    = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $reportDir = $config.output.reportDir
-$logDir    = $config.output.logDir
-$cloneDir  = $config.migration.cloneTempDir
+$logDir = $config.output.logDir
+$cloneDir = $config.migration.cloneTempDir
 
 foreach ($d in @($reportDir, $logDir, $cloneDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
@@ -100,9 +100,11 @@ if ($reposToScan.Count -eq 0) {
     Write-Error "No repositories identified for scanning. Check config.json or pipeline parameters."
 }
 
+
+
 # ── Fetch repo metadata directly from ADO (Avoids stale inventory) ───────────
-$adoPat  = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
-$adoOrg  = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
+$adoPat = if ($config.source.pat -eq '$(ADO_PAT)') { $env:ADO_PAT } else { $config.source.pat }
+$adoOrg = if ($config.source.organization -match '^\$\(') { $env:ADO_ORG } else { $config.source.organization }
 $adoProj = if ($config.source.project -match '^\$\(') { $env:ADO_PROJECT } else { $config.source.project }
 
 if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
@@ -123,9 +125,9 @@ foreach ($repoName in $reposToScan) {
         $sizeMB = [math]::Round($repoData.size / 1MB, 2)
         
         $repos += [PSCustomObject]@{
-            Name   = $repoData.name
-            SizeMB = $sizeMB
-            Url    = $repoData.webUrl
+            Name      = $repoData.name
+            SizeMB    = $sizeMB
+            Url       = $repoData.webUrl
             RemoteUrl = $repoData.remoteUrl
             SizeBytes = $repoData.size
         }
@@ -152,7 +154,8 @@ $totalCount = ($repos | Measure-Object).Count
 if ($SizeFilter -eq 'Small') {
     $repos = @($repos | Where-Object { $_.SizeMB -lt $SizeThresholdMB })
     Write-Host "Filter: Small repos only (< ${SizeThresholdMB} MB) — $($repos.Count) of $totalCount repos" -ForegroundColor Gray
-} elseif ($SizeFilter -eq 'Large') {
+}
+elseif ($SizeFilter -eq 'Large') {
     $repos = @($repos | Where-Object { $_.SizeMB -ge $SizeThresholdMB })
     Write-Host "Filter: Large repos only (>= ${SizeThresholdMB} MB) — $($repos.Count) of $totalCount repos" -ForegroundColor Gray
 }
@@ -170,6 +173,20 @@ if ($BatchTotal -gt 1) {
     Write-Host "Batch $($BatchIndex + 1) of ${BatchTotal}: scanning $($repos.Count) repos on this agent" -ForegroundColor Cyan
 }
 
+if ($repos.Count -eq 0) {
+    Write-Host "No repositories assigned to this agent (Index $BatchIndex). Generating empty report..." -ForegroundColor Green
+    
+    # Create empty files so the pipeline doesn't crash
+    $batchSuffix = "-batch$BatchIndex"
+    $htmlPath = Join-Path $reportDir "secret-scan-report$batchSuffix.html"
+    "<html><body><h1>No repositories assigned to this agent.</h1></body></html>" | Out-File $htmlPath -Encoding utf8
+    
+    $summaryJson = Join-Path $reportDir "secret-scan-summary$batchSuffix.json"
+    "[]" | Out-File $summaryJson -Encoding utf8
+
+    exit 0
+}
+
 # File suffix for parallel job output (avoids overwriting)
 $batchSuffix = if ($BatchTotal -gt 1) { "-batch$BatchIndex" } else { '' }
 $fileSuffix = if ($SizeFilter -ne 'All') { "-$($SizeFilter.ToLower())${batchSuffix}" } else { $batchSuffix }
@@ -184,15 +201,15 @@ $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::ne
 
 # ── Parallel scan (full clone — complete history for 100% secret coverage) ───
 $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
-    $repo      = $_
-    $cloneDir  = $using:cloneDir
-    $logDir    = $using:logDir
-    $adoPat    = $using:adoPat
-    $findings  = $using:allFindings
-    $summary   = $using:repoSummary
+    $repo = $_
+    $cloneDir = $using:cloneDir
+    $logDir = $using:logDir
+    $adoPat = $using:adoPat
+    $findings = $using:allFindings
+    $summary = $using:repoSummary
 
-    $repoLabel  = "[$($repo.Project)] $($repo.Name)"
-    $clonePath  = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8)).git"
+    $repoLabel = "[$($repo.Project)] $($repo.Name)"
+    $clonePath = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8)).git"
     $reportFile = Join-Path $logDir "gitleaks-$($repo.Name).json"
 
     # If repo is completely empty (0 Bytes), mark as CLEAN and skip clone/scan
@@ -203,15 +220,15 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     }
 
     # Clone — full bare clone with header auth; skip LFS (binaries can't contain text secrets)
-    $cloneUrl   = $repo.RemoteUrl -replace '://[^@]+@', '://'
+    $cloneUrl = $repo.RemoteUrl -replace '://[^@]+@', '://'
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("pat:${adoPat}"))
 
     try {
         $env:GIT_LFS_SKIP_SMUDGE = '1'
         Write-Host "  Cloning $repoLabel — full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
         $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth",
-                       '-c', 'lfs.fetchexclude=*',
-                       'clone', '--bare', '--quiet', $cloneUrl, $clonePath)
+            '-c', 'lfs.fetchexclude=*',
+            'clone', '--bare', '--quiet', $cloneUrl, $clonePath)
 
         $cloneOutput = & git @cloneArgs 2>&1
         if ($LASTEXITCODE -ne 0) { throw ($cloneOutput | Out-String) }
@@ -242,16 +259,21 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         Write-Warning "  SECRETS FOUND: $count finding(s) in $repoLabel"
 
         foreach ($f in $foundItems) {
+            $secretVal = $f.Secret
+            if ([string]::IsNullOrWhiteSpace($secretVal)) { $secretVal = $f.Match }
+
             $findings.Add([PSCustomObject]@{
-                Project   = $repo.Project
-                Repo      = $repo.Name
-                RuleID    = $f.RuleID
-                Match     = ($f.Match -replace '.', '*')   # Mask the actual secret
-                File      = $f.File
-                StartLine = $f.StartLine
-                Commit    = $f.Commit
-                Author    = $f.Author
-                Date      = $f.Date
+                Repo        = $repo.Name
+                SecretName  = $f.RuleID.ToUpper()
+                SecretValue = $secretVal.Trim()
+                File        = $f.File
+                LineNumber  = $f.StartLine
+                Branch      = "HISTORY"
+                CommitHash  = if ($f.Commit) { $f.Commit.Substring(0, 12) } else { "N/A" }
+                Source      = "gitleaks"
+                RuleID      = $f.RuleID
+                Author      = $f.Author
+                Date        = $f.Date
             })
         }
         $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = $count; Status = "SECRETS_FOUND" })
@@ -277,29 +299,29 @@ $repoSummaryArr = @($repoSummary.ToArray())
 $allFindingsArr = @($allFindings.ToArray())
 
 # ── Reports ──────────────────────────────────────────────────────────────────
-$summaryJson   = Join-Path $reportDir "secret-scan-summary${fileSuffix}.json"
-$findingsJson  = Join-Path $reportDir "secret-scan-findings${fileSuffix}.json"
+$summaryJson = Join-Path $reportDir "secret-scan-summary${fileSuffix}.json"
+$findingsJson = Join-Path $reportDir "secret-scan-findings${fileSuffix}.json"
 
 if ($repoSummaryArr.Count -gt 0) { $repoSummaryArr | ConvertTo-Json -Depth 3 | Out-File $summaryJson -Encoding utf8 } else { "[]" | Out-File $summaryJson -Encoding utf8 }
 if ($allFindingsArr.Count -gt 0) { $allFindingsArr | ConvertTo-Json -Depth 5 | Out-File $findingsJson -Encoding utf8 } else { "[]" | Out-File $findingsJson -Encoding utf8 }
 
 # ── HTML Report ──────────────────────────────────────────────────────────────
-$htmlPath     = Join-Path $reportDir "secret-scan-report${fileSuffix}.html"
-$cleanCount   = @($repoSummaryArr | Where-Object Status -eq 'CLEAN').Count
+$htmlPath = Join-Path $reportDir "secret-scan-report${fileSuffix}.html"
+$cleanCount = @($repoSummaryArr | Where-Object Status -eq 'CLEAN').Count
 $secretsCount = @($repoSummaryArr | Where-Object Status -eq 'SECRETS_FOUND').Count
-$errorCount   = @($repoSummaryArr | Where-Object Status -eq 'SCAN_ERROR').Count
-$failedCount  = @($repoSummaryArr | Where-Object Status -eq 'CLONE_FAILED').Count
+$errorCount = @($repoSummaryArr | Where-Object Status -eq 'SCAN_ERROR').Count
+$failedCount = @($repoSummaryArr | Where-Object Status -eq 'CLONE_FAILED').Count
 
 $tableRows = ($repoSummaryArr | Sort-Object Status, Name | ForEach-Object {
-    $statusColor = switch ($_.Status) {
-        'CLEAN'         { '#27ae60' }
-        'SECRETS_FOUND' { '#e74c3c' }
-        'SCAN_ERROR'    { '#f39c12' }
-        'CLONE_FAILED'  { '#95a5a6' }
-        default         { '#333' }
-    }
-    "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Project))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.Name))</td><td>$($_.SizeMB)</td><td>$($_.FindingsCount)</td><td style='color:$statusColor;font-weight:bold'>$($_.Status)</td></tr>"
-}) -join "`n"
+        $statusColor = switch ($_.Status) {
+            'CLEAN' { '#27ae60' }
+            'SECRETS_FOUND' { '#e74c3c' }
+            'SCAN_ERROR' { '#f39c12' }
+            'CLONE_FAILED' { '#95a5a6' }
+            default { '#333' }
+        }
+        "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Project))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.Name))</td><td>$($_.SizeMB)</td><td>$($_.FindingsCount)</td><td style='color:$statusColor;font-weight:bold'>$($_.Status)</td></tr>"
+    }) -join "`n"
 
 $html = @"
 <!DOCTYPE html>
