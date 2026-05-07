@@ -1,32 +1,22 @@
-Parameters & Variables
-Parameters: Control migration mode (Single/Batch), repo names, batch name, audit/validation toggles, etc.
-Variables: Store secrets and org/project/repo info.
-Stages
-1. Discover
-Purpose: Analyze ADO repos, audit sizes, and scan for secrets.
-Artifacts: Discovery reports, repo inventory, size audits, and secret scan results.
-2. ReviewGate
-Purpose: Manual review step. User checks discovery/scanning results and approves or rejects migration.
-3A. MigrateSingle (Single Repo Mode)
-Install tools: Installs GitHub CLI and ado2gh extension.
-Prepare output folders.
-Run migration: Executes migrate-single.ps1 for the selected repo.
-Publish artifacts: Logs, audit data, dashboard HTML.
-Show dashboard: Displays migration dashboard as a pipeline tab.
-3B. MigrateBatch (Batch Mode)
-Install tools: Installs GitHub CLI and ado2gh extension.
-Prepare output folders.
-Run migration: Executes migrate-batch.ps1 for all repos in the batch.
-Publish artifacts: Batch logs, audit data, dashboards, and summary reports.
-4. Validate
-Download artifacts: Retrieves audit data, dashboards, and reports from migration stages.
-Validate repos: Runs validate-migration.ps1 for single repo or all batch repos.
-Publish validation reports: HTML, CSV, JSON, Markdown.
-Show validation report: Displays validation HTML as a pipeline tab.
-Show migration report: Displays migration dashboard as a pipeline tab.
-Publish summary: Publishes a Markdown summary to the pipeline summary tab.
-Summary:
+📡 Migration API Reference
+This document provides a concise list of all API endpoints and orchestrated tools used in the ADO-to-GitHub migration framework.
 
-The pipeline discovers and audits repos, waits for manual approval, migrates (single or batch), then validates and reports results.
-Artifacts are published at each stage for traceability and review.
-The process is parameterized for flexibility and can handle both single and batch migrations.
+1. Azure DevOps REST APIs (v7.1)
+Category	Endpoint	Purpose
+Pipeline	_apis/build/definitions	Extracting build logic and YAML structures.
+Release	_apis/release/definitions	Extracting Classic Release (VSRM) logic.
+Inventory	_apis/git/repositories	Analyzing repository scale and inventory.
+Validation	_apis/git/repositories/{id}/refs	Branch and Tag parity verification.
+History	_apis/git/repositories/{id}/pullrequests	Verifying migrated PR counts.
+2. GitHub REST APIs (v2022-11-28 / v3)
+Category	Endpoint	Version	Purpose
+Repo	/repos/{org}/{repo}	2022-11-28	Verifying target settings.
+Security	/repos/{org}/{repo}/protection	2022-11-28	Enabling branch governance.
+Identity	/orgs/{org}/mannequins	v3	Reclaiming user identities.
+Advanced	/repos/{org}/{repo}/code-scanning	2022-11-28	Enabling GHAS security features.
+Search	/search/issues	2022-11-28	Validating PR/Issue migration status.
+3. Orchestrated Tools
+Tool	Provider	Primary Function
+Actions Importer	GitHub	Core pipeline-to-workflow conversion.
+Git-Sizer	GitHub OSS	Feasibility and scale analysis.
+gh ado2gh	GitHub	Identity and repo migration orchestration.
