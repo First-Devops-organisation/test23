@@ -220,7 +220,7 @@ if (Test-Path $auditSummaryFile) {
     $s=[regex]::Match($raw,"Successful:\s*\*{0,2}(\d+)\*{0,2}");           if($s.Success){$auditMetrics.Successful=$s.Groups[1].Value}
     $p=[regex]::Match($raw,"Partially successful:\s*\*{0,2}(\d+)\*{0,2}"); if($p.Success){$auditMetrics.Partial=$p.Groups[1].Value}
     $u=[regex]::Match($raw,"Unsupported:\s*\*{0,2}(\d+)\*{0,2}");          if($u.Success){$auditMetrics.Unsupported=$u.Groups[1].Value}
-    $f=[regex]::Match($raw,"Failed:\s*\*{0,2}(\d+)\*{0,2}");               if($f.Success){$auditMetrics.Failed=$f.Groups[1].Value}
+    $f=[regex]::Match($raw,"(?:Failed|Requires Review):\s*\*{0,2}(\d+)\*{0,2}"); if($f.Success){$auditMetrics.Failed=$f.Groups[1].Value}
     $auditMetrics.Total = [int]$auditMetrics.Successful + [int]$auditMetrics.Partial + [int]$auditMetrics.Unsupported + [int]$auditMetrics.Failed
     Write-Host "DEBUG parsed metrics: Total=$($auditMetrics.Total) Success=$($auditMetrics.Successful) Partial=$($auditMetrics.Partial) Unsupported=$($auditMetrics.Unsupported) Failed=$($auditMetrics.Failed)" -ForegroundColor Magenta
 } else {
@@ -311,7 +311,7 @@ $breakdownRows = @"
             <td class='num'>$($auditMetrics.Unsupported)</td>
             <td><div class='mini-bar'><div class='mini-fill' style='width:${pctUnsupported}%;background:#ef4444'></div></div></td>
             <td class='num'>${pctUnsupported}%</td></tr>
-        <tr><td><span class='dot' style='background:#6b7280'></span> Failed</td>
+        <tr><td><span class='dot' style='background:#6b7280'></span> Requires Review</td>
             <td class='num'>$($auditMetrics.Failed)</td>
             <td><div class='mini-bar'><div class='mini-fill' style='width:${pctFailed}%;background:#6b7280'></div></div></td>
             <td class='num'>${pctFailed}%</td></tr>
@@ -450,6 +450,14 @@ $htmlContent = @"
   .panel:nth-of-type(2) { animation-delay:.3s; }
   .panel:nth-of-type(3) { animation-delay:.35s; }
   .panel:nth-of-type(4) { animation-delay:.4s; }
+  .panel:nth-of-type(5) { animation-delay:.45s; }
+
+  /* --- Guidance Section --- */
+  .guidance-grid { display:grid; grid-template-columns: 1fr 1fr; gap:24px; }
+  .guidance-item { margin-bottom:16px; }
+  .guidance-item strong { color:var(--accent); display:block; margin-bottom:4px; }
+  .guidance-item p { font-size:.85rem; color:var(--text2); line-height:1.5; }
+
 </style>
 </head>
 <body>
@@ -492,7 +500,7 @@ $htmlContent = @"
     <div class="kpi failed">
       <div class="kpi-icon">&#128683;</div>
       <div class="kpi-val">$($auditMetrics.Failed)</div>
-      <div class="kpi-label">Failed</div>
+      <div class="kpi-label">Requires Review</div>
     </div>
   </div>
 
@@ -516,6 +524,33 @@ $breakdownRows
           <div class="seg" style="width:${pctPartial}%;background:var(--yellow)"></div>
           <div class="seg" style="width:${pctUnsupported}%;background:var(--red)"></div>
           <div class="seg" style="width:${pctFailed}%;background:var(--gray)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- ===== GUIDANCE ===== -->
+  <div class="panel">
+    <h2><span class="sec-icon">&#128218;</span>Terminology & Guidance</h2>
+    <div class="guidance-grid">
+      <div>
+        <div class="guidance-item">
+          <strong>Successful Status (The "10% Rule")</strong>
+          <p>Even 100% automated conversions typically require ~10% minor adjustments. For example, GitHub Actions may require explicit solution filenames where ADO allowed wildcards (e.g., <code>**/*.sln</code> might need to be <code>MySolution.sln</code>).</p>
+        </div>
+        <div class="guidance-item">
+          <strong>Requires Review (Failed)</strong>
+          <p>Includes pipelines that were <strong>cancelled</strong>, <strong>never run</strong>, or deleted in ADO. Without run metadata, the tool cannot reliably extract conversion info, requiring a manual review of the source YAML/Classic definition.</p>
+        </div>
+      </div>
+      <div>
+        <div class="guidance-item">
+          <strong>Testing & Validation Perspective</strong>
+          <p>Automation handles structural mapping. Manual testing is essential to:
+            <br/>1. Configure <strong>Secrets & Service Connections</strong>.
+            <br/>2. Fix <strong>Path Patterns</strong> (e.g., explicit filenames vs wildcards).
+            <br/>3. Verify <strong>Environment Parity</strong> & Runner Access.
+            <br/>4. Validate <strong>Integration</strong> with external deployment targets.</p>
         </div>
       </div>
     </div>
@@ -564,7 +599,7 @@ $summaryMd = @"
 | Fully Convertible | $($auditMetrics.Successful) | ${pctSuccess}% |
 | Partially Convertible | $($auditMetrics.Partial) | ${pctPartial}% |
 | Unsupported | $($auditMetrics.Unsupported) | ${pctUnsupported}% |
-| Failed | $($auditMetrics.Failed) | ${pctFailed}% |
+| Requires Review | $($auditMetrics.Failed) | ${pctFailed}% |
 
 **Migration Readiness: ${pctReady}% convertible**
 
