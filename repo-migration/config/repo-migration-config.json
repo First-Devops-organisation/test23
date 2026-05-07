@@ -12,7 +12,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "SampleAzurePipelineCSharp",
+    "singleRepo": "Demoapp-Application-API",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
