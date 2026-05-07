@@ -41,8 +41,8 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [1183],
-  "PIPELINE_REPO_MAP": {"1183": "kanika_migration_simple-java-maven-app"},
+  "PIPELINE_IDS": [836],
+  "PIPELINE_REPO_MAP": {"836": "SampleAzurePipelineCSharp"},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "Appinsight"
