@@ -1,7 +1,7 @@
-# ============================================================
+﻿# ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
-#  Migrates ADO work items Ãƒ->¢Ã¢->‚¬-> Ã¢->‚¬->„¢ GitHub Issues + ProjectV2
+#  Migrates ADO work items ├â╞Æ->┬ó├â┬ó->ΓÇÜ┬¼->┬á├â┬ó->ΓÇÜ┬¼->ΓÇ₧┬ó GitHub Issues + ProjectV2
 #  Handles: hierarchy, comments, images, attachments, status,
 #           assignees, labels, tags, parent-child links
 # ============================================================
@@ -196,7 +196,7 @@ if ($ghProjNum) {
 # ============================================================
 #  Migrate Work Items - Main migration engine
 #  Phase: 03-migrate
-#  Migrates ADO work items ->†’ GitHub Issues + ProjectV2
+#  Migrates ADO work items ->ΓÇáΓÇÖ GitHub Issues + ProjectV2
 #  Handles: hierarchy, comments, images, attachments, status,
 #           assignees, labels, tags, parent-child links
 # ============================================================
@@ -269,8 +269,8 @@ $sortedItems = @($sortedItems | Where-Object { $_.fields.'System.WorkItemType' -
 Write-Log -Message "Items after type filter: $($sortedItems.Count)" -Level "INFO"
 
 
-# --- ADO ID Ãƒ->¢Ã¢->‚¬-> Ã¢->‚¬->„¢ GitHub Issue Number tracking ---
-$adoToGhMap = @{}  # adoId Ãƒ->¢Ã¢->‚¬-> Ã¢->‚¬->„¢ @{ issueNumber; issueNodeId; issueUrl }
+# --- ADO ID ├â╞Æ->┬ó├â┬ó->ΓÇÜ┬¼->┬á├â┬ó->ΓÇÜ┬¼->ΓÇ₧┬ó GitHub Issue Number tracking ---
+$adoToGhMap = @{}  # adoId ├â╞Æ->┬ó├â┬ó->ΓÇÜ┬¼->┬á├â┬ó->ΓÇÜ┬¼->ΓÇ₧┬ó @{ issueNumber; issueNodeId; issueUrl }
 
 # --- AUTO-CREATE Project V2 board if no projectNumber configured ---
 if (-not $ghProjNum -or $ghProjNum -eq 0) {
@@ -333,7 +333,7 @@ foreach ($item in $sortedItems) {
 
     # --- Skip if already migrated (resume mode) ---
     if ($migrationLog.ContainsKey("$adoId")) {
-        Write-Log -Message "  Already migrated Ãƒ->¢Ã¢->‚¬-> Ã¢->‚¬->„¢ skipping" -Level "DEBUG"
+        Write-Log -Message "  Already migrated ├â╞Æ->┬ó├â┬ó->ΓÇÜ┬¼->┬á├â┬ó->ΓÇÜ┬¼->ΓÇ₧┬ó skipping" -Level "DEBUG"
         $adoToGhMap[$adoId] = $migrationLog["$adoId"]
         $skipped++
         continue
@@ -349,7 +349,7 @@ foreach ($item in $sortedItems) {
     $typeConfig = $typeMappings.types.$type
     if ($typeConfig) { $labels += $typeConfig.githubLabel }
 
-    # Tags Ãƒ->¢Ã¢->‚¬-> Ã¢->‚¬->„¢ labels
+    # Tags ├â╞Æ->┬ó├â┬ó->ΓÇÜ┬¼->┬á├â┬ó->ΓÇÜ┬¼->ΓÇ₧┬ó labels
     if ($item.fields.'System.Tags') {
         $tags = $item.fields.'System.Tags' -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne "copied-to-github" }
         foreach ($tag in $tags) { $labels += "tag:$tag" }
