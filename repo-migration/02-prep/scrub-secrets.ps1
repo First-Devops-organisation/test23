@@ -165,15 +165,26 @@ foreach ($group in $byRepo) {
         }
         if ($isPlaceholder) { continue }
 
-        # Derive secret name
-        $baseName = $f.SecretName
-        if ([string]::IsNullOrWhiteSpace($baseName)) { $baseName = "DETECTED_SECRET" }
-        $baseName = ($baseName -replace '[^a-zA-Z0-9]', '_').ToUpper()
+        # Derive secret name from the variable name found in the code
+        $secretVarName = $f.SecretName
+        if ([string]::IsNullOrWhiteSpace($secretVarName)) { $secretVarName = "DETECTED_SECRET" }
+        $secretVarName = ($secretVarName -replace '[^a-zA-Z0-9]', '_').ToUpper()
+
+        # Derive branch prefix — sanitize branch name (e.g. "feature/login" → "FEATURE_LOGIN")
+        $branchRaw = if ($f.PSObject.Properties['Branch'] -and -not [string]::IsNullOrWhiteSpace($f.Branch)) { $f.Branch } else { "MAIN" }
+        # For history-only findings from gitleaks, use MAIN as the branch prefix
+        if ($branchRaw -ieq 'HISTORY' -or $branchRaw -ieq 'N/A') { $branchRaw = "MAIN" }
+        $branchPrefix = ($branchRaw -replace '[^a-zA-Z0-9]', '_').ToUpper()
+        # Trim leading/trailing underscores from branch prefix
+        $branchPrefix = $branchPrefix.Trim('_')
+
+        # Compose the full name: BRANCHNAME_FULLSECRETNAME
+        $baseName = "${branchPrefix}_${secretVarName}"
 
         # GitHub reserves GITHUB_ prefix
         if ($baseName -match '^GITHUB_') { $baseName = "GH_$($baseName.Substring(7))" }
 
-        # Check if this exact value already exists under any name
+        # Check if this exact value already exists under any name (dedup same value)
         $existingName = $null
         foreach ($k in $secretMap.Keys) {
             if ($secretMap[$k] -ceq $val) { $existingName = $k; break }
@@ -187,7 +198,7 @@ foreach ($group in $byRepo) {
             continue
         }
 
-        # Check if name already used (with different value)
+        # Check if name already used (with different value) — add _1, _2 suffix
         $finalName = $baseName
         if ($secretMap.Contains($baseName)) {
             if (-not $nameCounter.Contains($baseName)) { $nameCounter[$baseName] = 1 }
