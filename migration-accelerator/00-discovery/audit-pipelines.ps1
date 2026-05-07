@@ -299,7 +299,7 @@ $rawSection = if (Test-Path $auditSummaryFile) {
 
 # Build the pipeline detail rows for the breakdown table
 $breakdownRows = @"
-        <tr><td><span class='dot' style='background:#10b981'></span> Fully Convertible</td>
+        <tr><td><span class='dot' style='background:#10b981'></span> Fully Convertible (10% effort)</td>
             <td class='num'>$($auditMetrics.Successful)</td>
             <td><div class='mini-bar'><div class='mini-fill' style='width:${pctSuccess}%;background:#10b981'></div></div></td>
             <td class='num'>${pctSuccess}%</td></tr>
@@ -451,12 +451,17 @@ $htmlContent = @"
   .panel:nth-of-type(3) { animation-delay:.35s; }
   .panel:nth-of-type(4) { animation-delay:.4s; }
   .panel:nth-of-type(5) { animation-delay:.45s; }
+  .panel:nth-of-type(6) { animation-delay:.5s; }
 
   /* --- Guidance Section --- */
-  .guidance-grid { display:grid; grid-template-columns: 1fr 1fr; gap:24px; }
-  .guidance-item { margin-bottom:16px; }
-  .guidance-item strong { color:var(--accent); display:block; margin-bottom:4px; }
-  .guidance-item p { font-size:.85rem; color:var(--text2); line-height:1.5; }
+  .guidance-grid { display:grid; grid-template-columns: 1fr 1fr; gap:32px; }
+  @media (max-width:900px) { .guidance-grid { grid-template-columns:1fr; } }
+  .guidance-item { background:var(--surface2); padding:20px; border-radius:12px; margin-bottom:16px; border:1px solid var(--border); }
+  .guidance-item strong { color:var(--accent); display:flex; align-items:center; gap:8px; font-size:1rem; margin-bottom:10px; }
+  .guidance-item p { font-size:.88rem; color:var(--text); line-height:1.6; }
+  .term-badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:.75rem; font-weight:700; text-transform:uppercase; margin:0 2px; }
+  .badge-warn { background:rgba(245,158,11,.15); color:var(--yellow); border:1px solid rgba(245,158,11,.3); }
+  .badge-info { background:rgba(56,189,248,.15); color:var(--accent); border:1px solid rgba(56,189,248,.3); }
 
 </style>
 </head>
@@ -485,7 +490,7 @@ $htmlContent = @"
     <div class="kpi success">
       <div class="kpi-icon">&#9989;</div>
       <div class="kpi-val">$($auditMetrics.Successful)</div>
-      <div class="kpi-label">Fully Convertible</div>
+      <div class="kpi-label">Fully Convertible (+10% Effort)</div>
     </div>
     <div class="kpi partial">
       <div class="kpi-icon">&#9888;&#65039;</div>
@@ -531,26 +536,26 @@ $breakdownRows
   
   <!-- ===== GUIDANCE ===== -->
   <div class="panel">
-    <h2><span class="sec-icon">&#128218;</span>Terminology & Guidance</h2>
+    <h2><span class="sec-icon">&#128218;</span>Terminology & Migration Guidance</h2>
     <div class="guidance-grid">
       <div>
         <div class="guidance-item">
-          <strong>Successful Status (The "10% Rule")</strong>
+          <strong>&#10024; Successful Status (The "10% Rule")</strong>
           <p>Even 100% automated conversions typically require ~10% minor adjustments. For example, GitHub Actions may require explicit solution filenames where ADO allowed wildcards (e.g., <code>**/*.sln</code> might need to be <code>MySolution.sln</code>).</p>
         </div>
         <div class="guidance-item">
-          <strong>Requires Review (Failed)</strong>
-          <p>Includes pipelines that were <strong>cancelled</strong>, <strong>never run</strong>, or deleted in ADO. Without run metadata, the tool cannot reliably extract conversion info, requiring a manual review of the source YAML/Classic definition.</p>
+          <strong>&#128269; Requires Review (Failed)</strong>
+          <p>Includes pipelines that were <span class="term-badge badge-warn">cancelled</span>, <span class="term-badge badge-warn">never run</span>, or <span class="term-badge badge-warn">deleted</span> in ADO. Without execution metadata, the tool cannot reliably extract conversion info, requiring a manual review of the source YAML/Classic definition.</p>
         </div>
       </div>
       <div>
         <div class="guidance-item">
-          <strong>Testing & Validation Perspective</strong>
+          <strong>&#128161; Testing & Validation Perspective</strong>
           <p>Automation handles structural mapping. Manual testing is essential to:
-            <br/>1. Configure <strong>Secrets & Service Connections</strong>.
-            <br/>2. Fix <strong>Path Patterns</strong> (e.g., explicit filenames vs wildcards).
-            <br/>3. Verify <strong>Environment Parity</strong> & Runner Access.
-            <br/>4. Validate <strong>Integration</strong> with external deployment targets.</p>
+            <br/><br/>&bull; Configure <strong>Secrets & Service Connections</strong>.
+            <br/>&bull; Fix <strong>Path Patterns</strong> (e.g., explicit filenames vs wildcards).
+            <br/>&bull; Verify <strong>Environment Parity</strong> & Runner Access.
+            <br/>&bull; Validate <strong>Integration</strong> with external deployment targets.</p>
         </div>
       </div>
     </div>
@@ -596,7 +601,7 @@ $summaryMd = @"
 | Metric | Count | % |
 |--------|------:|---:|
 | **Total Pipelines** | **$($auditMetrics.Total)** | 100% |
-| Fully Convertible | $($auditMetrics.Successful) | ${pctSuccess}% |
+| Fully Convertible (10% effort) | $($auditMetrics.Successful) | ${pctSuccess}% |
 | Partially Convertible | $($auditMetrics.Partial) | ${pctPartial}% |
 | Unsupported | $($auditMetrics.Unsupported) | ${pctUnsupported}% |
 | Requires Review | $($auditMetrics.Failed) | ${pctFailed}% |
