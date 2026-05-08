@@ -1,435 +1,379 @@
-# Azure DevOps Boards → GitHub Migration: Complete Client Guide
+# ADO → GitHub Boards Migration: Internal Engineering Reference
 
-> **Version:** 1.0 | **Audience:** Client Stakeholders, Project Managers, DevOps Engineers
+> **Perspective:** Internal team documentation — what we built, discovered, and how it works.
+> **Authors:** Migration Engineering Team
+> **Last Updated:** May 2026
 
 ---
 
 ## Table of Contents
 
-1. [Executive Summary](#1-executive-summary)
-2. [Pipeline Architecture & Flow](#2-pipeline-architecture--flow)
-3. [Prerequisites Before Running the Pipeline](#3-prerequisites-before-running-the-pipeline)
-4. [Config Files: What to Fill In](#4-config-files-what-to-fill-in)
-5. [Token Permissions Required](#5-token-permissions-required)
-6. [Step-by-Step Pre-Run Checklist](#6-step-by-step-pre-run-checklist)
-7. [Limitations & Known Risks](#7-limitations--known-risks)
-8. [What the Pipeline Cannot Do](#8-what-the-pipeline-cannot-do)
-9. [Full Feature Comparison: ADO Boards vs GitHub](#9-full-feature-comparison-ado-boards-vs-github)
+1. [Our Discovery & Analysis](#1-our-discovery--analysis)
+2. [Prerequisites](#2-prerequisites)
+3. [Manual Steps Before Running the Pipeline](#3-manual-steps-before-running-the-pipeline)
+4. [Pipeline Flow & Architecture](#4-pipeline-flow--architecture)
+5. [Pipeline Features](#5-pipeline-features)
+6. [Risks](#6-risks)
+7. [Limitations](#7-limitations)
+8. [ADO Boards vs GitHub — Full Comparison](#8-ado-boards-vs-github--full-comparison)
 
 ---
 
-## 1. Executive Summary
+## 1. Our Discovery & Analysis
 
-This pipeline is an automated, end-to-end migration tool that moves your entire Azure DevOps (ADO) Boards — including all Work Items, hierarchies, comments, attachments, sprints, and custom fields — into GitHub Issues and GitHub Projects V2.
+### What We Investigated
+Before building the pipeline, we analyzed the ADO project and GitHub target environment to understand the full scope of migration complexity.
 
-The pipeline is built to be **safe, resumable, and idempotent**. This means:
-- If a run is interrupted (network failure, rate limit), you can simply re-run it and it will pick up exactly where it left off without creating duplicates.
-- All migrations are logged to `migration-log.json` which acts as the pipeline's memory across runs.
-- A Dry Run mode allows you to validate all mappings and see what would happen before any real data is written.
+### Key Findings
 
----
-
-## 2. Pipeline Architecture & Flow
-
-The pipeline runs as a **multi-stage Azure DevOps CI/CD pipeline** with 4 stages (6 logical phases):
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    PIPELINE TRIGGER (Manual)                 │
-└──────────────────────────┬───────────────────────────────────┘
-                           │
-           ┌───────────────▼───────────────┐
-           │     STAGE 1: DISCOVER         │
-           │  Phase 1 – Analyze ADO data   │
-           │  • Count all work items       │
-           │  • Read all sprints           │
-           │  • Read all workflow states   │
-           │  • Generate setup guide       │
-           └───────────────┬───────────────┘
-                           │
-           ┌───────────────▼───────────────┐
-           │     STAGE 2: PREPARE          │
-           │  Phase 2 – Configure GitHub   │
-           │  • Create labels (type/prio)  │
-           │  • Create milestones (sprints)│
-           │  • Validate all mappings      │
-           │  • Deploy workflow rules      │
-           └───────────────┬───────────────┘
-                           │
-           ┌───────────────▼───────────────┐
-           │   [MANUAL APPROVAL GATE]      │  ← Human reviews
-           │  Review reports & approve     │    reports before
-           │  before live migration starts │    migration runs
-           └───────────────┬───────────────┘
-                           │
-           ┌───────────────▼───────────────┐
-           │     STAGE 3: MIGRATE          │
-           │  Phase 3 – Core Migration     │
-           │  • Snapshot ADO (backup)      │
-           │  • Create GitHub Issues       │
-           │  • Migrate comments           │
-           │  • Migrate attachments        │
-           │  • Link Sub-issues (hierarchy)│
-           │  Phase 5 – PR Reconcile       │
-           │  • Link existing PRs to issues│
-           │  Phase 6 – Enrich             │
-           │  • Add Related/Blocked links  │
-           │  • Translate saved queries    │
-           │  • Generate Roadmap           │
-           └───────────────┬───────────────┘
-                           │
-           ┌───────────────▼───────────────┐
-           │     STAGE 4: VALIDATE         │
-           │  Phase 4 – Zero-Loss Audit    │
-           │  • Compare ADO count vs GH    │
-           │  • Validate fields & comments │
-           │  • Generate summary report    │
-           └───────────────────────────────┘
-```
-
-### Resume / Incremental Mode
-If the pipeline is interrupted, re-run it with **Resume = true** (default). The pipeline will:
-1. Download the `migration-log.json` from the last successful run
-2. Skip all work items already present in the log
-3. Only migrate new or missing items
-4. Re-run the hierarchy linking pass to catch any new parent-child relationships
-
----
-
-## 3. Prerequisites Before Running the Pipeline
-
-### 3.1 GitHub Side — Must Be Set Up First
-
-| # | What to Create | Where | Why |
+| Area | ADO Reality | GitHub Reality | Our Approach |
 | :--- | :--- | :--- | :--- |
-| 1 | **GitHub Repository** | `github.com/{org}/{repo}` | All issues will be created here |
-| 2 | **GitHub Project V2** | Organization-level (not repo-level) | The agile board where items will be tracked |
-| 3 | **GitHub Organization** | Must exist before running | Pipeline creates labels and milestones at org/repo level |
-| 4 | **Variable Group** in ADO | ADO → Pipelines → Library → `boards-migration` | Stores the two secret PATs |
+| **Item Types** | 17 distinct work item types (Epic, Feature, User Story, PBI, Task, Bug, Impediment, etc.) | Only "Issue" — no type enforcement | Map all types to labels (`type:epic`, `type:bug`, etc.) |
+| **Hierarchy** | 4-level enforced tree: Epic → Feature → Story → Task | Flat — no hierarchy by default | Use GitHub's native **Sub-issues API** (Beta) |
+| **Fields** | 20+ system fields + custom fields per type | Minimal built-in fields | Create **Custom Project V2 Fields** for all critical fields |
+| **Status/State** | Configurable per process template (Agile, Scrum, CMMI) | Only Open / Closed | Map ADO states to GitHub board columns via `status-mappings.json` |
+| **Sprints** | First-class iterations with capacity and burndown | Milestones only | Map each ADO Sprint → GitHub Milestone with dates |
+| **Area Paths** | Hierarchical classification tree | No equivalent | Map to GitHub `area:xxx` labels |
+| **Comments** | HTML-rich with inline images and @mentions | Markdown with inline images | Convert HTML → Markdown, re-host images in the GitHub repo |
+| **Attachments** | Up to 60 MB per file, stored in ADO | Max ~25 MB via REST API upload | Auto-migrate files under 25 MB; log failures for manual re-upload |
+| **Related/Blocked** | Dedicated relation tabs with typed links | No native relation UI | Inject as formatted comments at bottom of each issue |
+| **Saved Queries (WIQL)** | Powerful query language, shareable | No saved filter system | Translate to equivalent GitHub filter syntax, export as markdown cheat sheet |
+| **Test Plans** | Full test management suite | No test management | Migrate as issues with steps in body; no execution data |
 
-### 3.2 Azure DevOps Side — Must Be Available
+### ADO Process Templates Discovered
+We found the project uses a **mixed process template** — containing both Agile types (User Story) and Scrum types (Product Backlog Item) alongside CMMI types (Change Request, Analysis). This is common in enterprise ADO instances that have evolved over years.
 
-| # | What Is Needed | Details |
-| :--- | :--- | :--- |
-| 1 | **ADO Organization URL** | e.g., `https://dev.azure.com/YourOrg` |
-| 2 | **ADO Project Name** | The exact project name in ADO |
-| 3 | **ADO Area Path** | The area path to migrate (e.g., `MyProject\TeamA`) |
-| 4 | **Sprint / Iteration Paths** | List of all sprint names used (e.g., `Sprint 1`, `Sprint 2`) |
+**Effective work item types found:**
+`Epic`, `Feature`, `User Story`, `Product Backlog Item`, `Task`, `Bug`, `Change Request`, `Issue`, `Impediment`, `UAT Review`, `Analysis`, `Idea`, `Test Plan`, `Test Suite`, `Test Case`, `Shared Steps`, `Shared Parameter`
 
-### 3.3 Information Needed From Client Team
+### GitHub "Type" Field — Why We Did Not Use It
+GitHub has a native "Type" field visible on issues. We investigated using it but chose **not to** because:
+1. It requires the client to manually configure allowed types per repo before migration
+2. The GraphQL API for this field is in Beta and has unstable IDs that break under load
+3. Our **Custom Project V2 Fields + Labels** approach is fully automated, does not require pre-configuration, and scales across all repos without manual steps
 
-| # | Information | Format | Example |
+---
+
+## 2. Prerequisites
+
+### 2.1 Infrastructure Prerequisites
+
+| # | Requirement | Where | Details |
 | :--- | :--- | :--- | :--- |
-| 1 | ADO user emails → GitHub usernames | JSON file | `"john@company.com": "john-gh"` |
-| 2 | ADO state → GitHub board column | JSON file | `"Resolved": "Done"` |
-| 3 | ADO area path → GitHub label | JSON file | `"Project\\TeamA": "area:team-a"` |
-| 4 | ADO sprint path → GitHub milestone name | JSON file | `"Project\\Sprint 1": "Sprint 1"` |
+| 1 | GitHub Organization exists | `github.com/{org}` | Pipeline targets org-level projects |
+| 2 | GitHub Repository created | `github.com/{org}/{repo}` | All issues will be created here |
+| 3 | GitHub Project V2 created | Organization-level | Must be **org-level**, not repo-level |
+| 4 | ADO Pipeline Service exists | ADO → Pipelines | The pipeline itself runs inside ADO |
+| 5 | ADO Variable Group `boards-migration` | ADO → Library | Stores the two PAT secrets |
 
----
+### 2.2 Token Prerequisites
 
-## 4. Config Files: What to Fill In
+**ADO PAT (`ADO_PAT`)** — Minimum scopes required:
 
-All config files live in the `boards-migration/config/` directory. You must update these before running.
-
----
-
-### 4.1 `boards-migration-config.json` — Main Config
-
-This is the primary configuration file. Fill in the fields marked **← FILL THIS IN**.
-
-```json
-{
-  "source": {
-    "organization": "YourADOOrg",           ← FILL THIS IN
-    "project": "YourADOProject",            ← FILL THIS IN
-    "areaPath": "YourProject\\AreaPath",    ← FILL THIS IN (use \\ for backslash)
-    "pat": "$(ADO_PAT)"                     ← DO NOT CHANGE (read from Variable Group)
-  },
-  "target": {
-    "organization": "YourGitHubOrg",        ← FILL THIS IN
-    "repository": "your-repo-name",         ← FILL THIS IN
-    "projectNumber": 1,                     ← FILL THIS IN (the # from the Project URL)
-    "projectOwnerType": "organization",     ← "organization" or "user"
-    "pat": "$(GH_PAT)"                      ← DO NOT CHANGE (read from Variable Group)
-  },
-  "migration": {
-    "migrateClosedWorkItems": true,         ← false = skip Closed/Resolved items
-    "productionRun": true,                  ← false = dry run (no GitHub writes)
-    "migrateAttachments": true,             ← false = skip file attachments
-    "migrateLinks": true,                   ← false = skip Related/Blocked comments
-    "preserveParentChild": true,            ← false = skip hierarchy linking
-    "dryRun": false                         ← true = safe test mode
-  }
-}
-```
-
----
-
-### 4.2 `user-mappings.json` — Map ADO Users → GitHub Users
-
-```json
-{
-  "john.doe@company.com":    "johndoe-github",
-  "jane.smith@company.com":  "janesmith-github",
-  "UNASSIGNED":              ""
-}
-```
-
-> ⚠️ **Important:** If a user is not listed here, the issue will be created **unassigned**. No error will occur, but assignment data will be lost for that user.
-
----
-
-### 4.3 `status-mappings.json` — Map ADO States → GitHub Board Columns
-
-```json
-{
-  "statusMappings": {
-    "Active":    "In progress",
-    "New":       "Todo",
-    "Resolved":  "Done",
-    "Closed":    "Done",
-    "Removed":   "Done",
-    "In Review": "In progress"
-  }
-}
-```
-
-> ⚠️ **Important:** GitHub board column names are **case-sensitive**. They must exactly match the column names you created in your GitHub Project V2.
-
----
-
-### 4.4 `workitem-type-mappings.json` — Map ADO Types → GitHub Labels
-
-```json
-{
-  "Epic":              { "label": "type:epic",       "color": "8B00FF" },
-  "Feature":           { "label": "type:feature",    "color": "0052CC" },
-  "User Story":        { "label": "type:user-story", "color": "0075CA" },
-  "Bug":               { "label": "type:bug",        "color": "D73A4A" },
-  "Task":              { "label": "type:task",        "color": "E4E669" },
-  "Impediment":        { "label": "type:impediment", "color": "B60205" }
-}
-```
-
----
-
-### 4.5 `field-mappings.json` — Map ADO Custom Fields → GitHub Project Fields
-
-Controls which ADO fields are preserved as custom columns on the GitHub Project board.
-
-```json
-{
-  "storyPoints":  { "ghFieldName": "Story Points",  "type": "number"       },
-  "priority":     { "ghFieldName": "Priority",      "type": "single_select" },
-  "severity":     { "ghFieldName": "Severity",      "type": "single_select" },
-  "adoStatus":    { "ghFieldName": "ADO Status",    "type": "single_select" },
-  "adoId":        { "ghFieldName": "ADO ID",        "type": "text"          }
-}
-```
-
----
-
-## 5. Token Permissions Required
-
-### 5.1 Azure DevOps PAT (`ADO_PAT`)
-
-| Scope | Permission | Why It's Needed |
-| :--- | :--- | :--- |
-| Work Items | **Read** | Fetch work items, comments, attachments |
-| Queries | **Read** | Read saved queries for enrichment |
-| Code | **Read** | Download attachment binaries from ADO URLs |
-| Project and Team | **Read** | Read area paths and iteration paths |
-| Identity | **Read** | Resolve user display names |
-
-> **How to create:** ADO → User Settings → Personal Access Tokens → New Token → Select scopes above
-
----
-
-### 5.2 GitHub PAT (`GH_PAT`)
-
-| Scope | Permission | Why It's Needed |
-| :--- | :--- | :--- |
-| `repo` | **Full** | Create issues, upload attachments, manage labels |
-| `project` | **Full** | Read and write to GitHub Project V2 board |
-| `org:write` | **Write** | Create org-level project fields and milestones |
-| `admin:org` | **Read** | Validate org membership for user assignments |
-
-> **How to create:** GitHub → Settings → Developer Settings → Personal Access Tokens → Tokens (classic) → Select scopes above
-
-> ⚠️ **Token must be from a user who is an Organization Owner or has admin access to the target repository and project.**
-
----
-
-## 6. Step-by-Step Pre-Run Checklist
-
-Complete these steps **in order** before triggering the migration pipeline.
-
-### Step 1: GitHub Setup
-- [ ] Create the **target GitHub Repository** (can be private)
-- [ ] Create a **GitHub Project V2** at the **organization level** (not repo-level)
-- [ ] Note down the **Project Number** (visible in the Project URL: `github.com/orgs/{org}/projects/NUMBER`)
-- [ ] Add the repository to the GitHub Project
-
-### Step 2: ADO Variable Group Setup
-- [ ] In Azure DevOps, go to **Pipelines → Library → Variable Groups**
-- [ ] Create a group named exactly: `boards-migration`
-- [ ] Add secret variable: `ADO_PAT` (paste your ADO token, mark as secret)
-- [ ] Add secret variable: `GH_PAT` (paste your GitHub token, mark as secret)
-- [ ] Click **Save**
-
-### Step 3: Fill in Config Files
-- [ ] Fill in `boards-migration-config.json` with your org, project, and repo names
-- [ ] Fill in `user-mappings.json` with all team member email → GitHub username pairs
-- [ ] Fill in `status-mappings.json` ensuring names match your GitHub Project column names exactly
-- [ ] Review `workitem-type-mappings.json` and add any custom ADO types your project uses
-
-### Step 4: Run a Dry Run First
-- [ ] Trigger the pipeline with **Dry Run = true** and **Phase = discover**
-- [ ] Download the `discovery-reports` artifact after the run completes
-- [ ] Review `workitem-inventory.json` — confirm the item count matches ADO
-- [ ] Review any mapping warnings in the logs
-- [ ] If satisfied, proceed to live migration
-
-### Step 5: Live Migration
-- [ ] Trigger the pipeline with **Dry Run = false**, **Resume = true**, **Phase = all**
-- [ ] Monitor the **Approval Gate** step — a team member must manually approve before migration starts
-- [ ] Monitor progress in the pipeline logs (approx. 30 seconds per work item due to rate limits)
-- [ ] After completion, download and review the `final-reports` artifact
-
----
-
-## 7. Limitations & Known Risks
-
-### 7.1 Attachment Size Limit
-- **Limit:** GitHub's REST API rejects file uploads larger than **~25 MB**
-- **Impact:** Attachments above this size are skipped. The issue itself is always created successfully
-- **What the pipeline does:** Logs a `⚠️ WARN` for each skipped file. You can find all skipped files by searching the pipeline log for `"Image migration FAILED"`
-- **Manual resolution:** Large files must be uploaded manually to GitHub after migration
-
-### 7.2 GitHub API Rate Limits
-- **Limit:** GitHub allows 5,000 REST API requests per hour
-- **Impact:** For large migrations (10,000+ items), the pipeline will pause mid-run
-- **What the pipeline does:** Automatically detects the `HTTP 403 Secondary Rate Limit` response, pauses with exponential backoff (20s → 40s → 80s → 160s → 320s), then resumes
-- **Estimated time for 14,000 items:** Approximately 18–24 hours of continuous running (with natural pauses)
-
-### 7.3 ADO State "New" Not Mapped by Default
-- **Issue:** ADO's default initial state `New` has no direct equivalent in many GitHub setups
-- **Impact:** The pipeline logs a warning and leaves the status field blank on the GitHub board
-- **Fix:** Add `"New": "Todo"` to your `status-mappings.json` before running
-
-### 7.4 Sub-Issue Linking — Beta Feature
-- **Risk:** GitHub's Sub-issues API (`addSubIssue` GraphQL mutation) is currently in **Public Beta**
-- **Impact:** It may occasionally return errors under heavy API load
-- **What the pipeline does:** Logs the error as a warning. The issues are still migrated; only the parent-child link is affected
-- **Manual resolution:** Links can be verified and re-created manually after migration
-
-### 7.5 No ADO Work Item History
-- The pipeline does **not** migrate the full ADO change history / audit trail
-- Only the current field values and comments are migrated
-
----
-
-## 8. What the Pipeline Cannot Do
-
-| Feature | Reason |
+| Scope | Level |
 | :--- | :--- |
-| ❌ Migrate ADO Test Plans with test execution results | GitHub has no native test plan concept |
-| ❌ Migrate ADO Release Pipelines or Build Pipelines | Out of scope (Board items only) |
-| ❌ Migrate ADO Wiki pages | Different migration path — not part of boards migration |
-| ❌ Migrate files larger than 25 MB automatically | GitHub REST API hard limit |
-| ❌ Preserve the original ADO Issue Number as the GitHub Issue Number | GitHub auto-assigns issue numbers sequentially |
-| ❌ Migrate ADO Board column swimlane configuration | GitHub Project V2 does not support swimlanes |
-| ❌ Migrate ADO Shared Queries as live GitHub Saved Filters | GitHub Project V2 has no saved filter feature; exported as a cheat-sheet document |
-| ❌ Keep ADO work item URLs clickable in GitHub | ADO URLs remain in comments as text references |
-| ❌ Assign GitHub issues to users who don't have GitHub accounts | User must already exist on GitHub |
-| ❌ Migrate ADO Capacity planning per sprint | No GitHub equivalent |
+| Work Items | Read |
+| Queries | Read |
+| Code | Read |
+| Project and Team | Read |
+| Identity | Read |
+
+**GitHub PAT (`GH_PAT`)** — Minimum scopes required:
+
+| Scope | Level |
+| :--- | :--- |
+| `repo` | Full |
+| `project` | Read & Write |
+| `write:org` | Write |
+| `read:org` | Read |
+
+> ⚠️ The GitHub PAT must belong to a user who is an **Organization Owner** or has **Admin** access to the target repository and project.
+
+### 2.3 Config Files That Must Be Filled In
+
+All files live in `boards-migration/config/`:
+
+| File | Must Fill | What Goes In |
+| :--- | :--- | :--- |
+| `boards-migration-config.json` | ✅ Always | ADO org, project, area path; GitHub org, repo, project number |
+| `user-mappings.json` | ✅ Always | ADO email address → GitHub username |
+| `status-mappings.json` | ✅ Always | ADO state names → GitHub board column names (case-sensitive) |
+| `workitem-type-mappings.json` | ✅ Review | ADO type names → GitHub labels + colors |
+| `field-mappings.json` | ⚠️ Optional | Controls which custom fields are created on the GitHub Project board |
 
 ---
 
-## 9. Full Feature Comparison: ADO Boards vs GitHub
+## 3. Manual Steps Before Running the Pipeline
 
-### 9.1 Work Item / Issue Types
+Complete these **in order** before triggering any pipeline run.
 
-| Feature | Azure DevOps | GitHub | Migration Outcome |
-| :--- | :--- | :--- | :--- |
-| Epic | ✅ Dedicated type | ⚠️ No built-in type | Migrated as Issue + `type:epic` label |
-| Feature | ✅ Dedicated type | ⚠️ No built-in type | Migrated as Issue + `type:feature` label |
-| User Story / PBI | ✅ Dedicated type | ⚠️ No built-in type | Migrated as Issue + `type:user-story` label |
-| Task | ✅ Dedicated type | ⚠️ No built-in type | Migrated as Issue + `type:task` label |
-| Bug | ✅ Dedicated type | ✅ Built-in `bug` label | Migrated as Issue + `type:bug` label |
-| Impediment | ✅ Dedicated type | ⚠️ No built-in type | Migrated as Issue + `type:impediment` label |
-| Test Plan | ✅ Full test management | ❌ No equivalent | Migrated as Issue + `type:test-plan` label (no execution) |
-| Test Case | ✅ With steps & results | ⚠️ Partial | Migrated as Issue + `type:test-case` label (steps in body) |
+### Step 1 — Create GitHub Target Environment
+1. Create the **target repository** in GitHub (can be empty, private is fine)
+2. Create a **GitHub Project V2** at the **Organization level** (`github.com/orgs/{org}/projects`)
+3. Note the **project number** from the URL (e.g., `…/projects/2` → number is `2`)
+4. Link the repository to the project: Project Settings → Manage Access → Add Repository
 
-### 9.2 Hierarchy & Relationships
+### Step 2 — Set Up ADO Variable Group
+1. Go to **ADO → Pipelines → Library → Variable Groups**
+2. Create a group named exactly: `boards-migration`
+3. Add variable `ADO_PAT` — paste the ADO PAT, **mark as secret**
+4. Add variable `GH_PAT` — paste the GitHub PAT, **mark as secret**
+5. Click **Save** and then **Pipeline Permissions** → allow the migration pipeline to access this group
 
-| Feature | Azure DevOps | GitHub | Migration Outcome |
-| :--- | :--- | :--- | :--- |
-| Epic → Feature → Story → Task nesting | ✅ Enforced by system | ⚠️ Via Sub-issues (Beta) | ✅ Migrated via `addSubIssue` API |
-| Parent-Child visual tree view | ✅ Full backlog tree | ⚠️ Sub-issues panel only | ✅ Visible on each issue's sidebar |
-| Related Links | ✅ Dedicated tab | ❌ No native tab | ⚠️ Added as comment `🔗 Related to #X` |
-| Predecessor / Successor | ✅ With timeline | ❌ No equivalent | ⚠️ Added as comment `🚧 Blocked by #X` |
-| Duplicate links | ✅ Supported | ❌ No equivalent | ⚠️ Added as comment |
+### Step 3 — Fill Config Files
+1. Open `config/boards-migration-config.json` — fill in `organization`, `project`, `areaPath` (source) and `organization`, `repository`, `projectNumber` (target)
+2. Open `config/user-mappings.json` — add every team member's ADO email → GitHub username
+3. Open `config/status-mappings.json` — add every ADO state name mapped to the exact GitHub column name
+4. Review `config/workitem-type-mappings.json` — confirm all ADO types in your project are listed
 
-### 9.3 Fields & Custom Data
+### Step 4 — Run Discovery First (Phase = discover)
+1. Trigger the pipeline with **Phase = discover**, **Dry Run = true**
+2. Download the `discovery-reports` artifact after the run
+3. Open `workitem-inventory.json` — verify the total count matches what you see in ADO
+4. Check for any `⚠️ WARN` entries about unknown user mappings or status mappings
+5. Fix any gaps in the config files before proceeding
 
-| Feature | Azure DevOps | GitHub | Migration Outcome |
-| :--- | :--- | :--- | :--- |
-| Story Points | ✅ Numeric field | ⚠️ Custom number field | ✅ Migrated to `Story Points` Project field |
-| Priority (1-4) | ✅ System field | ⚠️ Custom select field | ✅ Migrated to `Priority` Project field (P0/P1/P2) |
-| Severity | ✅ System field | ⚠️ Custom select field | ✅ Migrated to `Severity` Project field |
-| Value Area | ✅ System field | ⚠️ Custom select field | ✅ Migrated to `Value Area` Project field |
-| Description | ✅ Rich HTML field | ✅ Markdown issue body | ✅ Migrated (HTML converted to Markdown) |
-| Acceptance Criteria | ✅ Dedicated field | ❌ No dedicated field | ✅ Merged into issue body under `## Acceptance Criteria` header |
-| Repro Steps | ✅ Dedicated field | ❌ No dedicated field | ✅ Merged into issue body under `## Repro Steps` header |
-| Original ADO ID | ✅ Automatic | ⚠️ Custom text field | ✅ Stored in `ADO ID` Project field for traceability |
-| Original ADO State | ✅ Automatic | ⚠️ Custom select field | ✅ Stored in `ADO Status` Project field |
-| Tags | ✅ Free-text tags | ✅ Labels | ✅ Migrated as GitHub labels |
-| Area Path | ✅ Hierarchical paths | ⚠️ No equivalent | ✅ Mapped to `area:xxx` labels |
+### Step 5 — Validate Mappings (Phase = prep)
+1. Trigger the pipeline with **Phase = prep**, **Dry Run = true**
+2. This creates labels and milestones in GitHub without touching work items
+3. Verify in GitHub that: labels were created correctly, milestones match ADO sprint names
 
-### 9.4 Sprints & Planning
+### Step 6 — Full Dry Run (Phase = all, Dry Run = true)
+1. Trigger with **Phase = all**, **Dry Run = true**, **Resume = false**
+2. Review logs for any mapping warnings
+3. Confirm no errors in field mapping or GraphQL mutations
 
-| Feature | Azure DevOps | GitHub | Migration Outcome |
-| :--- | :--- | :--- | :--- |
-| Sprint / Iteration | ✅ Structured iterations | ✅ Milestones | ✅ Each Sprint → GitHub Milestone |
-| Sprint dates (start/end) | ✅ Full date ranges | ✅ Milestone due date | ✅ End date migrated as Milestone due date |
-| Backlog view | ✅ Full backlog with filtering | ✅ Project Backlog view | ✅ Available in GitHub Project |
-| Sprint Board (Kanban) | ✅ Dedicated sprint board | ✅ Project Board view | ✅ Available in GitHub Project |
-| Velocity tracking | ✅ Built-in velocity charts | ❌ No built-in charts | ❌ Not available in GitHub |
-| Capacity planning per person | ✅ Team capacity input | ❌ No equivalent | ❌ Cannot migrate |
-| Burndown charts | ✅ Automatic sprint burndown | ❌ No built-in burndown | ❌ Requires 3rd party tools |
-
-### 9.5 Boards & Views
-
-| Feature | Azure DevOps | GitHub | Migration Outcome |
-| :--- | :--- | :--- | :--- |
-| Kanban Board | ✅ Full board with swimlanes | ✅ Project Board view | ✅ Board view available |
-| Swimlanes | ✅ Configurable swimlanes | ❌ Not supported | ❌ Cannot migrate |
-| Backlog view | ✅ Hierarchical backlog | ✅ Project table/backlog | ✅ Available |
-| Roadmap view | ✅ Delivery Plans | ✅ Project Roadmap view | ✅ Generated as Roadmap markdown |
-| WIP Limits | ✅ Per-column limits | ❌ No enforcement | ❌ Cannot migrate |
-| Column policies | ✅ Split columns (active/resolved) | ❌ Simple columns only | ❌ Cannot migrate |
-
-### 9.6 Queries & Saved Filters
-
-| Feature | Azure DevOps | GitHub | Migration Outcome |
-| :--- | :--- | :--- | :--- |
-| Saved Queries (WIQL) | ✅ Rich query language | ❌ No saved filter feature | ⚠️ Translated to equivalent GitHub filter syntax in `GITHUB_FILTERS.md` |
-| Flat list queries | ✅ Full WIQL support | ⚠️ Manual filter in Project | ⚠️ Equivalent filters documented |
-| Tree queries (hierarchy) | ✅ Show parent-child tree | ⚠️ Sub-issues only | ⚠️ Partially available via sub-issues |
-| Cross-project queries | ✅ Supported | ❌ Not supported | ❌ Cannot migrate |
-| Shared queries | ✅ Team-visible | ❌ No shared filters | ❌ Cannot migrate |
-
-### 9.7 Comments & History
-
-| Feature | Azure DevOps | GitHub | Migration Outcome |
-| :--- | :--- | :--- | :--- |
-| Comments | ✅ Threaded comments | ✅ Issue comments | ✅ All comments migrated with original author + timestamp in header |
-| @mentions in comments | ✅ Supported | ✅ Supported | ⚠️ Migrated as plain text (no re-notification) |
-| Inline images in comments | ✅ Embedded images | ✅ Embedded images | ✅ Images under 25 MB migrated; larger ones show placeholder |
-| Change history / Audit log | ✅ Full field-level history | ❌ No equivalent | ❌ Not migrated |
-| Work item revision history | ✅ All revisions | ❌ No equivalent | ❌ Not migrated |
+### Step 7 — Live Migration (Phase = all, Dry Run = false)
+1. Trigger with **Phase = all**, **Dry Run = false**, **Resume = true**
+2. **Approve the manual gate** when the pipeline pauses for human review
+3. Monitor the run — expect ~30–45 seconds per work item due to GitHub rate limits
+4. If interrupted, simply re-trigger with **Resume = true** — no duplicates will be created
 
 ---
 
-*For technical API details, see `API_Reference_Sheet.md`. For pipeline phase deep-dives, see `Pipeline_Phases_Guide.md`.*
+## 4. Pipeline Flow & Architecture
+
+### Stage Overview
+
+```
+┌────────────────────────────────────────────────────────────┐
+│  STAGE 1: DISCOVER                                         │
+│  ├─ [Setup] Install Azure DevOps CLI Extension             │
+│  ├─ [Phase 1] Count & List All ADO Work Items              │
+│  ├─ [Phase 1] Analyze ADO Board & Sprint Structure         │
+│  ├─ [Phase 1] Generate GitHub Project Setup Guide          │
+│  ├─ [Phase 1] Read ADO Workflow States & Transitions       │
+│  └─ [Artifact] Save Discovery Reports                      │
+└────────────────────────────────┬───────────────────────────┘
+                                 ▼
+┌────────────────────────────────────────────────────────────┐
+│  STAGE 2: PREPARE                                          │
+│  ├─ [Phase 2] Download Discovery Reports from Phase 1      │
+│  ├─ [Phase 2] Validate User, Status & Type Mappings        │
+│  ├─ [Phase 2] Create GitHub Labels (type, priority, etc.)  │
+│  ├─ [Phase 2] Create GitHub Milestones from ADO Sprints    │
+│  ├─ [Phase 2] Deploy GitHub Actions Workflow Rules         │
+│  └─ [Artifact] Save Preparation Logs                       │
+└────────────────────────────────┬───────────────────────────┘
+                                 ▼
+┌────────────────────────────────────────────────────────────┐
+│  [GATE] Human Approval Required Before Migration Starts    │
+│  ← Team member reviews discovery + prep reports, approves │
+└────────────────────────────────┬───────────────────────────┘
+                                 ▼
+┌────────────────────────────────────────────────────────────┐
+│  STAGE 3: MIGRATE                                          │
+│  ├─ [Phase 3] Download Discovery Reports from Phase 1      │
+│  ├─ [Phase 3] Download Previous Migration Log (Resume)     │
+│  ├─ [Phase 3] Load Previous Log to Enable Resume Mode      │
+│  ├─ [Phase 3] Take Pre-Migration Snapshot of ADO           │
+│  ├─ [Phase 3] Migrate ADO Work Items → GitHub Issues       │  ← Core engine
+│  │    ├─ PASS 1: Create all issues with fields/comments    │
+│  │    └─ PASS 2: Establish Parent-Child Sub-issue links    │
+│  ├─ [Phase 3] Inject Items into GitHub Project V2 Board    │
+│  ├─ [Phase 5] Link ADO Pull Requests to GitHub Issues      │
+│  ├─ [Phase 6] Enrich: Related Links, Saved Queries, Roadmap│
+│  ├─ [Artifact] Save Migration Log (migration-log.json)     │
+│  └─ [Artifact] Save Verbose Debug Logs                     │
+└────────────────────────────────┬───────────────────────────┘
+                                 ▼
+┌────────────────────────────────────────────────────────────┐
+│  STAGE 4: VALIDATE                                         │
+│  ├─ [Phase 4] Download Migration Log from Phase 3          │
+│  ├─ [Phase 4] Compare ADO Count vs GitHub Issue Count      │
+│  ├─ [Phase 4] Generate Final Migration Summary Report      │
+│  ├─ [Artifact] Save Final Reports                          │
+│  └─ [Phase 4] Pin Summary to Pipeline Overview Tab         │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Core Migration Engine — Phase 3 Detail
+
+**PASS 1 (Issue Creation):** For each ADO work item, sorted by hierarchy level (Epics first, then Features, then Stories, then Tasks):
+1. Build the GitHub issue body by merging Description + Acceptance Criteria + Repro Steps
+2. Create the GitHub Issue via REST API
+3. Add the issue to the GitHub Project V2 board via GraphQL (`addProjectV2ItemById`)
+4. Set all custom fields in a **single batched GraphQL mutation** (`updateProjectV2ItemFieldValue`)
+5. Migrate all ADO comments (with author/date header)
+6. Migrate all inline images (download from ADO, upload to GitHub repo)
+7. Save the mapping `ADO ID → GitHub Issue Number` to `migration-log.json`
+
+**PASS 2 (Hierarchy Linking):** After all issues exist:
+1. Read all parent-child relationships from ADO data
+2. For each parent-child pair, call `addSubIssue` GraphQL mutation
+3. If link already exists (resume run), skip silently — no duplicate error
+
+---
+
+## 5. Pipeline Features
+
+| Feature | Description |
+| :--- | :--- |
+| **Auto-Resume** | `migration-log.json` tracks every migrated item. Re-running skips already-migrated items. Zero duplicates. |
+| **Dry Run Mode** | `dryRun: true` runs all logic but makes **no writes** to GitHub. Safe for validation. |
+| **Rate Limit Handling** | Detects GitHub `HTTP 403 Secondary Rate Limit`, retries up to 5 times with exponential backoff (20s→40s→80s→160s→320s) |
+| **Manual Approval Gate** | Production migration requires human sign-off. Discovery and prep reports are reviewed before live migration starts. |
+| **Batch GraphQL** | All custom field updates (up to 14 fields) are sent in a **single GraphQL mutation** per item — reduces API calls by ~90% |
+| **Inline Image Migration** | Detects `<img>` tags in ADO HTML comments, downloads binaries from ADO, uploads to GitHub repo's `migrated-attachments/` folder, rewrites URLs |
+| **Sprint Sync** | Before migration starts, syncs all ADO sprints to GitHub milestones. Reuses existing milestones instead of creating duplicates. |
+| **Hierarchy Idempotency** | Sub-issue linking treats "duplicate" API errors as success — safe to re-run Pass 2 multiple times |
+| **Phase Selector** | Pipeline parameter allows running only specific phases (`discover`, `prep`, `migrate`, `validate`, `all`) |
+| **ADO Tagging** | After each successful migration, the original ADO work item is tagged with a comment containing the GitHub issue URL |
+| **Validation Report** | Phase 4 generates a Markdown summary comparing ADO source count vs GitHub destination count |
+| **Filter Cheat Sheet** | Phase 6 generates `GITHUB_FILTERS.md` — translates ADO saved queries into GitHub Project filter equivalents |
+
+---
+
+## 6. Risks
+
+| Risk | Probability | Impact | Our Mitigation |
+| :--- | :--- | :--- | :--- |
+| **GitHub Secondary Rate Limit** | High (for large migrations) | Medium — adds hours to run time | Exponential backoff retry built in; migration can be resumed |
+| **Sub-issues API Breaking Change** | Medium — it is in Beta | High — hierarchy links lost | Log failure as warning; issue is still created; can be re-linked manually |
+| **ADO PAT Expiry Mid-Run** | Low | High — run fails after partial migration | Resume mode recovers; renew PAT and re-trigger |
+| **GitHub PAT Insufficient Scope** | Low (if setup correctly) | High — all writes fail | Verify scopes in Step 2 of manual checklist before running |
+| **User Not Found in GitHub** | Medium | Low — issue created unassigned | `user-mappings.json` must be fully populated; incomplete mapping = unassigned issues |
+| **Config File Encoding Error** | Low | High — pipeline parse failure | Always save config files as **UTF-8 without BOM** |
+| **Large Attachment Loss** | High (if client has large files) | Medium — file not in GitHub | Files >25 MB logged with WARN; must be manually uploaded post-migration |
+| **Concurrent Pipeline Runs** | Low | High — race condition on migration log | Never run two migration pipelines simultaneously against the same repo |
+
+---
+
+## 7. Limitations
+
+| # | Limitation | Root Cause | Workaround |
+| :--- | :--- | :--- | :--- |
+| 1 | Attachments > 25 MB cannot be migrated automatically | GitHub REST API Contents endpoint hard limit | Manual upload post-migration |
+| 2 | ADO work item original numbers are not preserved in GitHub | GitHub auto-assigns issue numbers sequentially | ADO ID is stored in the `ADO ID` custom Project field |
+| 3 | ADO change history / audit trail is not migrated | GitHub has no equivalent field-level history | Current field values and all comments are preserved |
+| 4 | ADO @mentions in comments are not re-triggered | Re-notifying users would spam the entire team | Author and date are preserved in comment header |
+| 5 | ADO Board swimlanes are not migrated | GitHub Project V2 does not support swimlanes | No equivalent |
+| 6 | ADO WIP limits are not migrated | GitHub Project V2 does not enforce WIP limits | No equivalent |
+| 7 | ADO Saved Queries are not live filters in GitHub | GitHub has no saved filter feature | Translated to equivalent GitHub syntax in `GITHUB_FILTERS.md` |
+| 8 | ADO Test execution results (pass/fail) are not migrated | GitHub has no test management system | Test case steps are preserved in issue body |
+| 9 | ADO Delivery Plans are not interactive Roadmaps in GitHub | No exact equivalent | Exported as Roadmap markdown diagram |
+| 10 | ADO velocity charts and burndown charts are not migrated | GitHub has no built-in agile charts | Requires third-party tools (ZenHub, Linear, etc.) |
+| 11 | ADO Capacity planning per person is not migrated | No GitHub equivalent | No workaround |
+| 12 | Cross-repo/cross-project migrations not supported in one run | Pipeline is scoped to one ADO project → one GitHub repo | Run pipeline multiple times with different config files |
+
+---
+
+## 8. ADO Boards vs GitHub — Full Comparison
+
+### Work Item Types
+
+| Feature | ADO | GitHub | Notes |
+| :--- | :---: | :---: | :--- |
+| Epic | ✅ | ⚠️ | GH: Label `type:epic` |
+| Feature | ✅ | ⚠️ | GH: Label `type:feature` |
+| User Story | ✅ | ⚠️ | GH: Label `type:user-story` |
+| Product Backlog Item | ✅ | ⚠️ | GH: Label `type:product-backlog-item` |
+| Task | ✅ | ⚠️ | GH: Label `type:task` |
+| Bug | ✅ | ✅ | GH: Built-in `bug` label |
+| Impediment | ✅ | ⚠️ | GH: Label `type:impediment` |
+| Change Request | ✅ | ⚠️ | GH: Label `type:change-request` |
+| Test Plan | ✅ | ❌ | GH: Issue with label only; no execution |
+| Test Suite | ✅ | ❌ | GH: Issue with label only |
+| Test Case | ✅ | ⚠️ | GH: Steps in issue body |
+| Shared Steps | ✅ | ❌ | GH: Issue with label only |
+
+### Hierarchy & Relationships
+
+| Feature | ADO | GitHub | Notes |
+| :--- | :---: | :---: | :--- |
+| Parent-Child hierarchy (4 levels) | ✅ | ⚠️ | GH: Sub-issues (Beta) |
+| Visual hierarchy tree in backlog | ✅ | ⚠️ | GH: Sub-issues panel on each issue |
+| Related links | ✅ | ❌ | GH: Comment with `🔗 Related to #X` |
+| Predecessor / Successor | ✅ | ❌ | GH: Comment with `🚧 Blocked by #X` |
+| Duplicate links | ✅ | ❌ | GH: Comment only |
+| Hyperlink (external URL) | ✅ | ✅ | GH: In issue body |
+
+### Fields & Custom Data
+
+| Feature | ADO | GitHub | Notes |
+| :--- | :---: | :---: | :--- |
+| Story Points | ✅ | ✅ | GH: Custom number field |
+| Priority (1–4) | ✅ | ✅ | GH: Custom single-select field |
+| Severity | ✅ | ✅ | GH: Custom single-select field |
+| Value Area | ✅ | ✅ | GH: Custom single-select field |
+| ADO Original Status | ✅ | ✅ | GH: Custom single-select field |
+| ADO Original ID | ✅ | ✅ | GH: Custom text field |
+| Description (HTML) | ✅ | ✅ | GH: Converted to Markdown in body |
+| Acceptance Criteria | ✅ | ⚠️ | GH: Merged into body under `## Acceptance Criteria` |
+| Repro Steps | ✅ | ⚠️ | GH: Merged into body under `## Repro Steps` |
+| Tags | ✅ | ✅ | GH: Labels |
+| Area Path | ✅ | ⚠️ | GH: `area:xxx` labels |
+| Iteration Path | ✅ | ✅ | GH: Milestone |
+| Assignee | ✅ | ✅ | GH: Requires user mapping |
+| Full change history | ✅ | ❌ | Not migrated |
+| Custom process fields | ✅ | ⚠️ | GH: Requires custom Project fields |
+
+### Sprints & Planning
+
+| Feature | ADO | GitHub | Notes |
+| :--- | :---: | :---: | :--- |
+| Sprint / Iteration | ✅ | ✅ | GH: Milestones |
+| Sprint start + end dates | ✅ | ⚠️ | GH: Milestone due date only |
+| Capacity per person per sprint | ✅ | ❌ | No equivalent |
+| Burndown charts | ✅ | ❌ | Requires third-party tools |
+| Velocity charts | ✅ | ❌ | Requires third-party tools |
+| Cumulative flow diagram | ✅ | ❌ | Not available |
+
+### Boards & Views
+
+| Feature | ADO | GitHub | Notes |
+| :--- | :---: | :---: | :--- |
+| Kanban Board | ✅ | ✅ | GH: Project Board view |
+| Backlog list view | ✅ | ✅ | GH: Project Table view |
+| Swimlanes | ✅ | ❌ | Not supported in GitHub |
+| WIP limits | ✅ | ❌ | Not supported in GitHub |
+| Roadmap / Delivery Plan | ✅ | ✅ | GH: Project Roadmap view |
+| Sprint Board | ✅ | ⚠️ | GH: Filter by milestone in Board view |
+| Customizable columns | ✅ | ✅ | GH: Full column control |
+| Color-coded cards by type | ✅ | ❌ | GH: No card coloring |
+
+### Queries & Automation
+
+| Feature | ADO | GitHub | Notes |
+| :--- | :---: | :---: | :--- |
+| Saved Queries (WIQL) | ✅ | ❌ | GH: Translated to filter syntax in cheat sheet |
+| Cross-project queries | ✅ | ❌ | Not supported |
+| Chart from query | ✅ | ❌ | Not available |
+| Workflow automation rules | ✅ | ✅ | GH: GitHub Actions workflows |
+| Auto-close on PR merge | ✅ | ✅ | GH: `Closes #X` in PR body |
+| Auto-assign on state change | ✅ | ⚠️ | GH: Requires GitHub Actions rule |
+
+### Comments & Attachments
+
+| Feature | ADO | GitHub | Notes |
+| :--- | :---: | :---: | :--- |
+| Threaded comments | ✅ | ✅ | GH: All comments migrated |
+| Author + timestamp on comments | ✅ | ⚠️ | GH: Added as header text in comment |
+| Inline images in comments | ✅ | ✅ | GH: Re-hosted in repo (< 25 MB) |
+| File attachments | ✅ | ⚠️ | GH: Auto-migrated if < 25 MB |
+| Large attachments (> 25 MB) | ✅ (up to 60 MB) | ❌ | Manual upload required |
+| @mention notifications | ✅ | ⚠️ | GH: Preserved as text, no re-notification |
+
+---
+
+*For API-level details, see `API_Reference_Sheet.md`. For pipeline phase deep-dives, see `Pipeline_Phases_Guide.md`.*
