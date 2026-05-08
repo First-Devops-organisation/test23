@@ -66,14 +66,15 @@ foreach ($d in @($reportDir, $logDir, $cloneDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
 }
 
-# ── Verify gitleaks ──────────────────────────────────────────────────────────
-$gl = Get-Command gitleaks -ErrorAction SilentlyContinue
-if (-not $gl) {
-    Write-Error "gitleaks not found. Install: https://github.com/gitleaks/gitleaks/releases or run 02-prep\install-tools.ps1"
+# ── Verify TruffleHog ────────────────────────────────────────────────────────
+$th = Get-Command trufflehog -ErrorAction SilentlyContinue
+if (-not $th) {
+    Write-Error "trufflehog not found. Install: https://github.com/trufflesecurity/trufflehog/releases"
 }
 
-# ── Keyword patterns for additional scanning ─────────────────────────────────
-# (Patterns are now defined in Phase 2 via custom-gitleaks-rules.toml)
+# ── Keyword patterns for Phase 2 PowerShell scan ─────────────────────────────
+$keywordRegex = '(?i)[a-zA-Z_]?[a-zA-Z0-9_]*(?:key|secret|password|passwd|pwd|token|cred(?:ential)?|auth)[a-zA-Z0-9_]*[''"]*\s*[:=]\s*[''"]*([^''"\s,;]+)[''"]*'
+
 
 # Values that are likely placeholders, not real secrets
 # Only exact-match for short values; long values are never filtered as placeholders
@@ -205,12 +206,12 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
     $repoLabel  = $repo.Name
     $clonePath  = Join-Path $cloneDir "$($repo.Name)-$([guid]::NewGuid().ToString('N').Substring(0,8)).git"
-    $reportFile = Join-Path $logDir "gitleaks-$($repo.Name).json"
+    $reportFile = Join-Path $logDir "trufflehog-$($repo.Name).jsonl"
 
     # Skip empty repos
     if ($repo.SizeBytes -eq 0) {
         Write-Host "  CLEAN (Empty) — $repoLabel" -ForegroundColor Green
-        $summary.Add([PSCustomObject]@{ Name = $repo.Name; SizeMB = $repo.SizeMB; GitleaksFindings = 0; KeywordFindings = 0; TotalFindings = 0; Status = "CLEAN" })
+        $summary.Add([PSCustomObject]@{ Name = $repo.Name; SizeMB = $repo.SizeMB; TruffleHogFindings = 0; KeywordFindings = 0; TotalFindings = 0; Status = "CLEAN" })
         return
     }
 
@@ -229,25 +230,30 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     }
     catch {
         Write-Warning "  Clone failed for ${repoLabel}: $_"
-        $summary.Add([PSCustomObject]@{ Name = $repo.Name; SizeMB = $repo.SizeMB; GitleaksFindings = -1; KeywordFindings = 0; TotalFindings = -1; Status = "CLONE_FAILED" })
+        $summary.Add([PSCustomObject]@{ Name = $repo.Name; SizeMB = $repo.SizeMB; TruffleHogFindings = -1; KeywordFindings = 0; TotalFindings = -1; Status = "CLONE_FAILED" })
         return
     }
 
-    $glCount = 0; $kwCount = 0
+    $thCount = 0; $kwCount = 0
 
-    # ── Phase 1: Gitleaks scan ───────────────────────────────────────────
-    $exitCode = 0
+    # ── Phase 1: TruffleHog scan (entire history, 800+ detectors) ─────────
     try {
-        $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
-        $exitCode = $LASTEXITCODE
+        Write-Host "  Phase 1: TruffleHog scan — $repoLabel" -ForegroundColor Gray
+        & trufflehog git "file://$clonePath" --json --no-update 2>$null | Out-File -FilePath $reportFile -Encoding utf8
     }
-    catch { $exitCode = $LASTEXITCODE }
+    catch {
+        Write-Warning "  TruffleHog scan error for ${repoLabel}: $_"
+    }
 
-    if ($exitCode -eq 1 -and (Test-Path $reportFile)) {
-        $foundItems = Get-Content $reportFile -Raw | ConvertFrom-Json
-        foreach ($f in $foundItems) {
-            $secretVal = $f.Secret
-            if ([string]::IsNullOrWhiteSpace($secretVal)) { $secretVal = $f.Match }
+    if (Test-Path $reportFile) {
+        $lines = Get-Content $reportFile -ErrorAction SilentlyContinue
+        foreach ($line in $lines) {
+            $line = $line.Trim()
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try { $f = $line | ConvertFrom-Json } catch { continue }
+
+            $secretVal = $f.Raw
+            if ([string]::IsNullOrWhiteSpace($secretVal) -and $f.PSObject.Properties['RawV2']) { $secretVal = $f.RawV2 }
             if ([string]::IsNullOrWhiteSpace($secretVal)) { continue }
 
             # Trim outer quotes/delimiters but preserve internal whitespace
@@ -268,149 +274,130 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
             }
             if ($isPlaceholder) { continue }
 
-            # Derive secret name — try to extract the actual variable name from the line
-            $secretName = ''
-            # gitleaks provides the matched line — extract the variable name (left of = or :)
-            $matchLine = if ($f.PSObject.Properties['Match']) { $f.Match } else { '' }
-            if (-not [string]::IsNullOrWhiteSpace($matchLine)) {
-                if ($matchLine -match '^\s*[''"]?([A-Za-z_][A-Za-z0-9_]*)[''"]?\s*[:=]') {
-                    $secretName = $Matches[1].ToUpper()
-                }
+            # Extract metadata from TruffleHog JSONL
+            $gitMeta = $null
+            if ($f.PSObject.Properties['SourceMetadata'] -and $f.SourceMetadata.PSObject.Properties['Data'] -and $f.SourceMetadata.Data.PSObject.Properties['Git']) {
+                $gitMeta = $f.SourceMetadata.Data.Git
             }
-            # Fallback to RuleID if no variable name found
-            if ([string]::IsNullOrWhiteSpace($secretName)) {
-                $secretName = ($f.RuleID -replace '[^a-zA-Z0-9]', '_').ToUpper()
-            }
-            if ([string]::IsNullOrWhiteSpace($secretName)) { $secretName = 'DETECTED_SECRET' }
+            $filePath   = if ($gitMeta -and $gitMeta.file)   { $gitMeta.file }   else { 'N/A' }
+            $commitHash = if ($gitMeta -and $gitMeta.commit)  { $gitMeta.commit.Substring(0, [Math]::Min(12, $gitMeta.commit.Length)) } else { 'N/A' }
+            $lineNum    = if ($gitMeta -and $gitMeta.PSObject.Properties['line']) { $gitMeta.line } else { 0 }
+            $author     = if ($gitMeta -and $gitMeta.email)   { $gitMeta.email }  else { 'N/A' }
+            $dateVal    = if ($gitMeta -and $gitMeta.PSObject.Properties['timestamp']) { $gitMeta.timestamp } else { 'N/A' }
 
-            $glCount++
+            # Derive secret name from DetectorName
+            $secretName = if ($f.PSObject.Properties['DetectorName'] -and -not [string]::IsNullOrWhiteSpace($f.DetectorName)) {
+                ($f.DetectorName -replace '[^a-zA-Z0-9]', '_').ToUpper()
+            } else { 'DETECTED_SECRET' }
+
+            $thCount++
             $findings.Add([PSCustomObject]@{
-                Repo       = $repo.Name
-                SecretName = $secretName
+                Repo        = $repo.Name
+                SecretName  = $secretName
                 SecretValue = $secretVal
-                File       = $f.File
-                LineNumber = $f.StartLine
-                Branch     = if ($f.PSObject.Properties['Branch']) { $f.Branch } else { "N/A" }
-                CommitHash = if ($f.Commit) { $f.Commit.Substring(0, [Math]::Min(12, $f.Commit.Length)) } else { "N/A" }
-                Source     = "gitleaks"
-                RuleID     = $f.RuleID
-                Author     = $f.Author
-                Date       = $f.Date
+                File        = $filePath
+                LineNumber  = $lineNum
+                Branch      = 'HISTORY'
+                CommitHash  = $commitHash
+                Source      = 'trufflehog'
+                RuleID      = $secretName
+                Author      = $author
+                Date        = $dateVal
             })
         }
     }
-    elseif ($exitCode -ne 0 -and $exitCode -ne 1) {
-        Write-Warning "  gitleaks returned exit code $exitCode for $repoLabel"
-    }
 
-    # ── Phase 2: Custom Keyword Gitleaks Scan (All History) ────────────────
+    # ── Phase 2: PowerShell Keyword Scan (All History) ─────────────────────
+    # Catches custom/internal secrets that TruffleHog's built-in detectors miss
     try {
-        $customRulesPath = Join-Path $logDir "custom-gitleaks-rules.toml"
-        $customReportFile = Join-Path $logDir "gitleaks-custom-$($repo.Name).json"
+        Write-Host "  Phase 2: Keyword scan — $repoLabel" -ForegroundColor Gray
+        $kwRegex = $using:keywordRegex
 
-        # Create custom rules file to scan entire git history
-        @"
-title = "Custom Keyword Rules"
+        # Get all commits in the repo
+        $commits = & git -C $clonePath rev-list --all 2>$null
+        if ($commits) {
+            foreach ($commitSha in $commits) {
+                # Get all files changed in this commit
+                $diffFiles = & git -C $clonePath diff-tree --no-commit-id --name-only -r $commitSha 2>$null
+                if (-not $diffFiles) { continue }
 
-[[rules]]
-id = "DETECTED_SECRET"
-description = "Generic secret key"
-regex = '''(?i)[a-zA-Z_]?[a-zA-Z0-9_]*(?:key|secret|password|passwd|pwd|token|cred(?:ential)?|auth)[a-zA-Z0-9_]*[''"]?\s*[:=]\s*[''"]?([^''"\s,;]+)[''"]?'''
-secretGroup = 1
+                foreach ($filePath in $diffFiles) {
+                    $filePath = $filePath.Trim()
+                    if ([string]::IsNullOrWhiteSpace($filePath)) { continue }
+                    # Skip binary files and common non-secret files
+                    if ($filePath -match '\.(png|jpg|jpeg|gif|ico|svg|woff|ttf|eot|pdf|zip|tar|gz|exe|dll|so|dylib)$') { continue }
 
-[[rules]]
-id = "STRIPE_KEY"
-description = "Stripe Key"
-regex = '''(?i)[:=]\s*[''"]*((?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+)[''"]*'''
-secretGroup = 1
+                    try {
+                        $content = & git -C $clonePath show "${commitSha}:${filePath}" 2>$null
+                    } catch { continue }
+                    if (-not $content) { continue }
 
-[[rules]]
-id = "MONGO_URI"
-description = "MongoDB Connection String"
-regex = '''(?i)[:=]\s*[''"]*(mongodb(?:\+srv)?://[^\s''"]+)[''"]*'''
-secretGroup = 1
+                    $lineNum = 0
+                    foreach ($line in $content) {
+                        $lineNum++
+                        if ($line -match $kwRegex) {
+                            $val = $Matches[1]
+                            if ([string]::IsNullOrWhiteSpace($val)) { continue }
+                            $val = $val.Trim()
+                            $val = $val -replace '[,;\s]+$', ''
+                            $val = $val -replace '^[''"` ]+', '' -replace '[''"` ]+$', ''
+                            $val = $val.Trim()
+                            if ($val.Length -lt 4) { continue }
 
-[[rules]]
-id = "JWT_SECRET"
-description = "JWT Token"
-regex = '''(?i)[:=]\s*[''"]*(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)[''"]*'''
-secretGroup = 1
-
-[[rules]]
-id = "SSH_KEY"
-description = "SSH Private Key"
-regex = '''(?i)[:=]\s*[''"]*(ssh-(?:rsa|ed25519|dss)\s+[A-Za-z0-9+/=]+(?:\s+\S+)?)[''"]*'''
-secretGroup = 1
-"@ | Out-File -FilePath $customRulesPath -Encoding utf8
-
-        # Run custom gitleaks over all commits
-        $output2 = & gitleaks detect --source $clonePath --config $customRulesPath --report-path $customReportFile --report-format json --no-banner 2>&1
-        $exitCode2 = $LASTEXITCODE
-
-        if ($exitCode2 -eq 0 -or $exitCode2 -eq 1 -or $exitCode2 -eq 2) {
-            if (Test-Path $customReportFile) {
-                $customData = Get-Content $customReportFile -Raw | ConvertFrom-Json
-                if ($null -ne $customData) {
-                    if ($customData -is [object]) { $customData = @($customData) }
-                    foreach ($f in $customData) {
-                        $val = $f.Secret
-                        if ([string]::IsNullOrWhiteSpace($val)) { continue }
-                        $val = $val.Trim()
-                        $val = $val -replace '[,;\s]+$', ''
-                        $val = $val -replace '^[''"`]+', '' -replace '[''"`]+$', ''
-                        $val = $val.Trim()
-
-                        if ($val.Length -lt 4) { continue }
-
-                        # Check placeholder
-                        $skip = $false
-                        $valLower = $val.ToLower().Trim()
-                        if ($valLower.Length -le 20) {
-                            foreach ($ph in $phValues) {
-                                if ($valLower -eq $ph.ToLower()) { $skip = $true; break }
+                            # Check placeholder
+                            $skip = $false
+                            $valLower = $val.ToLower().Trim()
+                            if ($valLower.Length -le 20) {
+                                foreach ($ph in $phValues) {
+                                    if ($valLower -eq $ph.ToLower()) { $skip = $true; break }
+                                }
                             }
-                        }
-                        if ($skip) { continue }
+                            if ($skip) { continue }
+                            # Skip template variables like ${{ }}, ${}, %%, <% %>
+                            if ($val -match '^\$\{\{|^\$\{|^%%|^\<\%|^\{\{') { continue }
 
-                        $secretName = $f.RuleID
-                        $matchLine = if ($f.PSObject.Properties['Match']) { $f.Match } else { '' }
-                        if (-not [string]::IsNullOrWhiteSpace($matchLine)) {
-                            if ($matchLine -match '^\s*[''"]?([A-Za-z_][A-Za-z0-9_]*)[''"]?\s*[:=]') {
+                            # Extract variable name from line
+                            $secretName = 'DETECTED_SECRET'
+                            if ($line -match '^\s*[''"]*([A-Za-z_][A-Za-z0-9_]*)[''"]*\s*[:=]') {
                                 $secretName = $Matches[1].ToUpper()
                             }
-                        }
 
-                        $kwCount++
-                        $findings.Add([PSCustomObject]@{
-                            Repo        = $repo.Name
-                            SecretName  = $secretName
-                            SecretValue = $val
-                            File        = $f.File
-                            LineNumber  = $f.StartLine
-                            Branch      = "HISTORY"
-                            CommitHash  = $f.Commit
-                            Source      = "custom"
-                            RuleID      = $f.RuleID
-                            Author      = $f.Author
-                            Date        = $f.Date
-                        })
+                            # Get commit metadata
+                            $commitAuthor = & git -C $clonePath log -1 --format='%ae' $commitSha 2>$null
+                            $commitDate   = & git -C $clonePath log -1 --format='%aI' $commitSha 2>$null
+
+                            $kwCount++
+                            $findings.Add([PSCustomObject]@{
+                                Repo        = $repo.Name
+                                SecretName  = $secretName
+                                SecretValue = $val
+                                File        = $filePath
+                                LineNumber  = $lineNum
+                                Branch      = 'HISTORY'
+                                CommitHash  = $commitSha.Substring(0, [Math]::Min(12, $commitSha.Length))
+                                Source      = 'keyword'
+                                RuleID      = 'KEYWORD_SCAN'
+                                Author      = $commitAuthor
+                                Date        = $commitDate
+                            })
+                        }
                     }
                 }
             }
         }
     }
     catch {
-        Write-Warning "  Custom scan failed for ${repoLabel}: $_"
+        Write-Warning "  Keyword scan failed for ${repoLabel}: $_"
     }
 
-    $total = $glCount + $kwCount
+    $total = $thCount + $kwCount
     if ($total -gt 0) {
-        Write-Warning "  SECRETS FOUND: $total finding(s) in $repoLabel (gitleaks: $glCount, keywords: $kwCount)"
-        $summary.Add([PSCustomObject]@{ Name = $repo.Name; SizeMB = $repo.SizeMB; GitleaksFindings = $glCount; KeywordFindings = $kwCount; TotalFindings = $total; Status = "SECRETS_FOUND" })
+        Write-Warning "  SECRETS FOUND: $total finding(s) in $repoLabel (trufflehog: $thCount, keywords: $kwCount)"
+        $summary.Add([PSCustomObject]@{ Name = $repo.Name; SizeMB = $repo.SizeMB; TruffleHogFindings = $thCount; KeywordFindings = $kwCount; TotalFindings = $total; Status = "SECRETS_FOUND" })
     }
     else {
         Write-Host "  CLEAN — $repoLabel" -ForegroundColor Green
-        $summary.Add([PSCustomObject]@{ Name = $repo.Name; SizeMB = $repo.SizeMB; GitleaksFindings = 0; KeywordFindings = 0; TotalFindings = 0; Status = "CLEAN" })
+        $summary.Add([PSCustomObject]@{ Name = $repo.Name; SizeMB = $repo.SizeMB; TruffleHogFindings = 0; KeywordFindings = 0; TotalFindings = 0; Status = "CLEAN" })
     }
 
     # Cleanup clone
@@ -450,7 +437,7 @@ $tableRows = ($repoSummaryArr | Sort-Object Status, Name | ForEach-Object {
         'CLONE_FAILED'  { '#95a5a6' }
         default         { '#333' }
     }
-    "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Name))</td><td>$($_.SizeMB)</td><td>$($_.GitleaksFindings)</td><td>$($_.KeywordFindings)</td><td>$($_.TotalFindings)</td><td style='color:$statusColor;font-weight:bold'>$($_.Status)</td></tr>"
+    "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Name))</td><td>$($_.SizeMB)</td><td>$($_.TruffleHogFindings)</td><td>$($_.KeywordFindings)</td><td>$($_.TotalFindings)</td><td style='color:$statusColor;font-weight:bold'>$($_.Status)</td></tr>"
 }) -join "`n"
 
 $html = @"
@@ -477,7 +464,7 @@ $html = @"
   <div class="card" style="background:#95a5a6"><div class="num">$failedCount</div>Clone Failed</div>
 </div>
 <h2>Repo Details</h2>
-<table><tr><th>Repo</th><th>Size (MB)</th><th>Gitleaks</th><th>Keywords</th><th>Total</th><th>Status</th></tr>
+<table><tr><th>Repo</th><th>Size (MB)</th><th>TruffleHog</th><th>Keywords</th><th>Total</th><th>Status</th></tr>
 $tableRows
 </table>
 </body></html>
@@ -496,7 +483,7 @@ Write-Host "  Total findings      : $($allFindingsArr.Count)"
 $dirty = @($repoSummaryArr | Where-Object { $_.Status -eq 'SECRETS_FOUND' })
 if ($dirty) {
     Write-Host "`nRepos requiring secret scrubbing BEFORE migration:" -ForegroundColor Red
-    $dirty | Format-Table Name, GitleaksFindings, KeywordFindings, TotalFindings -AutoSize
+    $dirty | Format-Table Name, TruffleHogFindings, KeywordFindings, TotalFindings -AutoSize
     Write-Host "Run 02-prep\scrub-secrets.ps1 to clean these repos."
 }
 

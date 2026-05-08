@@ -159,13 +159,20 @@ stages:
         steps:
 
           - task: PowerShell@2
-            displayName: "Install gitleaks"
+            displayName: "Install TruffleHog"
             inputs:
               targetType: inline
               script: |
-                Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_windows_x64.zip" -OutFile gitleaks.zip
-                Expand-Archive -Path gitleaks.zip -DestinationPath "$env:AGENT_TOOLSDIRECTORY\gitleaks" -Force
-                Write-Host "##vso[task.prependpath]$env:AGENT_TOOLSDIRECTORY\gitleaks"
+                $thVersion = "3.95.2"
+                $thUrl = "https://github.com/trufflesecurity/trufflehog/releases/download/v${thVersion}/trufflehog_${thVersion}_windows_amd64.tar.gz"
+                Write-Host "Downloading TruffleHog v${thVersion}..."
+                Invoke-WebRequest -Uri $thUrl -OutFile trufflehog.tar.gz
+                # Extract .tar.gz on Windows
+                $thDir = "$env:AGENT_TOOLSDIRECTORY\trufflehog"
+                New-Item -ItemType Directory -Path $thDir -Force | Out-Null
+                tar -xzf trufflehog.tar.gz -C $thDir
+                Write-Host "##vso[task.prependpath]$thDir"
+                & "$thDir\trufflehog.exe" --version
               pwsh: true
 
           - task: PowerShell@2
