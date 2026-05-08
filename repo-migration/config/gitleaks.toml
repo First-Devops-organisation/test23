@@ -1,0 +1,18 @@
+title = "ADO to GHAS Migration Custom Rules"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "custom-db-connection-string"
+description = "Detects generic database connection strings containing passwords"
+regex = '''(?i)(?:password|pwd)\s*=\s*([^;"'\s]+)'''
+secretGroup = 1
+tags = ["custom", "database", "credentials"]
+
+[[rules]]
+id = "custom-connection-string-uri"
+description = "Detects database connection URIs"
+regex = '''(?i)(?:mysql|postgres|postgresql|mongodb|mssql|jdbc):[a-z0-9_]+://[^:]+:([^@]+)@'''
+secretGroup = 1
+tags = ["custom", "database", "credentials"]
