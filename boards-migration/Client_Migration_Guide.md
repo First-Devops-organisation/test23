@@ -89,19 +89,155 @@ GitHub has a native "Type" field visible on issues. We investigated using it but
 
 > ⚠️ The GitHub PAT must belong to a user who is an **Organization Owner** or has **Admin** access to the target repository and project.
 
-### 2.3 Config Files That Must Be Filled In
+### 2.3 Config Files — What Each File Does & What to Fill
 
-All files live in `boards-migration/config/`:
-
-| File | Must Fill | What Goes In |
-| :--- | :--- | :--- |
-| `boards-migration-config.json` | ✅ Always | ADO org, project, area path; GitHub org, repo, project number |
-| `user-mappings.json` | ✅ Always | ADO email address → GitHub username |
-| `status-mappings.json` | ✅ Always | ADO state names → GitHub board column names (case-sensitive) |
-| `workitem-type-mappings.json` | ✅ Review | ADO type names → GitHub labels + colors |
-| `field-mappings.json` | ⚠️ Optional | Controls which custom fields are created on the GitHub Project board |
+All files live in `boards-migration/config/`. These **must be reviewed and updated** before any pipeline run.
 
 ---
+
+#### 📄 `boards-migration-config.json` — Master Config (Always Required)
+
+This is the single source of truth for the pipeline. It tells the pipeline **where to read from** (ADO) and **where to write to** (GitHub).
+
+```json
+{
+  "source": {
+    "organization": "YourADOOrg",        ← ADO organization name (from dev.azure.com/{THIS})
+    "project":      "YourADOProject",    ← Exact ADO project name
+    "areaPath":     "Project\\Area",     ← Area path to migrate (use \\ for backslash)
+    "pat":          "$(ADO_PAT)"         ← DO NOT CHANGE — reads from Variable Group secret
+  },
+  "target": {
+    "organization":     "YourGitHubOrg",    ← GitHub org name
+    "repository":       "your-repo",        ← GitHub repository name
+    "projectNumber":    2,                  ← Project number from GitHub URL (/projects/NUMBER)
+    "projectOwnerType": "organization",     ← "organization" or "user"
+    "pat":              "$(GH_PAT)"         ← DO NOT CHANGE — reads from Variable Group secret
+  },
+  "migration": {
+    "migrateClosedWorkItems": true,   ← false = skip Closed/Resolved items
+    "productionRun":          true,   ← false = dry run, no writes to GitHub
+    "migrateAttachments":     true,   ← false = skip all file attachments
+    "migrateLinks":           true,   ← false = skip Related/Blocked link comments
+    "preserveParentChild":    true,   ← false = skip Sub-issue hierarchy linking
+    "dryRun":                 false   ← true = safe simulation mode
+  }
+}
+```
+
+---
+
+#### 📄 `user-mappings.json` — ADO User → GitHub Username (Always Required)
+
+Maps each ADO team member to their GitHub account. Every person who has ever been assigned a work item should be listed here.
+
+```json
+{
+  "mappings": [
+    {
+      "adoDisplayName":    "John Doe",              ← Exact name shown in ADO
+      "adoEmail":          "john.doe@company.com",  ← Primary ADO email
+      "adoAlternateEmails": ["john@personal.com"],  ← Any alias emails (can be empty [])
+      "githubUsername":    "johndoe-gh"             ← GitHub username (without @)
+    }
+  ],
+  "defaultGithubUser":    "admin-user",       ← Fallback if ADO user not found in list
+  "unmappedUserAction":   "assign-default"    ← "assign-default" or "skip" (leave unassigned)
+}
+```
+
+> **What happens if a user is missing?** The issue is created with the `defaultGithubUser` as assignee. No error is thrown, but assignment fidelity is lost.
+
+---
+
+#### 📄 `status-mappings.json` — ADO State → GitHub Board Column (Always Required)
+
+Maps every ADO workflow state to a GitHub Project V2 board column.  
+The pipeline supports two levels: a **default mapping** (applies to all types) and **type-specific overrides** (takes precedence for that type).
+
+```json
+{
+  "defaultMapping": {
+    "New":              "Backlog",       ← ADO state name → GitHub column name (case-sensitive)
+    "Active":           "In progress",
+    "In Progress":      "In progress",
+    "In PR":            "In review",
+    "Ready for Testing":"Ready",
+    "Resolved":         "Done",
+    "Closed":           "Done",
+    "Done":             "Done",
+    "On Hold":          "On Hold",
+    "Blocked":          "Blocked"
+  },
+  "typeOverrides": {
+    "Bug": {
+      "New":     "Backlog",             ← Bugs in "New" go to Backlog (not same as default)
+      "Active":  "In progress"
+    },
+    "Impediment": {
+      "Open":   "In progress",          ← Impediments only have "Open" and "Closed"
+      "Closed": "Done"
+    }
+  },
+  "githubProjectStatusOptions": [       ← These must EXACTLY match your GitHub board columns
+    "Backlog", "Ready", "In progress", "In review", "Blocked", "On Hold", "Done"
+  ],
+  "closedStates": [                     ← Items in these ADO states will be CLOSED in GitHub
+    "Done", "Closed", "Resolved", "Removed", "Completed", "Inactive"
+  ]
+}
+```
+
+> **⚠️ Column names are case-sensitive.** If your GitHub board has `"In Progress"` but you write `"In progress"` here, the status field will be blank.
+
+---
+
+#### 📄 `workitem-type-mappings.json` — ADO Work Item Type → GitHub Label (Review Before Running)
+
+Defines how each ADO type is represented in GitHub as a label, including color.
+
+```json
+{
+  "Epic":           { "label": "type:epic",              "color": "8B00FF" },
+  "Feature":        { "label": "type:feature",           "color": "0052CC" },
+  "User Story":     { "label": "type:user-story",        "color": "0075CA" },
+  "Product Backlog Item": { "label": "type:pbi",         "color": "006B75" },
+  "Task":           { "label": "type:task",              "color": "E4E669" },
+  "Bug":            { "label": "type:bug",               "color": "D73A4A" },
+  "Impediment":     { "label": "type:impediment",        "color": "B60205" },
+  "Change Request": { "label": "type:change-request",   "color": "F9D0C4" },
+  "Test Plan":      { "label": "type:test-plan",         "color": "0E8A16" },
+  "Test Case":      { "label": "type:test-case",         "color": "BFD4F2" }
+}
+```
+
+> The pipeline **auto-creates** these labels in GitHub during Phase 2. You do not need to create them manually.
+
+---
+
+#### 📄 `field-mappings.json` — ADO Fields → GitHub Project Custom Fields (Optional)
+
+Controls which ADO fields are preserved as custom columns on the GitHub Project V2 board.
+
+```json
+{
+  "storyPoints": { "ghFieldName": "Story Points", "type": "number"        },
+  "priority":    { "ghFieldName": "Priority",     "type": "single_select" },
+  "severity":    { "ghFieldName": "Severity",     "type": "single_select" },
+  "adoStatus":   { "ghFieldName": "ADO Status",   "type": "single_select" },
+  "adoId":       { "ghFieldName": "ADO ID",       "type": "text"          },
+  "valueArea":   { "ghFieldName": "Value Area",   "type": "single_select" },
+  "size":        { "ghFieldName": "Size",         "type": "single_select" },
+  "estimate":    { "ghFieldName": "Estimate",     "type": "number"        },
+  "iteration":   { "ghFieldName": "Iteration",    "type": "text"          }
+}
+```
+
+> All 9 fields are created automatically in the GitHub Project. The `ADO ID` and `ADO Status` fields are critical for traceability — **do not remove them**.
+
+---
+
+
 
 ## 3. Manual Steps Before Running the Pipeline
 
