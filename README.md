@@ -1,20 +1,12 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
-
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
-
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
-
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
-
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+| API Category        | HTTP Method | Endpoint                                                                                                             | Purpose                                                                  |
+| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Projects            | GET         | `https://dev.azure.com/{organization}/_apis/projects?api-version=7.1`                                                | Retrieves all projects in the Azure DevOps organization.                 |
+| Repositories        | GET         | `https://dev.azure.com/{organization}/{project}/_apis/git/repositories?api-version=7.1`                              | Retrieves all Git repositories, including size, default branch, and URL. |
+| Build Pipelines     | GET         | `https://dev.azure.com/{organization}/{project}/_apis/build/definitions?api-version=7.1`                             | Retrieves YAML and classic build pipeline definitions.                   |
+| Release Definitions | GET         | `https://vsrm.dev.azure.com/{organization}/{project}/_apis/release/definitions?$expand=environments&api-version=7.1` | Retrieves classic release pipelines and associated environments.         |
+| Teams               | GET         | `https://dev.azure.com/{organization}/_apis/projects/{projectId}/teams?api-version=7.1`                              | Retrieves all teams within a project.                                    |
+| Team Members        | GET         | `https://dev.azure.com/{organization}/_apis/projects/{projectId}/teams/{teamId}/members?api-version=7.1`             | Retrieves members for each team.                                         |
+| Work Items (WIQL)   | POST        | `https://dev.azure.com/{organization}/{project}/_apis/wit/wiql?api-version=7.1`                                      | Executes a WIQL query to count work items in the project.                |
+| Service Connections | GET         | `https://dev.azure.com/{organization}/{project}/_apis/serviceendpoint/endpoints?api-version=7.1`                     | Retrieves service connections and authentication schemes.                |
+| Variable Groups     | GET         | `https://dev.azure.com/{organization}/{project}/_apis/distributedtask/variablegroups?api-version=7.1`                | Retrieves variable groups, variables, and secret counts.                 |
+| Environments        | GET         | `https://dev.azure.com/{organization}/{project}/_apis/distributedtask/environments?api-version=7.1`                  | Retrieves deployment environments configured in the project.             |
