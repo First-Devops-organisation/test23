@@ -59,6 +59,7 @@ $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $reportDir = $config.output.reportDir
 $logDir = $config.output.logDir
 $cloneDir = $config.migration.cloneTempDir
+$gitleaksConfig = "$PSScriptRoot\..\config\gitleaks.toml"
 
 foreach ($d in @($reportDir, $logDir, $cloneDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
@@ -205,6 +206,7 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     $cloneDir = $using:cloneDir
     $logDir = $using:logDir
     $adoPat = $using:adoPat
+    $gitleaksConfig = $using:gitleaksConfig
     $findings = $using:allFindings
     $summary = $using:repoSummary
 
@@ -242,7 +244,11 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     # Run gitleaks
     $exitCode = 0
     try {
-        $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
+        if (Test-Path $gitleaksConfig) {
+            $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --config $gitleaksConfig --no-banner 2>&1
+        } else {
+            $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
+        }
         $exitCode = $LASTEXITCODE
     }
     catch {
