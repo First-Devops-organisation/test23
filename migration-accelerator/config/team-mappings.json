@@ -1,3 +1,19 @@
+// {
+//   "mappings": [
+//     {
+//       "adoProject": "YASH-DevOps-Serverless",
+//       "adoTeam": "YASH-DevOps-Serverless Team",
+//       "githubTeam": "yash-devops-serverless",
+//       "githubTeamDescription": "SME for Serverless Competency",
+//       "parentTeam": null,
+//       "maintainers": ["varsha-patilyash","ankitpanwar1",""]
+//     }
+//   ],
+//   "defaultVisibility": "closed"
+// }
+
+
+
 {
   "mappings": [
     {
@@ -6,8 +22,35 @@
       "githubTeam": "yash-devops-serverless",
       "githubTeamDescription": "SME for Serverless Competency",
       "parentTeam": null,
-      "maintainers": ["varsha-patilyash","ankitpanwar1",""]
+      "privacy": "closed",
+
+      "maintainers": [
+        "varsha-patilyash"
+  
+      ],
+
+      "members": [
+        "ankitpanwar1",
+        "developer2",
+        "tester1"
+      ],
+
+      "repositories": [
+        {
+          "name": "serverless-api",
+          "permission": "maintain"
+        },
+        {
+          "name": "serverless-ui",
+          "permission": "push"
+        },
+        {
+          "name": "common-library",
+          "permission": "pull"
+        }
+      ]
     }
   ],
+
   "defaultVisibility": "closed"
 }
