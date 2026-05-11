@@ -21,8 +21,8 @@ steps:
   inputs:
     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/team.ps1'
     arguments: >
-      # -GitHubOrg "$(GH_Org)"
-      # -GitHubPat "$(GH_PAT)"
+      -GitHubOrg "$(GH_Org)"
+      -GitHubPat "$(GH_PAT)"
       -AdoOrg "$(ADO_Org)"
       -AdoPat "$(ADO_PAT)"
       # -TeamMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
