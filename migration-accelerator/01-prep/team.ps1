@@ -1,37 +1,28 @@
 <#
 .SYNOPSIS
-    Collects Azure DevOps team information for migration to GitHub.
+    Exports Azure DevOps teams and members for GitHub migration planning.
 
 .DESCRIPTION
-    This script connects to Azure DevOps and exports:
-      - Project names
-      - Team names
-      - Team descriptions
-      - Team members
-      - Member email addresses
-      - Suggested role (Maintainer or Member)
-
-    The script only collects data and does NOT create anything in GitHub.
-
-.OUTPUTS
-    1. ado-team-members.csv
-    2. team-mappings.json
-    3. user-mappings-template.csv
+    Connects to Azure DevOps and exports:
+      1. Team details
+      2. Team members
 
 .PARAMETER AdoOrgUrl
     Azure DevOps organization URL.
     Example: https://dev.azure.com/myorg
 
 .PARAMETER AdoPat
-    Azure DevOps PAT with Project and Team Read permissions.
+    Azure DevOps PAT with:
+      - Project and Team (Read)
+      - Member Entitlement Management (Read)
 
 .PARAMETER OutputDir
-    Directory where output files will be generated.
+    Directory to save output files.
 
 .EXAMPLE
     .\Export-AdoTeams.ps1 `
         -AdoOrgUrl "https://dev.azure.com/myorg" `
-        -AdoPat "your-pat" `
+        -AdoPat "xxxxxxxxxxxx" `
         -OutputDir "./output"
 #>
 
@@ -49,13 +40,20 @@ param(
 $ErrorActionPreference = "Stop"
 
 #----------------------------------------------------------
-# Authentication
+# Create Output Folder
+#----------------------------------------------------------
+if (-not (Test-Path $OutputDir)) {
+    New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+}
+
+#----------------------------------------------------------
+# Authentication Header
 #----------------------------------------------------------
 $base64Auth = [Convert]::ToBase64String(
     [Text.Encoding]::ASCII.GetBytes(":$AdoPat")
 )
 
-$Headers = @{
+$headers = @{
     Authorization = "Basic $base64Auth"
 }
 
@@ -63,21 +61,14 @@ $Headers = @{
 # Helper Function
 #----------------------------------------------------------
 function Invoke-AdoApi {
-    param(
-        [string]$Uri
-    )
-
-    if ($Uri -notmatch "api-version=") {
-        if ($Uri.Contains("?")) {
-            $Uri += "&api-version=7.1"
-        }
-        else {
-            $Uri += "?api-version=7.1"
-        }
-    }
+    param([string]$Uri)
 
     try {
-        return Invoke-RestMethod -Uri $Uri -Headers $Headers -Method Get
+        return Invoke-RestMethod `
+            -Uri $Uri `
+            -Headers $headers `
+            -Method Get `
+            -ContentType "application/json"
     }
     catch {
         Write-Warning "Failed: $Uri"
@@ -86,172 +77,104 @@ function Invoke-AdoApi {
     }
 }
 
-#----------------------------------------------------------
-# Prepare Output Directory
-#----------------------------------------------------------
-if (-not (Test-Path $OutputDir)) {
-    New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
-}
-
-#----------------------------------------------------------
-# Output Collections
-#----------------------------------------------------------
-$TeamMemberRows = @()
-$TeamMappings   = @()
-$UniqueUsers    = @{}
-
-Write-Host "Collecting Azure DevOps teams..." -ForegroundColor Cyan
+Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host " Azure DevOps Team Export" -ForegroundColor Cyan
+Write-Host "=========================================" -ForegroundColor Cyan
 
 #----------------------------------------------------------
 # Get Projects
 #----------------------------------------------------------
-$projects = Invoke-AdoApi "$AdoOrgUrl/_apis/projects"
+$projectsUrl = "$AdoOrgUrl/_apis/projects?api-version=7.1"
+$projects = Invoke-AdoApi $projectsUrl
 
-if (-not $projects -or $projects.count -eq 0) {
-    Write-Error "No projects found."
+if (-not $projects) {
+    Write-Error "Unable to fetch projects."
     exit 1
 }
 
+Write-Host "Projects found: $($projects.count)" -ForegroundColor Green
+
+$teamResults = @()
+$memberResults = @()
+
+#----------------------------------------------------------
+# Process Each Project
+#----------------------------------------------------------
 foreach ($project in $projects.value) {
 
     $projectName = $project.name
     $projectId   = $project.id
 
-    Write-Host "Project: $projectName" -ForegroundColor Yellow
+    Write-Host "`nProject: $projectName" -ForegroundColor Yellow
 
-    #------------------------------------------------------
     # Get Teams
-    #------------------------------------------------------
-    $teams = Invoke-AdoApi "$AdoOrgUrl/_apis/projects/$projectId/teams"
+    $teamsUrl = "$AdoOrgUrl/_apis/projects/$projectId/teams?api-version=7.1"
+    $teams = Invoke-AdoApi $teamsUrl
 
     if (-not $teams) {
+        Write-Warning "No teams found in project $projectName"
         continue
     }
 
+    Write-Host "  Teams found: $($teams.count)" -ForegroundColor Gray
+
     foreach ($team in $teams.value) {
 
-        $teamName = $team.name
-        $teamId   = $team.id
-        $teamDesc = $team.description
-
-        Write-Host "  Team: $teamName" -ForegroundColor Green
-
-        # GitHub team slug recommendation
-        $githubTeam = (
-            $teamName.ToLower() `
-                -replace '[^a-z0-9\- ]', '' `
-                -replace '\s+', '-'
-        )
-
-        # Add team mapping template
-        $TeamMappings += [PSCustomObject]@{
-            adoProject            = $projectName
-            adoTeam               = $teamName
-            githubTeam            = $githubTeam
-            githubTeamDescription = if ($teamDesc) {
-                $teamDesc
-            }
-            else {
-                "$teamName migrated from Azure DevOps"
-            }
-            maintainers           = @()
+        # Save team info
+        $teamResults += [PSCustomObject]@{
+            ProjectName     = $projectName
+            TeamName        = $team.name
+            TeamDescription = $team.description
+            TeamId          = $team.id
         }
 
-        #--------------------------------------------------
+        Write-Host "    Team: $($team.name)" -ForegroundColor Cyan
+
         # Get Team Members
-        #--------------------------------------------------
-        $members = Invoke-AdoApi "$AdoOrgUrl/_apis/projects/$projectId/teams/$teamId/members"
+        $membersUrl = "$AdoOrgUrl/_apis/projects/$projectId/teams/$($team.id)/members?api-version=7.1"
+        $members = Invoke-AdoApi $membersUrl
 
-        if (-not $members) {
-            continue
+        if ($members -and $members.value.Count -gt 0) {
+            foreach ($member in $members.value) {
+
+                $memberResults += [PSCustomObject]@{
+                    ProjectName       = $projectName
+                    TeamName          = $team.name
+                    TeamId            = $team.id
+                    MemberDisplayName = $member.identity.displayName
+                    MemberEmail       = $member.identity.uniqueName
+                }
+
+                Write-Host "      Member: $($member.identity.displayName)" -ForegroundColor DarkGray
+            }
         }
-
-        foreach ($member in $members.value) {
-
-            $displayName = $member.identity.displayName
-            $email       = $member.identity.uniqueName
-
-            if ([string]::IsNullOrWhiteSpace($email)) {
-                continue
-            }
-
-            # Track unique users
-            if (-not $UniqueUsers.ContainsKey($email.ToLower())) {
-                $UniqueUsers[$email.ToLower()] = $displayName
-            }
-
-            # Export row
-            $TeamMemberRows += [PSCustomObject]@{
-                Project             = $projectName
-                Team                = $teamName
-                TeamDescription     = $teamDesc
-                MemberDisplayName   = $displayName
-                MemberEmail         = $email
-                SuggestedGitHubTeam = $githubTeam
-                SuggestedRole       = "member"
-            }
+        else {
+            Write-Host "      No members found." -ForegroundColor DarkGray
         }
     }
 }
 
 #----------------------------------------------------------
-# Export Team Members CSV
+# Export CSV Files
 #----------------------------------------------------------
-$teamMembersCsv = Join-Path $OutputDir "ado-team-members.csv"
-$TeamMemberRows |
-    Sort-Object Project, Team, MemberEmail |
-    Export-Csv -Path $teamMembersCsv -NoTypeInformation -Encoding UTF8
+$teamsCsv = Join-Path $OutputDir "ado-teams.csv"
+$membersCsv = Join-Path $OutputDir "ado-team-members.csv"
 
-Write-Host "Created: $teamMembersCsv" -ForegroundColor Green
+$teamResults |
+    Sort-Object ProjectName, TeamName |
+    Export-Csv -Path $teamsCsv -NoTypeInformation -Encoding UTF8
 
-#----------------------------------------------------------
-# Export Team Mapping JSON
-#----------------------------------------------------------
-$teamMappingsJson = Join-Path $OutputDir "team-mappings.json"
-
-@{
-    mappings = $TeamMappings
-} | ConvertTo-Json -Depth 10 |
-    Out-File -FilePath $teamMappingsJson -Encoding UTF8
-
-Write-Host "Created: $teamMappingsJson" -ForegroundColor Green
-
-#----------------------------------------------------------
-# Export User Mapping Template CSV
-#----------------------------------------------------------
-$userMappingsCsv = Join-Path $OutputDir "user-mappings-template.csv"
-
-$UniqueUsers.GetEnumerator() |
-    Sort-Object Name |
-    ForEach-Object {
-        [PSCustomObject]@{
-            ADOEmail         = $_.Key
-            DisplayName      = $_.Value
-            GitHubUsername   = ""
-        }
-    } |
-    Export-Csv -Path $userMappingsCsv -NoTypeInformation -Encoding UTF8
-
-Write-Host "Created: $userMappingsCsv" -ForegroundColor Green
+$memberResults |
+    Sort-Object ProjectName, TeamName, MemberDisplayName |
+    Export-Csv -Path $membersCsv -NoTypeInformation -Encoding UTF8
 
 #----------------------------------------------------------
 # Summary
 #----------------------------------------------------------
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host " Team Data Collection Complete"
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Projects      : $($projects.count)"
-Write-Host "Teams         : $($TeamMappings.Count)"
-Write-Host "Unique Users  : $($UniqueUsers.Count)"
-Write-Host ""
-Write-Host "Files Generated:"
-Write-Host " - $teamMembersCsv"
-Write-Host " - $teamMappingsJson"
-Write-Host " - $userMappingsCsv"
-Write-Host ""
-Write-Host "Next Steps:"
-Write-Host "1. Populate GitHubUsername column in user-mappings-template.csv"
-Write-Host "2. Review and update team-mappings.json"
-Write-Host "3. Run the GitHub team migration script"
-Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "`n=========================================" -ForegroundColor Green
+Write-Host " Export Completed" -ForegroundColor Green
+Write-Host "=========================================" -ForegroundColor Green
+Write-Host "Teams exported   : $($teamResults.Count)"
+Write-Host "Members exported : $($memberResults.Count)"
+Write-Host "Teams CSV        : $teamsCsv"
+Write-Host "Members CSV      : $membersCsv"
