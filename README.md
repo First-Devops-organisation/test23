@@ -1,63 +1,54 @@
 # API Reference - Migration Accelerator
 
-This document lists the external APIs consumed by the Migration Accelerator scripts for Azure DevOps to GitHub transitions.
+This document provides a comprehensive list of all external APIs consumed by the Migration Accelerator toolset for Azure DevOps to GitHub migrations.
 
-## Azure DevOps APIs
-All Azure DevOps API calls default to version **7.1** unless otherwise specified.
-
-| Category | Endpoint Path | Method | Purpose |
-| :--- | :--- | :--- | :--- |
-| **Projects** | `_apis/projects` | GET | Lists all projects in the ADO organization. |
-| **Git** | `_apis/git/repositories` | GET | Lists repositories within a specific project. |
-| **Git** | `_apis/git/repositories/{id}` | GET | Retrieves metadata for a specific repository. |
-| **Git** | `_apis/git/repositories/{id}/refs` | GET | Fetches branch and tag references (e.g., filter=heads). |
-| **Git** | `_apis/git/repositories/{id}/pullrequests` | GET | Retrieves PR status and counts for migration validation. |
-| **Build** | `_apis/build/definitions` | GET | Discovers CI/CD build definitions (YAML and Classic). Add `includeAllProperties=true` for full metadata. |
-| **Release** | `_apis/release/definitions` | GET | Discovers Classic Release definitions (Host: `vsrm.dev.azure.com`). |
-| **Task Groups** | `_apis/distributedtask/taskgroups` | GET | Lists reusable Task Groups used in Classic pipelines. |
-| **Work Items** | `_apis/wit/wiql` | POST | Executes WIQL queries to inventory work items. |
-| **Teams** | `_apis/projects/{id}/teams` | GET | Lists teams associated with a project. |
-| **Teams** | `_apis/projects/{id}/teams/{id}/members` | GET | Counts members within a specific team. |
-| **Variable Groups**| `_apis/distributedtask/variablegroups` | GET | Inventories variable groups for migration planning. |
-| **Environments** | `_apis/distributedtask/environments` | GET | Inventories YAML pipeline environments. |
-| **Service Conn** | `_apis/serviceendpoint/endpoints` | GET | Lists service connections/endpoints. |
-
----
-
-## GitHub APIs
-GitHub calls use the standard **REST API v3** (latest).
+## Azure DevOps APIs (Version 7.1)
+Azure DevOps calls are made to the REST API endpoints using Personal Access Tokens (PAT).
 
 | Category | Endpoint Path | Method | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Organization** | `/orgs/{org}` | GET | Validates organization access and metadata. |
-| **Repositories** | `/orgs/{org}/repos` | GET | Lists repositories existing in the target organization. |
-| **Repositories** | `/repos/{owner}/{repo}` | GET/PATCH | Manages repository settings, visibility, and descriptions. |
-| **Branches** | `/repos/{owner}/{repo}/branches` | GET | Lists branches in the target repository. |
-| **Protection** | `/repos/{owner}/{repo}/branches/{branch}/protection` | GET/PUT | Gets or sets branch protection rules (e.g., required reviewers). |
-| **Security** | `/repos/{owner}/{repo}/vulnerability-alerts` | GET/PUT | Enables Dependabot vulnerability alerts. |
-| **Security** | `/repos/{owner}/{repo}/code-scanning/default-setup` | PATCH | Configures default setup for GitHub Code Scanning. |
-| **Teams** | `/orgs/{org}/teams/{team_slug}` | GET | Validates team existence for mapping. |
-| **Languages** | `/repos/{owner}/{repo}/languages` | GET | Detects repository languages for security setup optimization. |
-| **User** | `/user` | GET | Used for initial token validation and scope checking. |
-| **Search** | `/search/issues` | GET | Searches for migrated pull requests to verify integrity. |
-| **Enterprise** | `/enterprises/{enterprise}` | GET | Validates enterprise-level settings if applicable. |
+| **Projects** | `_apis/projects` | GET | Lists all projects in the organization. |
+| **Git** | `_apis/git/repositories` | GET | Enumerates repositories within a project. |
+| **Git** | `_apis/git/repositories/{id}/refs` | GET | Fetches branch and tag references. |
+| **Git** | `_apis/git/repositories/{id}/pullrequests` | GET | Retrieves PR status and counts for validation. |
+| **Build** | `_apis/build/definitions` | GET | Retrieves CI build definitions (YAML & Classic). |
+| **Release** | `_apis/release/definitions` | GET | Retrieves CD release definitions (Host: `vsrm.dev.azure.com`). |
+| **Task Groups**| `_apis/distributedtask/taskgroups` | GET | Discovers reusable task blocks in classic pipelines. |
+| **Variables** | `_apis/distributedtask/variablegroups`| GET | Inventories variable groups for mapping. |
+| **Environments**| `_apis/distributedtask/environments` | GET | Lists YAML-based deployment environments. |
+| **Endpoints** | `_apis/serviceendpoint/endpoints` | GET | Discovers service connections for audit. |
+| **Work Items** | `_apis/wit/wiql` | POST | Executes WIQL queries for work item discovery. |
 
 ---
 
-## Authentication Requirements
+## GitHub APIs (REST v3)
+GitHub calls are made via the `gh` CLI or directly through the REST API.
 
-### Azure DevOps
-- **Mechanism**: Basic Authentication (using Personal Access Token).
-- **Required Scopes**: 
-  - `Code (Read & Status)`
-  - `Build (Read)`
-  - `Release (Read)`
-  - `Work Items (Read)`
-  - `Project and Team (Read)`
+| Category | Endpoint Path | Method | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Org** | `/orgs/{org}` | GET | Validates organization availability. |
+| **Repos** | `/orgs/{org}/repos` | GET | Lists repositories in the target organization. |
+| **Repos** | `/repos/{owner}/{repo}` | PATCH | Updates repository settings and visibility. |
+| **Security** | `.../vulnerability-alerts` | PUT | Enables Dependabot vulnerability alerts. |
+| **Security** | `.../code-scanning/default-setup` | PATCH | Configures CodeQL default scanning setup. |
+| **Teams** | `/orgs/{org}/teams/{team_slug}` | GET | Validates team mappings. |
+| **Protection** | `.../branches/{branch}/protection` | PUT | Configures branch protection rules. |
+| **Languages** | `.../languages` | GET | Analyzes repo languages for security setup. |
+| **Search** | `/search/issues` | GET | Verifies Pull Request migration status. |
+| **User** | `/user` | GET | Checks PAT token scopes and validity. |
 
-### GitHub
-- **Mechanism**: Bearer Token (using Personal Access Token).
-- **Required Scopes**: 
-  - `repo` (Full control for migration)
-  - `admin:org` (Read for team/org validation)
-  - `workflow` (For pipeline migration)
+---
+
+## Authentication & Scopes
+
+### Azure DevOps (PAT)
+*   `Code (Read)`
+*   `Build (Read)`
+*   `Release (Read)`
+*   `Project and Team (Read)`
+*   `Work Items (Read)`
+
+### GitHub (PAT)
+*   `repo` (full control)
+*   `admin:org` (read/write)
+*   `workflow`
