@@ -1,10 +1,7 @@
-GitHub Environment Configuration – API Endpoints Used
-
-The development environment setup process uses the GitHub CLI (gh) to call the GitHub REST API and configure deployment environments, reviewer approvals, and branch deployment rules.
-
-API Category	HTTP Method	Endpoint	Purpose
-Get User Information	GET	https://api.github.com/users/{username}	Retrieves the GitHub user ID for each reviewer username.
-Create or Update Environment	PUT	https://api.github.com/repos/{owner}/{repo}/environments/{environment_name}	Creates or updates a GitHub environment and configures wait timers, reviewer approvals, and deployment branch policy settings.
-List Deployment Branch Policies	GET	https://api.github.com/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies	Retrieves all existing deployment branch policies configured for the environment.
-Delete Deployment Branch Policy	DELETE	https://api.github.com/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies/{policy_id}	Removes an existing deployment branch policy to avoid duplicate rules during reconfiguration.
-Create Deployment Branch Policy	POST	https://api.github.com/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies	Creates a branch rule to restrict deployments to a specific branch (for example, develop).
+| API Category                    | HTTP Method | Endpoint                                                                                                             | Purpose                                                                                                                        |
+| ------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Get User Information            | GET         | `https://api.github.com/users/{username}`                                                                            | Retrieves the GitHub user ID for each reviewer username.                                                                       |
+| Create or Update Environment    | PUT         | `https://api.github.com/repos/{owner}/{repo}/environments/{environment_name}`                                        | Creates or updates a GitHub environment and configures wait timers, reviewer approvals, and deployment branch policy settings. |
+| List Deployment Branch Policies | GET         | `https://api.github.com/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies`             | Retrieves all existing deployment branch policies configured for the environment.                                              |
+| Delete Deployment Branch Policy | DELETE      | `https://api.github.com/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies/{policy_id}` | Removes an existing deployment branch policy to avoid duplicate rules during reconfiguration.                                  |
+| Create Deployment Branch Policy | POST        | `https://api.github.com/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies`             | Creates a branch rule to restrict deployments to a specific branch (for example, `develop`).                                   |
