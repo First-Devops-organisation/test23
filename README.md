@@ -12,13 +12,14 @@ All Azure DevOps API calls default to version **7.1** unless otherwise specified
 | **Git** | `_apis/git/repositories/{id}` | GET | Retrieves metadata for a specific repository. |
 | **Git** | `_apis/git/repositories/{id}/refs` | GET | Fetches branch and tag references (e.g., filter=heads). |
 | **Git** | `_apis/git/repositories/{id}/pullrequests` | GET | Retrieves PR status and counts for migration validation. |
-| **Build** | `_apis/build/definitions` | GET | Discovers CI/CD build definitions (YAML and Classic). |
-| **Release** | `_apis/release/definitions` | GET | Discovers Classic Release definitions (Note: Uses `vsrm.dev.azure.com`). |
+| **Build** | `_apis/build/definitions` | GET | Discovers CI/CD build definitions (YAML and Classic). Add `includeAllProperties=true` for full metadata. |
+| **Release** | `_apis/release/definitions` | GET | Discovers Classic Release definitions (Host: `vsrm.dev.azure.com`). |
+| **Task Groups** | `_apis/distributedtask/taskgroups` | GET | Lists reusable Task Groups used in Classic pipelines. |
 | **Work Items** | `_apis/wit/wiql` | POST | Executes WIQL queries to inventory work items. |
 | **Teams** | `_apis/projects/{id}/teams` | GET | Lists teams associated with a project. |
 | **Teams** | `_apis/projects/{id}/teams/{id}/members` | GET | Counts members within a specific team. |
-| **Task** | `_apis/distributedtask/variablegroups` | GET | Inventories variable groups for migration planning. |
-| **Task** | `_apis/distributedtask/environments` | GET | Inventories pipeline environments. |
+| **Variable Groups**| `_apis/distributedtask/variablegroups` | GET | Inventories variable groups for migration planning. |
+| **Environments** | `_apis/distributedtask/environments` | GET | Inventories YAML pipeline environments. |
 | **Service Conn** | `_apis/serviceendpoint/endpoints` | GET | Lists service connections/endpoints. |
 
 ---
