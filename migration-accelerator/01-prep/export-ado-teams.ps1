@@ -100,10 +100,17 @@ if (Test-Path $UserMappingFile) {
 # ----------------------------------------------------------
 $projectsList = @()
 
+# Trim whitespace in case the pipeline variable has extra spaces
+$AdoProject = $AdoProject.Trim()
+
 if ($AdoProject -ne "") {
     # Single project mode
     Write-Host "`nFetching single project: '$AdoProject'..." -ForegroundColor Cyan
-    $projectData = Invoke-AdoApi -Uri "$AdoOrgUrl/_apis/projects/$AdoProject?api-version=7.1"
+
+    # Use ${AdoProject} (curly braces) to explicitly bound the variable name.
+    # Without this, PowerShell 7 may misparse $AdoProject?api as a null-conditional
+    # operator, stripping "?api" from the URL and causing a 404.
+    $projectData = Invoke-AdoApi -Uri "$AdoOrgUrl/_apis/projects/${AdoProject}?api-version=7.1"
 
     if (-not $projectData) {
         Write-Error "Project '$AdoProject' not found. Check the project name and your PAT permissions."
