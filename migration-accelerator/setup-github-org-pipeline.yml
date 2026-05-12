@@ -19,7 +19,7 @@ steps:
 - task: PowerShell@2
   displayName: '2. Create & Sync GitHub Teams'
   inputs:
-    filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/team.ps1'
+    filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/export-ado-teams.ps1'
     arguments: >
       -GitHubOrg "$(GH_Org)"
       -GitHubPat "$(GH_PAT)"
