@@ -7,24 +7,45 @@ variables:
   - group: 'setup-github-org' # Pulls everything from your Library -> setup-github-org
 
 steps:
-# - task: PowerShell@2
-#   displayName: '1. Validate GitHub Organization'
-#   inputs:
-#     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/setup-github-org.ps1'
-#     arguments: >
-#       -GitHubOrg "$(GH_Org)"
-#       -GitHubPat "$(GH_PAT)"
-#     pwsh: true
 
+# ---------------------------------------------------------------
+# STEP 1: Export all ADO Teams to a JSON template (Discovery)
+# Run this step FIRST to validate your ADO teams before syncing.
+# ---------------------------------------------------------------
 - task: PowerShell@2
-  displayName: '2. Create & Sync GitHub Teams'
+  displayName: '1. Export ADO Teams (Discovery)'
   inputs:
     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/export-ado-teams.ps1'
     arguments: >
-      -GitHubOrg "$(GH_Org)"
-      -GitHubPat "$(GH_PAT)"
       -AdoOrgUrl "$(ADO_Org)"
       -AdoPat "$(ADO_PAT)"
-      -TeamMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
-      -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
-    
+      -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings-template.json"
+    pwsh: true
+
+# ---------------------------------------------------------------
+# STEP 2: Publish the generated JSON so you can download & review
+# ---------------------------------------------------------------
+- task: PublishBuildArtifacts@1
+  displayName: '2. Publish Exported Teams JSON'
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/team-mappings-template.json'
+    ArtifactName: 'team-mappings-template'
+    publishLocation: 'Container'
+
+# ---------------------------------------------------------------
+# STEP 3: Create & Sync GitHub Teams (Actual Migration)
+# Uncomment this step AFTER you have reviewed the exported JSON,
+# updated config/team-mappings.json, and committed it to the repo.
+# ---------------------------------------------------------------
+# - task: PowerShell@2
+#   displayName: '3. Create & Sync GitHub Teams'
+#   inputs:
+#     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/team.ps1'
+#     arguments: >
+#       -GitHubOrg "$(GH_Org)"
+#       -GitHubPat "$(GH_PAT)"
+#       -AdoOrgUrl "$(ADO_Org)"
+#       -AdoPat "$(ADO_PAT)"
+#       -TeamMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
+#       -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
+#     pwsh: true
