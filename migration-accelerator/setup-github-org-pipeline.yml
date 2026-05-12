@@ -5,12 +5,16 @@ pool:
 
 variables:
   - group: 'setup-github-org' # Pulls everything from your Library -> setup-github-org
+  # ADO_Project: Optionally set this variable in your Library to target a single project.
+  # Leave blank ("") to export all projects in the org.
+  # Example: "YASH-DevOps-Serverless"
 
 steps:
 
 # ---------------------------------------------------------------
-# STEP 1: Export all ADO Teams to a JSON template (Discovery)
-# Run this step FIRST to validate your ADO teams before syncing.
+# STEP 1: Export ADO Teams to a JSON template (Discovery)
+# Set ADO_Project variable to target a single project,
+# or leave blank to export all projects in the org.
 # ---------------------------------------------------------------
 - task: PowerShell@2
   displayName: '1. Export ADO Teams (Discovery)'
@@ -19,6 +23,7 @@ steps:
     arguments: >
       -AdoOrgUrl "$(ADO_Org)"
       -AdoPat "$(ADO_PAT)"
+      -AdoProject "$(ADO_Project)"
       -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
       -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings-template.json"
     pwsh: true
