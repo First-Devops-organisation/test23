@@ -37,15 +37,15 @@
 
       "repositories": [
         {
-          "name": "serverless-api",
+          "name": "Demoapp-Application-API",
           "permission": "maintain"
         },
         {
-          "name": "serverless-ui",
+          "name": "america-terraform",
           "permission": "push"
         },
         {
-          "name": "common-library",
+          "name": "Advanced-Security",
           "permission": "pull"
         }
       ]
