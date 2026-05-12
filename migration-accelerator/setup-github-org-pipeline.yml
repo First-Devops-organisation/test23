@@ -43,15 +43,12 @@ steps:
 # Uncomment this step AFTER you have reviewed the exported JSON,
 # updated config/team-mappings.json, and committed it to the repo.
 # ---------------------------------------------------------------
-- task: PowerShell@2
-  displayName: '3. Create & Sync GitHub Teams'
-  inputs:
-    filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/team.ps1'
-    arguments: >
-      -GitHubOrg "$(GH_Org)"
-      -GitHubPat "$(GH_PAT)"
-      -AdoOrgUrl "$(ADO_Org)"
-      -AdoPat "$(ADO_PAT)"
-      -TeamMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
-      -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
-    pwsh: true
+# - task: PowerShell@2
+#   displayName: '3. Create & Sync GitHub Teams'
+#   inputs:
+#     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/team.ps1'
+#     arguments: >
+#       -GitHubOrg "$(GH_Org)"
+#       -GitHubPat "$(GH_PAT)"
+#       -TeamMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
+#     pwsh: true
