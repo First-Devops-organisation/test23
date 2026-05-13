@@ -19,7 +19,7 @@ jobs:
       targetType: 'filePath'
       filePath: 'migration-accelerator/01-prep/export-ado-full-config.ps1'
       arguments: >
-        -AdoOrgUrl "$(ADO_ORG_URL)"
+        -AdoOrgUrl "$(ADO_Org)"
         -AdoPat "$(ADO_PAT)"
         -UserMappingFile "$(Build.SourcesDirectory)/config/user-mappings.csv"
         -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings.json"
