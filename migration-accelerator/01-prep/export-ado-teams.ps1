@@ -377,8 +377,9 @@ if (Test-Path $UserMappingFile) {
 # ----------------------------------------------------------
 $projectsList = @()
 
-# Trim whitespace in case the pipeline variable has extra spaces
+# Trim whitespace and log the input
 $AdoProject = $AdoProject.Trim()
+Write-Host "Debug: AdoProject parameter is [$AdoProject]" -ForegroundColor DarkGray
 
 if ($AdoProject -ne "") {
     # Single project mode
