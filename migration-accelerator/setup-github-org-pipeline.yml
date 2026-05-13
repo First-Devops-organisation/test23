@@ -16,6 +16,17 @@ steps:
 # Set ADO_Project variable to target a single project,
 # or leave blank to export all projects in the org.
 # ---------------------------------------------------------------
+# - task: PowerShell@2
+#   displayName: '1. Export ADO Teams (Discovery)'
+#   inputs:
+#     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/export-ado-teams.ps1'
+#     arguments: >
+#       -AdoOrgUrl "$(ADO_Org)"
+#       -AdoPat "$(ADO_PAT)"
+#       -AdoProject "$(ADO_Project)"
+#       -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
+#       -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings-template.json"
+#     pwsh: true
 - task: PowerShell@2
   displayName: '1. Export ADO Teams (Discovery)'
   inputs:
@@ -23,11 +34,8 @@ steps:
     arguments: >
       -AdoOrgUrl "$(ADO_Org)"
       -AdoPat "$(ADO_PAT)"
-      -AdoProject "$(ADO_Project)"
-      -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
       -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings-template.json"
     pwsh: true
-
 # ---------------------------------------------------------------
 # STEP 2: Publish the generated JSON so you can download & review
 # ---------------------------------------------------------------
