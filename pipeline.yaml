@@ -24,16 +24,16 @@ jobs:
         -UserMappingFile "$(Build.SourcesDirectory)/config/user-mappings.csv"
         -OutputFile "$(Build.ArtifactStagingDirectory)/automated-team-mappings.json"
 
-  # # Step 2: Push the discovered teams and permissions to GitHub
-  # - task: PowerShell@2
-  #   displayName: 'Step 2: Sync to GitHub'
-  #   inputs:
-  #     targetType: 'filePath'
-  #     filePath: 'migration-accelerator/01-prep/team.ps1'
-  #     arguments: >
-  #       -GitHubOrg "$(GH_ORG_NAME)"
-  #       -GitHubPat "$(GH_PAT)"
-  #       -TeamMappingFile "$(Build.ArtifactStagingDirectory)/automated-team-mappings.json"
+  # Step 2: Push the discovered teams and permissions to GitHub
+  - task: PowerShell@2
+    displayName: 'Step 2: Sync to GitHub'
+    inputs:
+      targetType: 'filePath'
+      filePath: 'migration-accelerator/01-prep/team.ps1'
+      arguments: >
+        -GitHubOrg "$(GH_ORG_NAME)"
+        -GitHubPat "$(GH_PAT)"
+        -TeamMappingFile "$(Build.ArtifactStagingDirectory)/automated-team-mappings.json"
 
   # Step 3: Store the generated JSON in ADO Artifacts for you to view/download
   - task: PublishBuildArtifacts@1
