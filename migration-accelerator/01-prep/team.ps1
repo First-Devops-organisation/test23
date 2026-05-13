@@ -111,121 +111,89 @@ foreach ($map in $mappings) {
     # Step 1 - Ensure GitHub Team Exists
     # --------------------------------------------------
     try {
-        $ghTeam = Invoke-GitHubApi `
-            -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName"
-
+        $ghTeam = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName"
         Write-Host "  [OK] GitHub team '$githubTeamName' already exists." -ForegroundColor Green
+
+        # --- Update Hierarchy for existing team ---
+        if ($map.parentTeam -and $map.parentTeam.Trim() -ne "") {
+            $parentName = $map.parentTeam.Trim()
+            Write-Host "  Checking/Updating parent for existing team..." -ForegroundColor DarkGray
+            
+            try {
+                $parentTeamObj = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$parentName"
+            } catch {
+                Write-Host "    Creating missing parent '$parentName'..." -ForegroundColor Yellow
+                $parentTeamObj = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams" -Method "POST" -Body @{ name = $parentName; privacy = "closed" }
+            }
+
+            Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName" -Method "PATCH" -Body @{ parent_team_id = $parentTeamObj.id }
+            Write-Host "  [UPDATED] Linked existing team '$githubTeamName' to parent '$parentName'." -ForegroundColor Green
+        }
     }
     catch {
         Write-Host "  [NEW] Creating GitHub team '$githubTeamName'..." -ForegroundColor Cyan
 
         $privacy = if ($map.privacy) { $map.privacy } else { "closed" }
-
         $createBody = @{
             name        = $githubTeamName
             description = $map.githubTeamDescription
             privacy     = $privacy
         }
 
-        $ghTeam = Invoke-GitHubApi `
-            -Uri "https://api.github.com/orgs/$GitHubOrg/teams" `
-            -Method "POST" `
-            -Body $createBody
+        # --- Hierarchy Logic: Handle Parent Team for New Team ---
+        if ($map.parentTeam -and $map.parentTeam.Trim() -ne "") {
+            $parentName = $map.parentTeam.Trim()
+            try {
+                $parentTeamObj = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$parentName"
+            } catch {
+                $parentTeamObj = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams" -Method "POST" -Body @{ name = $parentName; privacy = "closed" }
+            }
+            $createBody.parent_team_id = $parentTeamObj.id
+        }
 
-        Write-Host "  [CREATED] GitHub team '$githubTeamName'" -ForegroundColor Green
+        $ghTeam = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams" -Method "POST" -Body $createBody
+        Write-Host "  [CREATED] GitHub team '$githubTeamName' with parent." -ForegroundColor Green
     }
 
     # --------------------------------------------------
-    # Step 2 - Add Maintainers from Config
+    # Step 2 - Add Maintainers
     # --------------------------------------------------
     $maintainerList = @($map.maintainers | Where-Object { $_ -and $_.Trim() -ne "" })
-
     if ($maintainerList.Count -gt 0) {
-        Write-Host "  Adding $($maintainerList.Count) maintainer(s)..." -ForegroundColor Cyan
         foreach ($ghUser in $maintainerList) {
             try {
-                $result = Invoke-GitHubApi `
-                    -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/memberships/$ghUser" `
-                    -Method "PUT" `
-                    -Body @{ role = "maintainer" }
-
-                Write-Host "    [MAINTAINER] $ghUser -> $($result.state)" -ForegroundColor Green
-            }
-            catch {
-                Write-Warning "    [FAILED] Could not add maintainer: $ghUser | $($_.Exception.Message)"
-            }
+                Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/memberships/$ghUser" -Method "PUT" -Body @{ role = "maintainer" }
+                Write-Host "    [MAINTAINER] $ghUser added." -ForegroundColor Green
+            } catch { Write-Warning "    [FAILED] Maintainer: $ghUser" }
         }
-    } else {
-        Write-Host "  [WARN] No maintainers defined in config for this team." -ForegroundColor Yellow
     }
 
     # --------------------------------------------------
-    # Step 3 - Add Members from Config
+    # Step 3 - Add Members
     # --------------------------------------------------
     $memberList = @($map.members | Where-Object { $_ -and $_.Trim() -ne "" })
-
     if ($memberList.Count -gt 0) {
-        Write-Host "  Adding $($memberList.Count) member(s)..." -ForegroundColor Cyan
         foreach ($ghUser in $memberList) {
-
-            # Skip if already a maintainer (avoid accidental demotion)
-            if ($maintainerList -contains $ghUser) {
-                Write-Host "    [SKIP] $ghUser is already a maintainer - skipping member add." -ForegroundColor DarkGray
-                continue
-            }
-
+            if ($maintainerList -contains $ghUser) { continue }
             try {
-                $result = Invoke-GitHubApi `
-                    -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/memberships/$ghUser" `
-                    -Method "PUT" `
-                    -Body @{ role = "member" }
-
-                Write-Host "    [MEMBER] $ghUser -> $($result.state)" -ForegroundColor Green
-            }
-            catch {
-                Write-Warning "    [FAILED] Could not add member: $ghUser | $($_.Exception.Message)"
-            }
+                Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/memberships/$ghUser" -Method "PUT" -Body @{ role = "member" }
+                Write-Host "    [MEMBER] $ghUser added." -ForegroundColor Green
+            } catch { Write-Warning "    [FAILED] Member: $ghUser" }
         }
-    } else {
-        Write-Host "  [INFO] No members defined in config for this team." -ForegroundColor DarkGray
     }
 
     # --------------------------------------------------
-    # Step 4 - Assign Repository Permissions from Config
+    # Step 4 - Repo Permissions
     # --------------------------------------------------
     $repoList = @($map.repositories | Where-Object { $_ })
-
     if ($repoList.Count -gt 0) {
-        Write-Host "  Assigning $($repoList.Count) repository permission(s)..." -ForegroundColor Cyan
         foreach ($repo in $repoList) {
             try {
-                Invoke-GitHubApi `
-                    -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/repos/$GitHubOrg/$($repo.name)" `
-                    -Method "PUT" `
-                    -Body @{ permission = $repo.permission }
-
+                Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/repos/$GitHubOrg/$($repo.name)" -Method "PUT" -Body @{ permission = $repo.permission }
                 Write-Host "    [REPO] $($repo.name) -> $($repo.permission)" -ForegroundColor Green
-            }
-            catch {
-                Write-Warning "    [FAILED] Could not assign repo '$($repo.name)': $($_.Exception.Message)"
-            }
-        }
-    } else {
-        Write-Host "  [INFO] No repositories defined in config for this team." -ForegroundColor DarkGray
-    }
-
-    # --------------------------------------------------
-    # Step 5 - Log Unmapped Users (if present in config)
-    # --------------------------------------------------
-    $unmapped = @($map.unmappedAdoUsers | Where-Object { $_ })
-    if ($unmapped.Count -gt 0) {
-        Write-Host "  [ACTION REQUIRED] $($unmapped.Count) ADO user(s) not migrated (no GitHub username):" -ForegroundColor Yellow
-        foreach ($u in $unmapped) {
-            Write-Host "    - $u" -ForegroundColor DarkYellow
+            } catch { Write-Warning "    [FAILED] Repo: $($repo.name)" }
         }
     }
 }
 
-Write-Host "`n=========================================" -ForegroundColor Cyan
-Write-Host " Team Synchronization Complete" -ForegroundColor Cyan
-Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host "`n=== Team Synchronization Complete ===" -ForegroundColor Cyan
