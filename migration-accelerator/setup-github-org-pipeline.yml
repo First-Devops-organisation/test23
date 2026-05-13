@@ -1,3 +1,13 @@
+parameters:
+  - name: RunMode
+    displayName: 'Pipeline Action'
+    type: string
+    default: 'Discovery'
+    values:
+      - 'Discovery'
+      - 'CreateTeamsAndInvite'
+      - 'AssignRepoAccess'
+
 trigger: none
 
 pool:
@@ -13,22 +23,10 @@ steps:
 
 # ---------------------------------------------------------------
 # STEP 1: Export ADO Teams to a JSON template (Discovery)
-# Set ADO_Project variable to target a single project,
-# or leave blank to export all projects in the org.
 # ---------------------------------------------------------------
-# - task: PowerShell@2
-#   displayName: '1. Export ADO Teams (Discovery)'
-#   inputs:
-#     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/export-ado-teams.ps1'
-#     arguments: >
-#       -AdoOrgUrl "$(ADO_Org)"
-#       -AdoPat "$(ADO_PAT)"
-#       -AdoProject "$(ADO_Project)"
-#       -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
-#       -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings-template.json"
-#     pwsh: true
 - task: PowerShell@2
   displayName: '1. Export ADO Teams (Discovery)'
+  condition: eq('${{ parameters.RunMode }}', 'Discovery')
   inputs:
     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/export-ado-teams.ps1'
     arguments: >
@@ -36,23 +34,24 @@ steps:
       -AdoPat "$(ADO_PAT)"
       -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings-template.json"
     pwsh: true
+
 # ---------------------------------------------------------------
-# STEP 2: Publish the generated JSON so you can download & review
+# STEP 2: Publish the generated JSON
 # ---------------------------------------------------------------
 - task: PublishBuildArtifacts@1
   displayName: '2. Publish Exported Teams JSON'
+  condition: eq('${{ parameters.RunMode }}', 'Discovery')
   inputs:
     PathtoPublish: '$(Build.ArtifactStagingDirectory)/team-mappings-template.json'
     ArtifactName: 'team-mappings-template'
     publishLocation: 'Container'
 
 # ---------------------------------------------------------------
-# STEP 3: Create & Sync GitHub Teams (Actual Migration)
-# Uncomment this step AFTER you have reviewed the exported JSON,
-# updated config/team-mappings.json, and committed it to the repo.
+# STEP 3: Create Teams, Invite Users, or Assign Repos
 # ---------------------------------------------------------------
 - task: PowerShell@2
-  displayName: '3. Create & Sync GitHub Teams'
+  displayName: '3. Execute Team Sync or Repo Access'
+  condition: ne('${{ parameters.RunMode }}', 'Discovery')
   inputs:
     filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/sync-teams.ps1'
     arguments: >
@@ -62,4 +61,5 @@ steps:
       -AdoPat "$(ADO_PAT)"
       -TeamMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
       -UserMappingFile "$(System.DefaultWorkingDirectory)/migration-accelerator/config/user-mappings.csv"
+      -RunMode "${{ parameters.RunMode }}"
     pwsh: true
