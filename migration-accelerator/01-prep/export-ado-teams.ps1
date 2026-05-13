@@ -407,7 +407,8 @@ if ($AdoProject -ne "") {
     }
 
     $projectsList = $projectsResponse.value
-    Write-Host "Found $($projectsList.Count) projects." -ForegroundColor Green
+    Write-Host "Found $($projectsList.Count) total projects in the organization." -ForegroundColor Green
+    foreach ($p in $projectsList) { Write-Host "  - $($p.name)" -ForegroundColor Gray }
 }
 
 $mappings = [System.Collections.Generic.List[object]]::new()
@@ -549,4 +550,3 @@ if ($unmappedUsers.Count -gt 0) {
 
 Write-Host "`n Output saved to: $OutputFile" -ForegroundColor Cyan
 Write-Host " Next Step: Review the file, assign 'maintainers', then run the team sync pipeline." -ForegroundColor Yellow
-
