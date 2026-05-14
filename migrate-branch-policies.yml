@@ -1,4 +1,4 @@
-trigger: none # Manual run only
+trigger: none
 
 pool:
   vmImage: 'windows-latest'
@@ -6,17 +6,47 @@ pool:
 variables:
   - group: 'migration-branch-policies'
 
-steps:
-- task: PowerShell@2
-  displayName: 'Migrate Branch Policies'
-  inputs:
-    filePath: '$(System.DefaultWorkingDirectory)/branch-policy-migration.ps1'
-    arguments: >
-      -AdoOrgUrl "$(ADO_Org)"
-      -AdoProject "$(ADO_Project)"
-      -AdoRepoName "$(ADO_Repo)"
-      -AdoPat "$(ADO_PAT)"
-      -GitHubOrg "$(GH_Org)"
-      -GitHubRepo "$(GH_Repo)"
-      -GitHubPat "$(GH_PAT)"
-    pwsh: true
+stages:
+- stage: Discovery
+  displayName: 'Phase 1: Discover Policies'
+  jobs:
+  - job: ExportPolicies
+    steps:
+    - task: PowerShell@2
+      displayName: 'Export ADO Policies to JSON'
+      inputs:
+        filePath: '$(System.DefaultWorkingDirectory)/export-branch-policies.ps1'
+        arguments: >
+          -AdoOrgUrl "$(ADO_Org)"
+          -AdoProject "$(ADO_Project)"
+          -AdoPat "$(ADO_PAT)"
+          -OutputFile "$(Build.ArtifactStagingDirectory)/branch-policy-mappings.json"
+        pwsh: true
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Policy Inventory'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/branch-policy-mappings.json'
+        ArtifactName: 'policy-discovery'
+
+- stage: Migration
+  displayName: 'Phase 2: Apply to GitHub'
+  condition: succeeded()
+  jobs:
+  - job: ApplyPolicies
+    # Note: In a real scenario, you would review the Discovery artifact 
+    # and commit it to your repo as 'config/branch-policy-mappings.json'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Apply Policies to GitHub'
+      inputs:
+        filePath: '$(System.DefaultWorkingDirectory)/branch-policy-migration.ps1'
+        arguments: >
+          -AdoOrgUrl "$(ADO_Org)"
+          -AdoProject "$(ADO_Project)"
+          -AdoRepoName "$(ADO_Repo)"
+          -AdoPat "$(ADO_PAT)"
+          -GitHubOrg "$(GH_Org)"
+          -GitHubRepo "$(GH_Repo)"
+          -GitHubPat "$(GH_PAT)"
+        pwsh: true
