@@ -1,0 +1,65 @@
+parameters:
+  - name: RunMode
+    displayName: 'Pipeline Action'
+    type: string
+    default: 'Discovery'
+    values:
+      - 'Discovery'
+      - 'CreateTeamsAndInvite'
+      - 'AssignRepoAccess'
+
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - group: 'setup-github-org' # Pulls everything from your Library -> setup-github-org
+  # ADO_Project: Optionally set this variable in your Library to target a single project.
+  # Leave blank ("") to export all projects in the org.
+  # Example: "YASH-DevOps-Serverless"
+
+steps:
+
+# ---------------------------------------------------------------
+# STEP 1: Export ADO Teams to a JSON template (Discovery)
+# ---------------------------------------------------------------
+- task: PowerShell@2
+  displayName: '1. Export ADO Teams (Discovery)'
+  condition: eq('${{ parameters.RunMode }}', 'Discovery')
+  inputs:
+    filePath: '$(System.DefaultWorkingDirectory)/ado-team-migration/01-prep/export-ado-teams.ps1'
+    arguments: >
+      -AdoOrgUrl "$(ADO_Org)"
+      -AdoPat "$(ADO_PAT)"
+      -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings-template.json"
+    pwsh: true
+
+# ---------------------------------------------------------------
+# STEP 2: Publish the generated JSON
+# ---------------------------------------------------------------
+- task: PublishBuildArtifacts@1
+  displayName: '2. Publish Exported Teams JSON'
+  condition: eq('${{ parameters.RunMode }}', 'Discovery')
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/team-mappings-template.json'
+    ArtifactName: 'team-mappings-template'
+    publishLocation: 'Container'
+
+# ---------------------------------------------------------------
+# STEP 3: Create Teams, Invite Users, or Assign Repos
+# ---------------------------------------------------------------
+- task: PowerShell@2
+  displayName: '3. Execute Team Sync or Repo Access'
+  condition: ne('${{ parameters.RunMode }}', 'Discovery')
+  inputs:
+    filePath: '$(System.DefaultWorkingDirectory)/ado-team-migration/01-prep/sync-teams.ps1'
+    arguments: >
+      -GitHubOrg "$(GH_Org)"
+      -GitHubPat "$(GH_PAT)"
+      -AdoOrg "$(ADO_Org)"
+      -AdoPat "$(ADO_PAT)"
+      -TeamMappingFile "$(System.DefaultWorkingDirectory)/ado-team-migration/config/team-mappings.json"
+      -UserMappingFile "$(System.DefaultWorkingDirectory)/ado-team-migration/config/user-mappings.csv"
+      -RunMode "${{ parameters.RunMode }}"
+    pwsh: true
