@@ -13,16 +13,7 @@
         "varsha-patilyash"
       ],
       "members": [],
-      "repositories": [
-        {
-          "name": "Serverless-Frontend",
-          "permission": "push"
-        },
-        {
-          "name": "Serverless-Backend",
-          "permission": "maintain"
-        }
-      ]
+      "repositories": []
     }
   ],
   "defaultVisibility": "closed"
