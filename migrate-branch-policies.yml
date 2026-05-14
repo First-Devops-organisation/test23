@@ -19,6 +19,7 @@ stages:
         arguments: >
           -AdoOrgUrl "$(ADO_Org)"
           -AdoProject "$(ADO_Project)"
+          -AdoRepoName "$(ADO_Repo)"
           -AdoPat "$(ADO_PAT)"
           -OutputFile "$(Build.ArtifactStagingDirectory)/branch-policy-mappings.json"
         pwsh: true
