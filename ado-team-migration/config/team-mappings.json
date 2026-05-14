@@ -13,7 +13,16 @@
         "varsha-patilyash"
       ],
       "members": [],
-      "repositories": []
+      "repositories": [
+        {
+          "name": "YASH-DevOps-Serverless-dummy-secret",
+          "permission": "pull"
+        },
+        {
+          "name": "YASH-DevOps-Serverless-migration-testing",
+          "permission": "push"
+        }
+      ]
     }
   ],
   "defaultVisibility": "closed"
