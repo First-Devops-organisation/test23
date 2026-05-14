@@ -51,7 +51,6 @@ stages:
         arguments: >
           -GitHubOrg "$(GH_Org)"
           -GitHubPat "$(GH_PAT)"
-          # Note: The artifact is downloaded into a subfolder named after the artifact
           -MappingFile "$(System.DefaultWorkingDirectory)/policy-discovery/branch-policy-mappings.json"
         pwsh: true
 
