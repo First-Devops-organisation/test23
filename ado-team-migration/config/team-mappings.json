@@ -8,13 +8,19 @@
       "parentTeam": "YASH-Serverless-Project",
       "privacy": "closed",
       "maintainers": [
-        "Urvashi773"
+        "Urvashi773",
+        "prateekshivhari",
+        "varsha-patilyash"
       ],
       "members": [],
       "repositories": [
         {
           "name": "Serverless-Frontend",
           "permission": "push"
+        },
+        {
+          "name": "Serverless-Backend",
+          "permission": "maintain"
         }
       ]
     }
