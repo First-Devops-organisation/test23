@@ -34,9 +34,16 @@ stages:
   condition: succeeded()
   jobs:
   - job: ApplyPolicies
-    # Note: In a real scenario, you would review the Discovery artifact 
-    # and commit it to your repo as 'config/branch-policy-mappings.json'
     steps:
+    # --- NEW STEP: Download the JSON file from Phase 1 ---
+    - task: DownloadBuildArtifacts@0
+      displayName: 'Download Policy Mapping'
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        artifactName: 'policy-discovery'
+        downloadPath: '$(System.DefaultWorkingDirectory)'
+
     - task: PowerShell@2
       displayName: 'Apply Policies to GitHub'
       inputs:
@@ -44,5 +51,25 @@ stages:
         arguments: >
           -GitHubOrg "$(GH_Org)"
           -GitHubPat "$(GH_PAT)"
-          -MappingFile "$(System.DefaultWorkingDirectory)/branch-policy-mappings.json"
+          # Note: The artifact is downloaded into a subfolder named after the artifact
+          -MappingFile "$(System.DefaultWorkingDirectory)/policy-discovery/branch-policy-mappings.json"
         pwsh: true
+
+
+# - stage: Migration
+#   displayName: 'Phase 2: Apply to GitHub'
+#   condition: succeeded()
+#   jobs:
+#   - job: ApplyPolicies
+#     # Note: In a real scenario, you would review the Discovery artifact 
+#     # and commit it to your repo as 'config/branch-policy-mappings.json'
+#     steps:
+#     - task: PowerShell@2
+#       displayName: 'Apply Policies to GitHub'
+#       inputs:
+#         filePath: '$(System.DefaultWorkingDirectory)/sync-branch-policies.ps1'
+#         arguments: >
+#           -GitHubOrg "$(GH_Org)"
+#           -GitHubPat "$(GH_PAT)"
+#           -MappingFile "$(System.DefaultWorkingDirectory)/branch-policy-mappings.json"
+#         pwsh: true
