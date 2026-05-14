@@ -91,48 +91,48 @@
         }
       ]
     }
-//     {
-//       "adoProject": "YASH-DevOps-Platform",
-//       "adoTeam": "Platform-Developers",
-//       "githubTeam": "platform-developers",
-//       "githubTeamDescription": "Core developers for the Platform team",
-//       "parentTeam": "YASH-Platform-Master",
-//       "privacy": "closed",
-//       "maintainers": [
-//         ""
-//       ],
-//       "members": [
-//         "Akash-com22",
-//         "ankitpanwar1"
-//       ],
-//       "repositories": [
-//         {
-//           "name": "dummy-secretymigr",
-//           "permission": "push"
-//         }
-//       ]
-//     },
-//     {
-//       "adoProject": "YASH-DevOps-Platform",
-//       "adoTeam": "Platform-DevOps",
-//       "githubTeam": "platform-devops",
-//       "githubTeamDescription": "DevOps and SRE for the Platform",
-//       "parentTeam": "YASH-Platform-Master",
-//       "privacy": "closed",
-//       "maintainers": [
-//         "varsha-patilyash"
-//       ],
-//       "members": [
-//         "Urvashi773",
-//         "prateekshivhari"
-//       ],
-//       "repositories": [
-//         {
-//           "name": "eShopOnWeb",
-//           "permission": "pull"
-//         }
-//       ]
-//     }
-//   ],
-//   "defaultVisibility": "closed"
+    // {
+    //   "adoProject": "YASH-DevOps-Platform",
+    //   "adoTeam": "Platform-Developers",
+    //   "githubTeam": "platform-developers",
+    //   "githubTeamDescription": "Core developers for the Platform team",
+    //   "parentTeam": "YASH-Platform-Master",
+    //   "privacy": "closed",
+    //   "maintainers": [
+    //     ""
+    //   ],
+    //   "members": [
+    //     "Akash-com22",
+    //     "ankitpanwar1"
+    //   ],
+    //   "repositories": [
+    //     {
+    //       "name": "dummy-secretymigr",
+    //       "permission": "push"
+    //     }
+    //   ]
+    // },
+    // {
+    //   "adoProject": "YASH-DevOps-Platform",
+    //   "adoTeam": "Platform-DevOps",
+    //   "githubTeam": "platform-devops",
+    //   "githubTeamDescription": "DevOps and SRE for the Platform",
+    //   "parentTeam": "YASH-Platform-Master",
+    //   "privacy": "closed",
+    //   "maintainers": [
+    //     "varsha-patilyash"
+    //   ],
+    //   "members": [
+    //     "Urvashi773",
+    //     "prateekshivhari"
+    //   ],
+    //   "repositories": [
+    //     {
+    //       "name": "eShopOnWeb",
+    //       "permission": "pull"
+    //     }
+    //   ]
+    // }
+  ],
+  "defaultVisibility": "closed"
 }
