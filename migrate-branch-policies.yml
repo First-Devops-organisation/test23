@@ -1,0 +1,22 @@
+trigger: none # Manual run only
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - group: 'migration-branch-policies'
+
+steps:
+- task: PowerShell@2
+  displayName: 'Migrate Branch Policies'
+  inputs:
+    filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/migrate-branch-policies.ps1'
+    arguments: >
+      -AdoOrgUrl "$(ADO_Org)"
+      -AdoProject "$(ADO_Project)"
+      -AdoRepoName "$(ADO_Repo)"
+      -AdoPat "$(ADO_PAT)"
+      -GitHubOrg "$(GH_Org)"
+      -GitHubRepo "$(GH_Repo)"
+      -GitHubPat "$(GH_PAT)"
+    pwsh: true
