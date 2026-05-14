@@ -42,10 +42,7 @@ stages:
       inputs:
         filePath: '$(System.DefaultWorkingDirectory)/sync-branch-policies.ps1'
         arguments: >
-          # -AdoOrgUrl "$(ADO_Org)"
-          # -AdoProject "$(ADO_Project)"
-          # -AdoRepoName "$(ADO_Repo)"
-          # -AdoPat "$(ADO_PAT)"
+
           -GitHubOrg "$(GH_Org)"
           -GitHubRepo "$(GH_Repo)"
           -GitHubPat "$(GH_PAT)"
