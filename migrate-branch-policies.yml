@@ -49,4 +49,5 @@ stages:
           -GitHubOrg "$(GH_Org)"
           -GitHubRepo "$(GH_Repo)"
           -GitHubPat "$(GH_PAT)"
+          -MappingFile "$(System.DefaultWorkingDirectory)/branch-policy-mappings.json"
         pwsh: true
