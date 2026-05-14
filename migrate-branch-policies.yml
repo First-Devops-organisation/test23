@@ -10,7 +10,7 @@ steps:
 - task: PowerShell@2
   displayName: 'Migrate Branch Policies'
   inputs:
-    filePath: '$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/migrate-branch-policies.ps1'
+    filePath: '$(System.DefaultWorkingDirectory)/branch-policy-migration.ps1'
     arguments: >
       -AdoOrgUrl "$(ADO_Org)"
       -AdoProject "$(ADO_Project)"
