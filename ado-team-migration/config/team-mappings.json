@@ -7,9 +7,16 @@
       "githubTeamDescription": "The core development team for the Serverless project.",
       "parentTeam": "YASH-Serverless-Project",
       "privacy": "closed",
-      "maintainers": [],
+      "maintainers": [
+        "Urvashi773"
+      ],
       "members": [],
-      "repositories": []
+      "repositories": [
+        {
+          "name": "Serverless-Frontend",
+          "permission": "push"
+        }
+      ]
     }
   ],
   "defaultVisibility": "closed"
