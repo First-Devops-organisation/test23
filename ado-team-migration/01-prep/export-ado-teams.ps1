@@ -460,6 +460,22 @@ foreach ($project in $projectsResponse.value) {
             Write-Host "    No members found." -ForegroundColor DarkGray
         }
 
+        # Step 4.5: Fetch Repositories for the Project (To pre-populate access mapping)
+        $reposArray = [System.Collections.Generic.List[object]]::new()
+        $reposResponse = Invoke-AdoApi -Uri "$AdoOrgUrl/$($project.id)/_apis/git/repositories?api-version=7.1"
+        
+        if ($reposResponse -and $reposResponse.value) {
+            foreach ($repo in $reposResponse.value) {
+                # Strategy 3: Prefix repo name with project name to avoid collisions in the single GitHub Org
+                $ghRepoName = "$($project.name)-$($repo.name)" -replace '[^a-zA-Z0-9\-]', '-' -replace '-+', '-'
+                
+                $reposArray.Add([ordered]@{
+                    name       = $ghRepoName
+                    permission = "pull" # Default safe permission. Change in JSON to push/maintain if needed.
+                })
+            }
+        }
+
         # Step 5: Build Mapping Entry
         $teamEntry = [ordered]@{
             adoProject            = $project.name
@@ -470,6 +486,7 @@ foreach ($project in $projectsResponse.value) {
             privacy               = "closed"
             maintainers           = @($resolvedMaintainers)   # Auto-populated from ADO Team Admins
             members               = @($resolvedMembers)       # Auto-populated from ADO Members
+            repositories          = @($reposArray)            # Auto-populated from ADO Repositories
             unmappedAdoUsers      = @($teamUnmapped)          # ACTION REQUIRED: add to user-mappings.csv
             adoMembersAudit       = @($adoMembersAudit)       # Full audit: ADO role -> GitHub role mapping
         }
