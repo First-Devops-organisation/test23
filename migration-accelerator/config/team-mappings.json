@@ -53,8 +53,7 @@
         ""
       ],
       "members": [
-        "Akash-com22",
-        "Urvashi773"
+        "Akash-com22"
       ],
       "repositories": [
         {
@@ -74,61 +73,66 @@
         "varsha-patilyash"
       ],
       "members": [
-        "ankitpanwar1"
+        "ankitpanwar1",
+        "Urvashi773"
       ],
       "repositories": [
         {
-          "name": "SampleAzurePipelineCSharp",
+          "name": "migration_testing",
           "permission": "maintain"
         },
         {
-          "name": "america-terraform",
+          "name": "Demoapp-Application-API",
           "permission": "admin"
-        }
-      ]
-    },
-    {
-      "adoProject": "YASH-DevOps-Platform",
-      "adoTeam": "Platform-Developers",
-      "githubTeam": "platform-developers",
-      "githubTeamDescription": "Core developers for the Platform team",
-      "parentTeam": "YASH-Platform-Master",
-      "privacy": "closed",
-      "maintainers": [
-        ""
-      ],
-      "members": [
-        "Akash-com22",
-        "ankitpanwar1"
-      ],
-      "repositories": [
-        {
-          "name": "dummy-secretymigr",
-          "permission": "push"
-        }
-      ]
-    },
-    {
-      "adoProject": "YASH-DevOps-Platform",
-      "adoTeam": "Platform-DevOps",
-      "githubTeam": "platform-devops",
-      "githubTeamDescription": "DevOps and SRE for the Platform",
-      "parentTeam": "YASH-Platform-Master",
-      "privacy": "closed",
-      "maintainers": [
-        "varsha-patilyash"
-      ],
-      "members": [
-        "Urvashi773",
-        "prateekshivhari"
-      ],
-      "repositories": [
-        {
-          "name": "eShopOnWeb",
+        },
+          {
+          "name": "Advanced-Security",
           "permission": "pull"
         }
       ]
-    }
-  ],
-  "defaultVisibility": "closed"
-}
+    },
+//     {
+//       "adoProject": "YASH-DevOps-Platform",
+//       "adoTeam": "Platform-Developers",
+//       "githubTeam": "platform-developers",
+//       "githubTeamDescription": "Core developers for the Platform team",
+//       "parentTeam": "YASH-Platform-Master",
+//       "privacy": "closed",
+//       "maintainers": [
+//         ""
+//       ],
+//       "members": [
+//         "Akash-com22",
+//         "ankitpanwar1"
+//       ],
+//       "repositories": [
+//         {
+//           "name": "dummy-secretymigr",
+//           "permission": "push"
+//         }
+//       ]
+//     },
+//     {
+//       "adoProject": "YASH-DevOps-Platform",
+//       "adoTeam": "Platform-DevOps",
+//       "githubTeam": "platform-devops",
+//       "githubTeamDescription": "DevOps and SRE for the Platform",
+//       "parentTeam": "YASH-Platform-Master",
+//       "privacy": "closed",
+//       "maintainers": [
+//         "varsha-patilyash"
+//       ],
+//       "members": [
+//         "Urvashi773",
+//         "prateekshivhari"
+//       ],
+//       "repositories": [
+//         {
+//           "name": "eShopOnWeb",
+//           "permission": "pull"
+//         }
+//       ]
+//     }
+//   ],
+//   "defaultVisibility": "closed"
+// }
