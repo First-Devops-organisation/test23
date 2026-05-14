@@ -33,6 +33,7 @@ steps:
       -AdoOrgUrl "$(ADO_Org)"
       -AdoPat "$(ADO_PAT)"
       -OutputFile "$(Build.ArtifactStagingDirectory)/team-mappings-template.json"
+      -UserMappingFile "$(System.DefaultWorkingDirectory)/ado-team-migration/config/user-mappings.csv"
     pwsh: true
 
 # ---------------------------------------------------------------
