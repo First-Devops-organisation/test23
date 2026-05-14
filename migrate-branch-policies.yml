@@ -40,7 +40,7 @@ stages:
     - task: PowerShell@2
       displayName: 'Apply Policies to GitHub'
       inputs:
-        filePath: '$(System.DefaultWorkingDirectory)/branch-policy-migration.ps1'
+        filePath: '$(System.DefaultWorkingDirectory)/sync-branch-policies.ps1'
         arguments: >
           -AdoOrgUrl "$(ADO_Org)"
           -AdoProject "$(ADO_Project)"
