@@ -269,13 +269,27 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
             $secretVal = $f.Secret
             if ([string]::IsNullOrWhiteSpace($secretVal)) { $secretVal = $f.Match }
 
+            # Resolve branch name from commit hash
+            $branchName = "UNKNOWN"
+            if ($f.Commit) {
+                try {
+                    $branchOutput = & git --git-dir=$clonePath branch --contains $f.Commit 2>&1
+                    if ($LASTEXITCODE -eq 0 -and $branchOutput) {
+                        # Clean up branch names (remove leading * and whitespace), take first match
+                        $branchName = ($branchOutput | ForEach-Object { $_.TrimStart('* ').Trim() } | Where-Object { $_ -ne '' } | Select-Object -First 1)
+                        if ([string]::IsNullOrWhiteSpace($branchName)) { $branchName = "UNKNOWN" }
+                    }
+                }
+                catch { $branchName = "UNKNOWN" }
+            }
+
             $findings.Add([PSCustomObject]@{
                     Repo        = $repo.Name
                     SecretName  = $f.RuleID.ToUpper()
                     SecretValue = $secretVal.Trim()
                     File        = $f.File
                     LineNumber  = $f.StartLine
-                    Branch      = "HISTORY"
+                    Branch      = $branchName
                     CommitHash  = if ($f.Commit) { $f.Commit.Substring(0, 12) } else { "N/A" }
                     Source      = "gitleaks"
                     RuleID      = $f.RuleID
