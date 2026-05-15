@@ -121,7 +121,8 @@ foreach ($map in $mappings) {
             
             try {
                 $parentTeamObj = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$parentName"
-            } catch {
+            }
+            catch {
                 Write-Host "    Creating missing parent '$parentName'..." -ForegroundColor Yellow
                 $parentTeamObj = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams" -Method "POST" -Body @{ name = $parentName; privacy = "closed" }
             }
@@ -145,7 +146,8 @@ foreach ($map in $mappings) {
             $parentName = $map.parentTeam.Trim()
             try {
                 $parentTeamObj = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$parentName"
-            } catch {
+            }
+            catch {
                 $parentTeamObj = Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams" -Method "POST" -Body @{ name = $parentName; privacy = "closed" }
             }
             $createBody.parent_team_id = $parentTeamObj.id
@@ -164,7 +166,8 @@ foreach ($map in $mappings) {
             try {
                 Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/memberships/$ghUser" -Method "PUT" -Body @{ role = "maintainer" }
                 Write-Host "    [MAINTAINER] $ghUser added." -ForegroundColor Green
-            } catch { Write-Warning "    [FAILED] Maintainer: $ghUser" }
+            }
+            catch { Write-Warning "    [FAILED] Maintainer: $ghUser" }
         }
     }
 
@@ -178,7 +181,8 @@ foreach ($map in $mappings) {
             try {
                 Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/memberships/$ghUser" -Method "PUT" -Body @{ role = "member" }
                 Write-Host "    [MEMBER] $ghUser added." -ForegroundColor Green
-            } catch { Write-Warning "    [FAILED] Member: $ghUser" }
+            }
+            catch { Write-Warning "    [FAILED] Member: $ghUser" }
         }
     }
 
@@ -191,7 +195,8 @@ foreach ($map in $mappings) {
             try {
                 Invoke-GitHubApi -Uri "https://api.github.com/orgs/$GitHubOrg/teams/$githubTeamName/repos/$GitHubOrg/$($repo.name)" -Method "PUT" -Body @{ permission = $repo.permission }
                 Write-Host "    [REPO] $($repo.name) -> $($repo.permission)" -ForegroundColor Green
-            } catch { Write-Warning "    [FAILED] Repo: $($repo.name)" }
+            }
+            catch { Write-Warning "    [FAILED] Repo: $($repo.name)" }
         }
     }
 }
