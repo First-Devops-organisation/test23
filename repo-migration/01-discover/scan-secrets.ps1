@@ -125,6 +125,7 @@ foreach ($repoName in $reposToScan) {
         $sizeMB = [math]::Round($repoData.size / 1MB, 2)
         
         $repos += [PSCustomObject]@{
+            Project   = $adoProj
             Name      = $repoData.name
             SizeMB    = $sizeMB
             Url       = $repoData.webUrl
@@ -240,17 +241,20 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     }
 
     # Run gitleaks
-    $exitCode = 0
+    $exitCode = -99
+    $glOutput = $null
     try {
-        # $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
-        $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner --all-refs 2>&1
-
-
+        $glOutput = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
         $exitCode = $LASTEXITCODE
     }
     catch {
-        $exitCode = $LASTEXITCODE
+        $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { -99 }
+        Write-Warning "  gitleaks exception for ${repoLabel}: $_"
     }
+
+    # Debug output — helps diagnose scan issues
+    Write-Host "  [DEBUG] gitleaks exit=$exitCode, reportExists=$(Test-Path $reportFile -ErrorAction SilentlyContinue), clone=$clonePath" -ForegroundColor DarkGray
+    if ($glOutput) { Write-Host "  [DEBUG] gitleaks output: $($glOutput | Out-String)" -ForegroundColor DarkGray }
 
     if ($exitCode -eq 0) {
         Write-Host "  CLEAN — $repoLabel" -ForegroundColor Green
@@ -266,18 +270,18 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
             if ([string]::IsNullOrWhiteSpace($secretVal)) { $secretVal = $f.Match }
 
             $findings.Add([PSCustomObject]@{
-                Repo        = $repo.Name
-                SecretName  = $f.RuleID.ToUpper()
-                SecretValue = $secretVal.Trim()
-                File        = $f.File
-                LineNumber  = $f.StartLine
-                Branch      = "HISTORY"
-                CommitHash  = if ($f.Commit) { $f.Commit.Substring(0, 12) } else { "N/A" }
-                Source      = "gitleaks"
-                RuleID      = $f.RuleID
-                Author      = $f.Author
-                Date        = $f.Date
-            })
+                    Repo        = $repo.Name
+                    SecretName  = $f.RuleID.ToUpper()
+                    SecretValue = $secretVal.Trim()
+                    File        = $f.File
+                    LineNumber  = $f.StartLine
+                    Branch      = "HISTORY"
+                    CommitHash  = if ($f.Commit) { $f.Commit.Substring(0, 12) } else { "N/A" }
+                    Source      = "gitleaks"
+                    RuleID      = $f.RuleID
+                    Author      = $f.Author
+                    Date        = $f.Date
+                })
         }
         $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = $count; Status = "SECRETS_FOUND" })
     }
