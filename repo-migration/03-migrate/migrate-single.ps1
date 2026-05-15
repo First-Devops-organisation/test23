@@ -169,16 +169,25 @@ gh extension list
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 2] Pre-check repo existence in GitHub..." -ForegroundColor Cyan
 $repoStatus = "NOT_EXISTS"
+
+# We check the actual name to detect redirects/renames. 
+# gh repo view follows redirects; if the returned name != $GHRepo, it's a redirect.
 $ErrorActionPreference = 'SilentlyContinue'
-[void](gh repo view "$GHOrg/$GHRepo" --json name 2>&1)
-if ($LASTEXITCODE -eq 0) {
+$actualName = (gh repo view "$GHOrg/$GHRepo" --json name --jq .name 2>$null)
+$exitCode = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+
+if ($exitCode -eq 0 -and $actualName -eq $GHRepo) {
     Write-Host "  Repo already exists: $GHOrg/$GHRepo" -ForegroundColor Yellow
     $repoStatus = "ALREADY_EXISTS"
+} elseif ($exitCode -eq 0 -and $actualName -ne $GHRepo) {
+    Write-Host "  Detected redirect: '$GHRepo' was renamed to '$actualName'." -ForegroundColor Cyan
+    Write-Host "  Treating '$GHRepo' as NOT_EXISTS to allow fresh migration." -ForegroundColor Green
+    $repoStatus = "NOT_EXISTS"
 } else {
     Write-Host "  Repo does not exist yet (will be migrated): $GHRepo"
     $repoStatus = "NOT_EXISTS"
 }
-$ErrorActionPreference = 'Stop'
 
 $repoStatus | Out-File $precheckFile -Encoding utf8
 Write-Host "  Status: $repoStatus"
