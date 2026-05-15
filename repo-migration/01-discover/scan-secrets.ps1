@@ -59,7 +59,7 @@ $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $reportDir = $config.output.reportDir
 $logDir = $config.output.logDir
 $cloneDir = $config.migration.cloneTempDir
-$gitleaksConfig = "$PSScriptRoot\..\config\gitleaks.toml"
+# $gitleaksConfig = "$PSScriptRoot\..\config\gitleaks.toml"
 
 foreach ($d in @($reportDir, $logDir, $cloneDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
