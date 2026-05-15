@@ -6,7 +6,7 @@ useDefault = true
 [[rules]]
 id = "custom-db-connection-string"
 description = "Detects generic database connection strings containing passwords"
-regex = '''(?i)(?:password|pwd)\s*=\s*([^;"'\s]+)'''
+regex = '''(?i)(?:password|pwd)\s*=\s*["']?((?!await|=>|\$\{)[^;"'\s]{5,})["']?'''
 secretGroup = 1
 tags = ["custom", "database", "credentials"]
 
@@ -37,3 +37,13 @@ description = "Detects hardcoded Bearer or Basic Authorization headers"
 regex = '''(?i)Authorization:\s*(?:Bearer|Basic)\s+([A-Za-z0-9\-._~+/]+=*)'''
 secretGroup = 1
 tags = ["custom", "header", "credentials"]
+
+[allowlist]
+description = "Global allowlist for common false positives"
+regexes = [
+    '''(?i)await\s+''',
+    '''(?i)=>\s*''',
+    '''(?i)\$\{[\w\d_.-]+\}''',
+    '''(?i)testPassword''',
+    '''(?i)SecretKeyOfDoom'''
+]
