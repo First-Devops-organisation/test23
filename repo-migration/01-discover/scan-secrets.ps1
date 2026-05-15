@@ -242,7 +242,10 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     # Run gitleaks
     $exitCode = 0
     try {
-        $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
+        # $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner 2>&1
+        $output = & gitleaks detect --source $clonePath --report-path $reportFile --report-format json --no-banner --all-refs 2>&1
+
+
         $exitCode = $LASTEXITCODE
     }
     catch {
