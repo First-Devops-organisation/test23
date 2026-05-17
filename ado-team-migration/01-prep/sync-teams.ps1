@@ -39,17 +39,26 @@ function Invoke-GhRest {
     }
 }
 
-# --- 1. Load User Mappings ---
+# --- 1. Load User Mappings & Exclusion List ---
 $userMap = @{}
+$excludedUsers = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 if (Test-Path $UserMappingFile) {
     Write-Host "Loading user mappings from $UserMappingFile..." -ForegroundColor Gray
     $csvData = Get-Content $UserMappingFile | Where-Object { $_.Trim() -ne "" } | ConvertFrom-Csv
     foreach ($row in $csvData) {
         $email = ($row.ADOEmail, $row.ado_email, $row.Email) | Where-Object { $_ } | Select-Object -First 1
+        $notes = ($row.Notes, $row.notes, $row.Status) | Where-Object { $_ } | Select-Object -First 1
         $ghUser = ($row.GitHubUsername, $row.github_username, $row.Username) | Where-Object { $_ } | Select-Object -First 1
+
+        # Track excluded users (ex-employees or invalid accounts)
+        if ($email -and $notes -and $notes.Trim().ToLower() -eq "excluded") {
+            $null = $excludedUsers.Add($email.ToLower().Trim())
+            continue # Do not add to userMap
+        }
+
         if ($email -and $ghUser) { $userMap[$email.ToLower().Trim()] = $ghUser.Trim() }
     }
-    Write-Host "   Loaded $($userMap.Count) user mappings." -ForegroundColor Gray
+    Write-Host "   Loaded $($userMap.Count) user mappings. ($($excludedUsers.Count) excluded/ex-employee accounts will be skipped.)" -ForegroundColor Gray
 } else {
     Write-Host "⚠️ User mapping file not found. All ADO users will receive email invites." -ForegroundColor Yellow
 }
@@ -108,6 +117,12 @@ foreach ($map in $mappings) {
                 $members = Invoke-RestMethod -Uri "$AdoOrg/_apis/projects/$($project.id)/teams/$($adoTeam.id)/members?api-version=7.1" -Headers $adoHeaders
                 foreach ($member in $members.value) {
                     $email = $member.identity.uniqueName.ToLower().Trim()
+
+                    # --- EXCLUSION CHECK: Skip ex-employees and invalid accounts ---
+                    if ($excludedUsers.Contains($email)) {
+                        Write-Host "      [EXCLUDED] $email is marked as excluded (ex-employee/invalid). Skipping." -ForegroundColor DarkYellow
+                        continue
+                    }
                     
                     if ($userMap.ContainsKey($email)) {
                         # KNOWN USER -> Direct Add
