@@ -27,7 +27,7 @@ steps:
       targetType: 'inline'
       script: |
         $owner = "$(Owner)"
-        $repo  = "migration"
+        $repo  = "$(GH_Repository)"
         $SecretValue = "$(${{ secretName }})"
 
         # Authenticate GitHub CLI with pipeline PAT
