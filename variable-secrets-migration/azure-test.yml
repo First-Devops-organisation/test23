@@ -5,7 +5,7 @@ parameters:
 - name: libraryGroup
   displayName: "Library Group Name" 
   type: string
-  default: 'Default Value'
+  default: 'DevOpsConfig'
 
 - name: secretNames
   type: object
