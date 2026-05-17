@@ -39,26 +39,37 @@ function Invoke-GhRest {
     }
 }
 
-# --- 1. Load User Mappings & Exclusion List ---
-$userMap = @{}
+# --- 1. Load User Mappings, Exclusion List & Invite List ---
+$userMap = @{}        # ADO email -> GitHub username (for direct-add)
 $excludedUsers = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$inviteList = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
 if (Test-Path $UserMappingFile) {
     Write-Host "Loading user mappings from $UserMappingFile..." -ForegroundColor Gray
     $csvData = Get-Content $UserMappingFile | Where-Object { $_.Trim() -ne "" } | ConvertFrom-Csv
     foreach ($row in $csvData) {
-        $email = ($row.ADOEmail, $row.ado_email, $row.Email) | Where-Object { $_ } | Select-Object -First 1
-        $notes = ($row.Notes, $row.notes, $row.Status) | Where-Object { $_ } | Select-Object -First 1
-        $ghUser = ($row.GitHubUsername, $row.github_username, $row.Username) | Where-Object { $_ } | Select-Object -First 1
+        $email   = ($row.ADOEmail, $row.ado_email, $row.Email) | Where-Object { $_ } | Select-Object -First 1
+        $notes   = ($row.Notes, $row.notes, $row.Status)       | Where-Object { $_ } | Select-Object -First 1
+        $ghUser  = ($row.GitHubUsername, $row.github_username, $row.Username) | Where-Object { $_ } | Select-Object -First 1
 
-        # Track excluded users (ex-employees or invalid accounts)
-        if ($email -and $notes -and $notes.Trim().ToLower() -eq "excluded") {
-            $null = $excludedUsers.Add($email.ToLower().Trim())
-            continue # Do not add to userMap
+        if (-not $email) { continue }
+        $emailKey = $email.ToLower().Trim()
+
+        # Excluded (ex-employees) - skip completely
+        if ($notes -and $notes.Trim().ToLower() -eq "excluded") {
+            $null = $excludedUsers.Add($emailKey)
+            continue
         }
 
-        if ($email -and $ghUser) { $userMap[$email.ToLower().Trim()] = $ghUser.Trim() }
+        # Has a GitHub username - direct add
+        if ($ghUser) {
+            $userMap[$emailKey] = $ghUser.Trim()
+        } else {
+            # In CSV but no GitHub username - queue for email invite
+            $null = $inviteList.Add($emailKey)
+        }
     }
-    Write-Host "   Loaded $($userMap.Count) user mappings. ($($excludedUsers.Count) excluded/ex-employee accounts will be skipped.)" -ForegroundColor Gray
+    Write-Host "   Loaded $($userMap.Count) direct mappings, $($inviteList.Count) queued for invite, $($excludedUsers.Count) excluded." -ForegroundColor Gray
 } else {
     Write-Host "⚠️ User mapping file not found. All ADO users will receive email invites." -ForegroundColor Yellow
 }
@@ -118,14 +129,14 @@ foreach ($map in $mappings) {
                 foreach ($member in $members.value) {
                     $email = $member.identity.uniqueName.ToLower().Trim()
 
-                    # --- EXCLUSION CHECK: Skip ex-employees and invalid accounts ---
+                    # 1. Excluded? Skip entirely.
                     if ($excludedUsers.Contains($email)) {
-                        Write-Host "      [EXCLUDED] $email is marked as excluded (ex-employee/invalid). Skipping." -ForegroundColor DarkYellow
+                        Write-Host "      [EXCLUDED] $email is an ex-employee. Skipping." -ForegroundColor DarkYellow
                         continue
                     }
-                    
+
+                    # 2. Has a GitHub mapping? Direct add.
                     if ($userMap.ContainsKey($email)) {
-                        # KNOWN USER -> Direct Add
                         $ghUser = $userMap[$email]
                         $role = if ($map.maintainers -contains $ghUser) { "maintainer" } else { "member" }
                         try {
@@ -134,24 +145,27 @@ foreach ($map in $mappings) {
                         } catch {
                             Write-Warning "      [FAILED] Could not add $ghUser."
                         }
-                    } else {
-                        # UNKNOWN USER -> Send Invite to Email
-                        Write-Host "      [INVITE] $email not mapped. Sending GitHub Organization Invite..." -ForegroundColor Magenta
+                    # 3. Explicitly listed in CSV but no GitHub username? Send invite.
+                    } elseif ($inviteList.Contains($email)) {
+                        Write-Host "      [INVITE] $email is in CSV but has no GitHub account. Sending invite..." -ForegroundColor Magenta
                         try {
                             $null = Invoke-GhRest -Method Post -Uri "https://api.github.com/orgs/$GitHubOrg/invitations" -Body @{
                                 email = $email
-                                role = "direct_member"
+                                role  = "direct_member"
                                 team_ids = @( [int]$ghTeamInfo.id )
                             }
-                            Write-Host "         -> Invite sent successfully to $email!" -ForegroundColor Green
+                            Write-Host "         -> Invite sent to $email!" -ForegroundColor Green
                         } catch {
                             $errMsg = $_.Exception.Message
                             if ($errMsg -match "already a part of") {
-                                Write-Host "         -> User $email is already in the org. Needs manual mapping." -ForegroundColor Yellow
+                                Write-Host "         -> $email is already in the org." -ForegroundColor Yellow
                             } else {
-                                Write-Warning "         -> Failed to send invite to $email. ($errMsg)"
+                                Write-Warning "         -> Failed to invite $email. ($errMsg)"
                             }
                         }
+                    # 4. Not in CSV at all? Silently skip — do NOT invite.
+                    } else {
+                        Write-Host "      [SKIPPED] $email not in user-mappings.csv. Add them to the CSV to invite." -ForegroundColor DarkGray
                     }
                 }
             }
