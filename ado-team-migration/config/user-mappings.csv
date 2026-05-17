@@ -1,11 +1,40 @@
+# ============================================================
+# USER MAPPINGS - ADO to GitHub Migration
+# ============================================================
+# PURPOSE: This file is the SINGLE SOURCE OF TRUTH for all user
+#          access decisions during the GitHub migration.
+#          The sync pipeline reads this file to decide WHO gets
+#          added, invited, or skipped entirely.
+#
+# HOW TO FILL THIS FILE:
+#   1. Run the pipeline in "Discovery" mode to generate team-mappings-template.json
+#   2. Open that JSON and look at the "adoMembersAudit" array in each team.
+#      It lists every ADO user, their email, and their role.
+#   3. For each person, add a row here with their ADO email and GitHub username.
+#   4. If they don't have a GitHub account yet, leave GitHubUsername blank
+#      and the script will send them an email invite to create one.
+#   5. If they have left the company, set Notes = excluded to block any access.
+#
+# NOTES COLUMN VALUES:
+#   valid    -> User is active. GitHubUsername required for direct-add.
+#   excluded -> Ex-employee or invalid account. Will be SKIPPED entirely (no invite).
+#   (blank)  -> Same as valid. GitHubUsername present = direct-add. Blank = email invite.
+#
+# PIPELINE BEHAVIOR (what happens to each user):
+#   GitHubUsername present                -> [ADDED]    Direct add to GitHub team via API
+#   GitHubUsername blank (in this file)   -> [INVITE]   GitHub Organization email invite sent
+#   Notes = excluded                      -> [EXCLUDED] Skipped. No invite. No access.
+#   NOT listed in this file at all        -> [SKIPPED]  Silently ignored. No invite.
+#
+# ============================================================
 ADOEmail,ADODisplayName,ADOUsername,GitHubUsername,GitHubEmail,Notes
 varsha.patil@yash.com,Varsha Prakash Patil,varsha.patil@yash.com,varsha-patilyash,varsha.patil@yash.com,valid
 ankit.panwar@yashtechnologies841.onmicrosoft.com,Ankit Panwar,YASH\ankit.panwar,ankitpanwar1,ankitpanwar49663@gmail.com,valid
-prateek.piley@yash.com,Prateek Piley,prateek.piley,prateekpiley2709,prateek.piley@yash.com
-akash.kamble@yash.com,Akash Liladhar Kamble,akash.kamble@yash.com,Akash-com22,Akashkamble221997@gmail.com
-athrva.tomar@yashtechnologies841.onmicrosoft.com,Athrva Tomar,athrva.tomar@yashtechnologies841.onmicrosoft.com,AthrvaTomar,atharva251102@gmail.com
-urvashi.upadhyay@yashtechnologies841.onmicrosoft.com,Urvashi Upadhyay,urvashi.upadhyay@yashtechnologies841.onmicrosoft.com,Urvashi773,erurvashiupadhyay@gmail.com
-prateek.shivhare@yash.com,Prateek Shivhare,prateek.shivhare@yash.com,prateekshivhari,prateek.shivhare@yash.com
-chandrakant.v@yashtechnologies841.onmicrosoft.com,Chandrakant Vishwakarma,chandrakant.v@yashtechnologies841.onmicrosoft.com,
-rohit.shavili@yash.com,Rohit Raj Shavili,rohit.shavili@yash.com,
-monika.patil@yash.com,Monika Manoj Patil,monika.patil@yash.com,
+prateek.piley@yash.com,Prateek Piley,prateek.piley,prateekpiley2709,prateek.piley@yash.com,valid
+akash.kamble@yash.com,Akash Liladhar Kamble,akash.kamble@yash.com,Akash-com22,Akashkamble221997@gmail.com,valid
+athrva.tomar@yashtechnologies841.onmicrosoft.com,Athrva Tomar,athrva.tomar@yashtechnologies841.onmicrosoft.com,AthrvaTomar,atharva251102@gmail.com,valid
+urvashi.upadhyay@yashtechnologies841.onmicrosoft.com,Urvashi Upadhyay,urvashi.upadhyay@yashtechnologies841.onmicrosoft.com,Urvashi773,erurvashiupadhyay@gmail.com,valid
+prateek.shivhare@yash.com,Prateek Shivhare,prateek.shivhare@yash.com,prateekshivhari,prateek.shivhare@yash.com,valid
+chandrakant.v@yashtechnologies841.onmicrosoft.com,Chandrakant Vishwakarma,chandrakant.v@yashtechnologies841.onmicrosoft.com,,,
+rohit.shavili@yash.com,Rohit Raj Shavili,rohit.shavili@yash.com,,,
+monika.patil@yash.com,Monika Manoj Patil,monika.patil@yash.com,,,

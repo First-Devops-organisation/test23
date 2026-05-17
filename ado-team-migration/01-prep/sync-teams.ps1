@@ -46,7 +46,7 @@ $inviteList = [System.Collections.Generic.HashSet[string]]::new([System.StringCo
 
 if (Test-Path $UserMappingFile) {
     Write-Host "Loading user mappings from $UserMappingFile..." -ForegroundColor Gray
-    $csvData = Get-Content $UserMappingFile | Where-Object { $_.Trim() -ne "" } | ConvertFrom-Csv
+    $csvData = Get-Content $UserMappingFile | Where-Object { $_.Trim() -ne "" -and -not $_.TrimStart().StartsWith("#") } | ConvertFrom-Csv
     foreach ($row in $csvData) {
         $email   = ($row.ADOEmail, $row.ado_email, $row.Email) | Where-Object { $_ } | Select-Object -First 1
         $notes   = ($row.Notes, $row.notes, $row.Status)       | Where-Object { $_ } | Select-Object -First 1
