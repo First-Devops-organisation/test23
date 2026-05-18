@@ -1,0 +1,63 @@
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+- name: RunDiscovery
+  displayName: "Run Phase 1: Discovery (Generates Report)"
+  type: boolean
+  default: true
+
+- name: RunMigration
+  displayName: "Run Phase 2: Migration (Reads JSON Config)"
+  type: boolean
+  default: false
+
+variables:
+- group: DevOpsConfig # Contains Pat, Git_pat, Organization, Project
+
+stages:
+
+# ==============================================================================
+# PHASE 1: DISCOVERY
+# Runs the script to map ADO groups to pipelines and repos, and publishes the CSV
+# ==============================================================================
+- stage: Discovery
+  condition: eq('${{ parameters.RunDiscovery }}', true)
+  displayName: 'Phase 1: Discover Usage'
+  jobs:
+  - job: DiscoverVariableGroups
+    steps:
+    - task: PowerShell@2
+      displayName: 'Run Discovery Script'
+      inputs:
+        filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/discover-variable-usage.ps1'
+        arguments: '-Organization "$(Organization)" -Project "$(Project)" -Pat "$(Pat)"'
+        pwsh: true
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Discovery CSV Report'
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/VariableGroup-Usage-Report.csv'
+        artifact: 'VariableGroup-Mapping-Report'
+        publishLocation: 'pipeline'
+
+
+# ==============================================================================
+# PHASE 2: MIGRATION
+# Reads config/variable-mappings.json and migrates non-secrets to GitHub
+# ==============================================================================
+- stage: Migration
+  condition: eq('${{ parameters.RunMigration }}', true)
+  displayName: 'Phase 2: Migrate Variables'
+  jobs:
+  - job: MigrateVariables
+    steps:
+    - task: PowerShell@2
+      displayName: 'Run Migration Script'
+      inputs:
+        filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/migrate-variables.ps1'
+        arguments: '-Organization "$(Organization)" -Project "$(Project)" -AdoPat "$(Pat)" -GhPat "$(Git_pat)" -ConfigPath "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json"'
+        pwsh: true

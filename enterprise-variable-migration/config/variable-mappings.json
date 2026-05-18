@@ -1,0 +1,38 @@
+{
+  "_comment": "This file is the Single Source of Truth for the enterprise variable migration.",
+  "targetGitHubOrg": "Second-Devops-organisation1",
+  "variableGroups": [
+    {
+      "adoGroupName": "setup-github-org",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "This group is used globally, mapping to Org-level variables"
+    },
+    {
+      "adoGroupName": "apim-automation",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "apim-backend-repo",
+      "targetEnvironment": "",
+      "notes": "Belongs to a specific API repository"
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-Prod",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "demo-app-api",
+      "targetEnvironment": "production",
+      "notes": "Production environment variables"
+    },
+    {
+      "adoGroupName": "unused-old-group",
+      "action": "skip",
+      "targetScope": "",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Marking action as 'skip' prevents it from migrating"
+    }
+  ]
+}
