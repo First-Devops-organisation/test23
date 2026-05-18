@@ -41,7 +41,14 @@ stages:
       displayName: 'Publish Discovery CSV Report'
       inputs:
         targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/VariableGroup-Usage-Report.csv'
-        artifact: 'VariableGroup-Mapping-Report'
+        artifact: 'VariableGroup-Mapping-CSV'
+        publishLocation: 'pipeline'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Discovery JSON Template'
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/variable-mappings-template.json'
+        artifact: 'VariableGroup-Mapping-JSON'
         publishLocation: 'pipeline'
 
 
