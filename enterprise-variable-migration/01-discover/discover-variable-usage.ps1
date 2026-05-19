@@ -127,9 +127,20 @@ foreach ($group in $groupedData) {
     
     $suggestedScope = "repository"
     $suggestedRepo = ""
+    $suggestedEnvironment = ""
     
     if ($uniqueRepos.Count -eq 1) {
         $suggestedRepo = $uniqueRepos[0]
+        
+        # Guess environment based on common ADO naming conventions
+        if ($group.Name -match "(?i)-(dev|prod|prd|qa|uat.*|tst|test|stg|staging)$") {
+            $suggestedScope = "environment"
+            $suggestedEnvironment = $matches[1].ToLower()
+            
+            # Normalize common abbreviations
+            if ($suggestedEnvironment -eq "prd") { $suggestedEnvironment = "production" }
+            if ($suggestedEnvironment -eq "tst") { $suggestedEnvironment = "test" }
+        }
     } elseif ($uniqueRepos.Count -gt 1) {
         $suggestedScope = "organization"
         $suggestedRepo = "MULTIPLE_REPOS_DETECTED"
@@ -142,7 +153,7 @@ foreach ($group in $groupedData) {
         action            = "skip" # Default to skip for safety
         targetScope       = $suggestedScope
         targetRepo        = $suggestedRepo
-        targetEnvironment = ""
+        targetEnvironment = $suggestedEnvironment
         notes             = "Used by pipelines: $pipelinesList"
     }
 }
