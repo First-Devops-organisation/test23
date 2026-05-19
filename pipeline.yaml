@@ -1,0 +1,38 @@
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - group: 'ADO-Metadata-Export'
+
+steps:
+  - task: PowerShell@2
+    displayName: 'Install ImportExcel Module'
+    inputs:
+      targetType: inline
+      script: |
+        Install-Module -Name ImportExcel -Scope CurrentUser -Force -AllowClobber
+    pwsh: true
+
+  - task: PowerShell@2
+    displayName: 'Run ADO Metadata Extraction'
+    inputs:
+      targetType: inline
+      script: |
+        # Feed menu choices via stdin:
+        # 1 = Extract metadata
+        # 1 = Extract ALL components
+        # 0 = Back to main menu
+        # 0 = Exit
+        "1","1","0","0" | & "$(Build.SourcesDirectory)/ADO-Metadata-Tool.ps1" `
+          -OrgUrl "$(ADO_ORG_URL)" `
+          -Project "$(ADO_PROJECT)" `
+          -OutputDir "$(Build.ArtifactStagingDirectory)/ADO-Export"
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_EXT_PAT)
+    pwsh: true
+
+  - publish: '$(Build.ArtifactStagingDirectory)/ADO-Export'
+    artifact: 'ADO-Metadata'
+    displayName: 'Publish Excel Reports'
