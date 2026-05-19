@@ -122,8 +122,8 @@ $jsonGroups = @()
 $groupedData = $reportData | Group-Object VariableGroupName
 
 foreach ($group in $groupedData) {
-    # Guess the repository if only one unique repo uses this variable group
-    $uniqueRepos = $group.Group | Where-Object { $_.RepositoryName -ne "N/A" -and $_.RepositoryName -ne "Unknown" } | Select-Object -ExpandProperty RepositoryName -Unique
+    # Guess environment based on common ADO naming conventions
+    $uniqueRepos = @($group.Group | Where-Object { $_.RepositoryName -ne "N/A" -and $_.RepositoryName -ne "Unknown" } | Select-Object -ExpandProperty RepositoryName -Unique)
     
     $suggestedScope = "repository"
     $suggestedRepo = ""
