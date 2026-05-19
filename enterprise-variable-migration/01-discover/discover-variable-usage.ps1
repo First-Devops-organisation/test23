@@ -26,10 +26,25 @@ $pipelinesResponse = Invoke-RestMethod -Uri $pipelinesUrl -Method Get -Headers $
 
 $pipelineMap = @{}
 foreach ($pipeline in $pipelinesResponse.value) {
+    $repoName = $pipeline.repository.name
+    $repoType = $pipeline.repository.type
+    
+    # If the summary API didn't return the repo name, fetch the full pipeline definition
+    if ([string]::IsNullOrEmpty($repoName)) {
+        try {
+            $fullDefUrl = "https://dev.azure.com/$Organization/$Project/_apis/build/definitions/$($pipeline.id)?api-version=7.1"
+            $fullDef = Invoke-RestMethod -Uri $fullDefUrl -Method Get -Headers $headers
+            $repoName = $fullDef.repository.name
+            $repoType = $fullDef.repository.type
+        } catch {
+            $repoName = "Unknown"
+        }
+    }
+
     $pipelineMap[$pipeline.id] = @{
         PipelineName = $pipeline.name
-        RepoName     = $pipeline.repository.name
-        RepoType     = $pipeline.repository.type
+        RepoName     = $repoName
+        RepoType     = $repoType
     }
 }
 Write-Host "Found $($pipelinesResponse.count) pipelines."
