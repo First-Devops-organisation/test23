@@ -207,6 +207,7 @@ function Get-AllBranchMetadata {
 # ---------------------------------------------------------------------------
 # Region: EXTRACTION  Build Pipelines
 # ---------------------------------------------------------------------------
+
 function Get-PipelineMetadata {
     Write-Step "Fetching build pipelines..."
     $pipelines = Invoke-AzCli @("pipelines","list","--project",$script:Project)
@@ -215,17 +216,40 @@ function Get-PipelineMetadata {
         try   { $detail = Invoke-AzCli @("pipelines","show","--id",$p.id,"--project",$script:Project) }
         catch { $detail = $p }
 
+        # Extract nested objects safely (strict-mode compatible)
+        $procType     = "N/A"
+        $yamlPath     = "N/A"
+        $queueName    = "N/A"
+        $repoName     = "N/A"
+        $defBranch    = "N/A"
+        $authorEmail  = "N/A"
+
+        try { if ($null -ne $detail.process)    { $procType  = $detail.process.type } }        catch {}
+        try { if ($null -ne $detail.process)    { $yamlPath  = $detail.process.yamlFilename } } catch {}
+        try { if ($null -ne $detail.queue)      { $queueName = $detail.queue.name } }          catch {}
+        try { if ($null -ne $detail.repository) { $repoName  = $detail.repository.name } }     catch {}
+        try { if ($null -ne $detail.repository) { $defBranch = $detail.repository.defaultBranch -replace "refs/heads/","" } } catch {}
+        try { if ($null -ne $p.authoredBy)      { $authorEmail = $p.authoredBy.uniqueName } }  catch {}
+
+        # Normalise any nulls that slipped through
+        if ($null -eq $procType)    { $procType    = "N/A" }
+        if ($null -eq $yamlPath)    { $yamlPath    = "N/A" }
+        if ($null -eq $queueName)   { $queueName   = "N/A" }
+        if ($null -eq $repoName)    { $repoName    = "N/A" }
+        if ($null -eq $defBranch)   { $defBranch   = "N/A" }
+        if ($null -eq $authorEmail) { $authorEmail = "N/A" }
+
         [PSCustomObject]@{
             Id            = $p.id
             Name          = $p.name
-            Type          = if ($detail.process)  { $detail.process.type  } else { "N/A" }
+            Type          = $procType
             QueueStatus   = $p.queueStatus
-            AgentPoolName = if ($detail.queue)     { $detail.queue.name   } else { "N/A" }
-            Repository    = if ($detail.repository){ $detail.repository.name } else { "N/A" }
-            DefaultBranch = if ($detail.repository){ $detail.repository.defaultBranch -replace "refs/heads/","" } else { "N/A" }
-            YamlPath      = if ($detail.process -and $detail.process.yamlFilename) { $detail.process.yamlFilename } else { "N/A" }
+            AgentPoolName = $queueName
+            Repository    = $repoName
+            DefaultBranch = $defBranch
+            YamlPath      = $yamlPath
             CreatedDate   = $p.createdDate
-            AuthoredBy    = if ($p.authoredBy)    { $p.authoredBy.uniqueName } else { "N/A" }
+            AuthoredBy    = $authorEmail
         }
     })
     Write-Ok "Found $($rows.Count) build pipelines."
