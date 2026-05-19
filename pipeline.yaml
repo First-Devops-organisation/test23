@@ -19,22 +19,24 @@ steps:
     inputs:
       targetType: inline
       script: |
-        # Find the script wherever it is in the repo
-        $scriptPath = Get-ChildItem -Path "$(Build.SourcesDirectory)" -Filter "metadata.ps1" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+        $scriptPath = Join-Path "$(Build.SourcesDirectory)" "metadata.ps1"
 
-        if (-not $scriptPath) {
-          Write-Error "metadata-Tool.ps1 not found in repo. Check the file name and path."
+        if (-not (Test-Path $scriptPath)) {
+          Write-Error "metadata.ps1 not found at: $scriptPath"
           exit 1
         }
 
-        Write-Host "Found script at: $scriptPath"
-
         $outDir = Join-Path "$(Build.ArtifactStagingDirectory)" "ADO-Export"
 
-        "1","1","0","0" | & $scriptPath `
-          -OrgUrl "$(ADO_ORG_URL)" `
-          -Project "$(ADO_PROJECT)" `
-          -OutputDir $outDir
+        $inputFile = Join-Path $env:TEMP "menu_inputs.txt"
+        @("1","1","0","0") | Out-File -FilePath $inputFile -Encoding ascii
+
+        $proc = Start-Process -FilePath "powershell.exe" `
+          -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -OrgUrl `"$(ADO_ORG_URL)`" -Project `"$(ADO_PROJECT)`" -OutputDir `"$outDir`"" `
+          -RedirectStandardInput $inputFile `
+          -NoNewWindow -Wait -PassThru
+
+        exit $proc.ExitCode
     env:
       AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_EXT_PAT)
 
