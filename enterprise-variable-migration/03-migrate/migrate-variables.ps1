@@ -45,7 +45,7 @@ foreach ($mapping in $config.variableGroups) {
 
     # REQUIREMENT 3: Loop through comma-separated multiple repos
     foreach ($targetRepo in $targetRepos) {
-        $scopeKey = if ($targetScope -eq "organization") { "org" } elseif ($targetScope -eq "environment") { "env:$targetRepo:$targetEnv" } else { "repo:$targetRepo" }
+        $scopeKey = if ($targetScope -eq "organization") { "org" } elseif ($targetScope -eq "environment") { "env:{0}:{1}" -f $targetRepo, $targetEnv } else { "repo:{0}" -f $targetRepo }
         if (-not $migratedVariableTracker.ContainsKey($scopeKey)) { $migratedVariableTracker[$scopeKey] = @() }
 
         foreach ($varNameRaw in $adoGroup.variables.PSObject.Properties.Name) {
@@ -82,7 +82,7 @@ foreach ($mapping in $config.variableGroups) {
                     Variable = $varName
                     Type = "Secret"
                     Scope = $targetScope
-                    Destination = if($targetScope -eq "organization"){"Org"}elseif($targetScope -eq "environment"){"$targetRepo ($targetEnv)"}else{$targetRepo}
+                    Destination = if($targetScope -eq "organization"){"Org"}elseif($targetScope -eq "environment"){"{0} ({1})" -f $targetRepo, $targetEnv}else{$targetRepo}
                     Status = "Queued for Phase 3"
                 }
                 continue
@@ -113,7 +113,7 @@ foreach ($mapping in $config.variableGroups) {
                 Variable = $varName
                 Type = "Variable"
                 Scope = $targetScope
-                Destination = if($targetScope -eq "organization"){"Org"}elseif($targetScope -eq "environment"){"$targetRepo ($targetEnv)"}else{$targetRepo}
+                Destination = if($targetScope -eq "organization"){"Org"}elseif($targetScope -eq "environment"){"{0} ({1})" -f $targetRepo, $targetEnv}else{$targetRepo}
                 Status = $status
             }
         }
