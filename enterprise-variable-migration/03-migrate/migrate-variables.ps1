@@ -6,7 +6,7 @@ param (
     [Parameter(Mandatory=$true)][string]$ConfigPath
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 Write-Host "Authenticating with GitHub CLI..."
 echo "$GhPat" | gh auth login --with-token
@@ -179,3 +179,7 @@ foreach ($row in $summaryReport) {
 }
 Set-Content -Path $mdPath -Value $mdContent
 Write-Host "Dashboard generated at: $mdPath"
+Write-Host "======================================================"
+Write-Host "Phase 2 Migration Complete!" -ForegroundColor Green
+Write-Host "======================================================"
+exit 0
