@@ -1,38 +1,324 @@
 {
-  "_comment": "This file is the Single Source of Truth for the enterprise variable migration.",
+  "_comment": "This is the perfectly curated Enterprise Variable Mapping config.",
   "targetGitHubOrg": "Second-Devops-organisation1",
   "variableGroups": [
     {
-      "adoGroupName": "setup-github-org",
+      "adoGroupName": "ankit-adotogit",
       "action": "migrate",
-      "targetScope": "organization",
-      "targetRepo": "",
-      "targetEnvironment": "",
-      "notes": "This group is used globally, mapping to Org-level variables"
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "ankit-endtoend",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "NodeJS",
+      "targetEnvironment": ""
     },
     {
       "adoGroupName": "apim-automation",
       "action": "migrate",
-      "targetScope": "repository",
-      "targetRepo": "apim-backend-repo",
+      "targetScope": "organization",
+      "targetRepo": "",
       "targetEnvironment": "",
-      "notes": "Belongs to a specific API repository"
+      "notes": "Shared across APIOPS and APIOPS-poc pipelines"
+    },
+    {
+      "adoGroupName": "artifact-migration",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "BoardMigrationConfig",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Board_migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "boards-migration",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "Demo-Nuget-API",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-Dev",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "dev"
     },
     {
       "adoGroupName": "DemoApp-Application-API-Prod",
       "action": "migrate",
       "targetScope": "environment",
-      "targetRepo": "demo-app-api",
-      "targetEnvironment": "production",
-      "notes": "Production environment variables"
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "production"
     },
     {
-      "adoGroupName": "unused-old-group",
+      "adoGroupName": "DemoApp-Application-API-Test",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "test"
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-UAT_E",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "uat_e"
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-UAT_I",
       "action": "skip",
-      "targetScope": "",
+      "targetScope": "repository",
       "targetRepo": "",
       "targetEnvironment": "",
-      "notes": "Marking action as 'skip' prevents it from migrating"
+      "notes": "Unused"
+    },
+    {
+      "adoGroupName": "DevOpsConfig",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "environment_set_up",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "JsonVariableGrp",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across SSPM and owsap pipelines"
+    },
+    {
+      "adoGroupName": "KeyVaultSnowflakeCredentials",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "snowflake-database",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "kv-demoapp-dev",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "dev"
+    },
+    {
+      "adoGroupName": "kv-demoapp-prd",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "production"
+    },
+    {
+      "adoGroupName": "kv-demoapp-tst",
+      "action": "skip",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Unused"
+    },
+    {
+      "adoGroupName": "kv-demoapp-uate",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "uate"
+    },
+    {
+      "adoGroupName": "kv-demoapp-uati",
+      "action": "skip",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Unused"
+    },
+    {
+      "adoGroupName": "log",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across ado-to-github-migration and ADO_To_GHAS_Migration"
+    },
+    {
+      "adoGroupName": "metadata",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "migration-branch-policies",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "MySecretsGroup",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "powershelautomation",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "owsap",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across eShopOnWeb and reusable_testing"
+    },
+    {
+      "adoGroupName": "pipeline-migration",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "Repo_migration",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ado-to-github-migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "repo-migration-discove",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "repo-migration-discover",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "repo-migration-discoverB",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "repo-migration-migrate",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "Sampleproject-AppConfiguration-Dev",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Sampleproject-AppConfiguration",
+      "targetEnvironment": "dev"
+    },
+    {
+      "adoGroupName": "ServiceConnection",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across Sampleproject-AppConfiguration and Demoapp-Application-API"
+    },
+    {
+      "adoGroupName": "setup-github-org",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "snowflake-credentials",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "CAT-DevOps",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "SnowflakeCredentials",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "snowflake-database",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "snowflakeimperative",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "snowflakeimperative",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "StorageAccountDetails",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Sampleproject-AppConfiguration",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "terraform-dev",
+      "action": "skip",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Unused"
+    },
+    {
+      "adoGroupName": "terraform-prod",
+      "action": "skip",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Unused"
+    },
+    {
+      "adoGroupName": "Test",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "java-app-goals",
+      "targetEnvironment": ""
+    },
+    {
+      "adoGroupName": "urvashi-adotogit - Copy",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": ""
     }
   ]
 }
