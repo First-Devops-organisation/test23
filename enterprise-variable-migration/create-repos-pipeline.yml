@@ -1,0 +1,32 @@
+trigger: none
+pool:
+  vmImage: ubuntu-latest
+variables:
+- group: DevOpsConfig
+steps:
+- task: PowerShell@2
+  displayName: 'Create POC Target Repositories'
+  inputs:
+    targetType: 'inline'
+    script: |
+      echo "$(Git_pat)" | gh auth login --with-token
+      
+      $org = "Second-Devops-organisation1"
+      $repos = @(
+          "NodeJS", 
+          "Demoapp-Application-API", 
+          "snowflake-database", 
+          "powershelautomation", 
+          "ado-to-github-migration", 
+          "Sampleproject-AppConfiguration", 
+          "CAT-DevOps", 
+          "snowflakeimperative", 
+          "java-app-goals"
+      )
+      
+      foreach ($r in $repos) {
+          Write-Host "Creating $org/$r ..."
+          gh repo create "$org/$r" --private 2>&1
+      }
+      
+      Write-Host "Note: We deliberately SKIPPED creating 'Board_migration' as requested!"
