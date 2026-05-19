@@ -187,7 +187,7 @@
       "adoGroupName": "MySecretsGroup",
       "action": "migrate",
       "targetScope": "repository",
-      "targetRepo": "powershelautomation",
+      "targetRepo": "Fake-Repo-Does-Not-Exist",
       "targetEnvironment": ""
     },
     {
