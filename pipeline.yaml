@@ -4,7 +4,7 @@ pool:
   vmImage: 'windows-latest'
 
 variables:
-  - group: 'ADO-Metadata-Export'
+  - group: 'metadata'
 
 steps:
   - task: PowerShell@2
@@ -13,7 +13,7 @@ steps:
       targetType: inline
       script: |
         Install-Module -Name ImportExcel -Scope CurrentUser -Force -AllowClobber
-    pwsh: true
+   
 
   - task: PowerShell@2
     displayName: 'Run ADO Metadata Extraction'
@@ -31,7 +31,7 @@ steps:
           -OutputDir "$(Build.ArtifactStagingDirectory)/ADO-Export"
     env:
       AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_EXT_PAT)
-    pwsh: true
+   
 
   - publish: '$(Build.ArtifactStagingDirectory)/ADO-Export'
     artifact: 'ADO-Metadata'
