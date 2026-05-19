@@ -13,25 +13,30 @@ steps:
       targetType: inline
       script: |
         Install-Module -Name ImportExcel -Scope CurrentUser -Force -AllowClobber
-   
 
   - task: PowerShell@2
     displayName: 'Run ADO Metadata Extraction'
     inputs:
       targetType: inline
       script: |
-        # Feed menu choices via stdin:
-        # 1 = Extract metadata
-        # 1 = Extract ALL components
-        # 0 = Back to main menu
-        # 0 = Exit
-        "1","1","0","0" | & "$(Build.SourcesDirectory)/ADO-Metadata-Tool.ps1" `
+        # Find the script wherever it is in the repo
+        $scriptPath = Get-ChildItem -Path "$(Build.SourcesDirectory)" -Filter "ADO-Metadata-Tool.ps1" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+
+        if (-not $scriptPath) {
+          Write-Error "ADO-Metadata-Tool.ps1 not found in repo. Check the file name and path."
+          exit 1
+        }
+
+        Write-Host "Found script at: $scriptPath"
+
+        $outDir = Join-Path "$(Build.ArtifactStagingDirectory)" "ADO-Export"
+
+        "1","1","0","0" | & $scriptPath `
           -OrgUrl "$(ADO_ORG_URL)" `
           -Project "$(ADO_PROJECT)" `
-          -OutputDir "$(Build.ArtifactStagingDirectory)/ADO-Export"
+          -OutputDir $outDir
     env:
       AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_EXT_PAT)
-   
 
   - publish: '$(Build.ArtifactStagingDirectory)/ADO-Export'
     artifact: 'ADO-Metadata'
