@@ -11,6 +11,37 @@ $ErrorActionPreference = "Continue"
 Write-Host "Authenticating with GitHub CLI..."
 echo "$GhPat" | gh auth login --with-token
 
+# Helper: Upsert a GitHub variable (POST then PATCH on 409)
+function Set-GitHubVariable {
+    param(
+        [string]$Scope,      # organization / repository / environment
+        [string]$Org,
+        [string]$Repo,
+        [string]$Env,
+        [string]$Name,
+        [string]$Value
+    )
+    $result = ""
+    if ($Scope -eq "organization") {
+        $result = gh api -X POST "/orgs/$Org/actions/variables" -f name="$Name" -f value="$Value" -f visibility="private" 2>&1
+        if ($result -match "409|Already exists") {
+            $result = gh api -X PATCH "/orgs/$Org/actions/variables/$Name" -f value="$Value" -f visibility="private" 2>&1
+        }
+    } elseif ($Scope -eq "environment") {
+        $result = gh variable set "$Name" --body "$Value" --repo "$Org/$Repo" --env "$Env" 2>&1
+        if ($result -match "409|Already exists") {
+            $repoId = (gh api "/repos/$Org/$Repo" --jq '.id' 2>&1)
+            $result = gh api -X PATCH "/repositories/$repoId/environments/$Env/variables/$Name" -f value="$Value" 2>&1
+        }
+    } else {
+        $result = gh variable set "$Name" --body "$Value" --repo "$Org/$Repo" 2>&1
+        if ($result -match "409|Already exists") {
+            $result = gh api -X PATCH "/repos/$Org/$Repo/actions/variables/$Name" -f value="$Value" 2>&1
+        }
+    }
+    return $result
+}
+
 $config = Get-Content $ConfigPath | ConvertFrom-Json
 $ghOrg = $config.targetGitHubOrg
 
@@ -94,14 +125,10 @@ foreach ($mapping in $config.variableGroups) {
             $status = "Failed"
 
             try {
-                if ($targetScope -eq "organization") {
-                    gh api -X POST "/orgs/$ghOrg/actions/variables" -f name="$varName" -f value="$varValue" -f visibility="private" --silent
-                    $status = "Success"
-                } elseif ($targetScope -eq "repository") {
-                    gh variable set "$varName" --body "$varValue" --repo "$ghOrg/$targetRepo"
-                    $status = "Success"
-                } elseif ($targetScope -eq "environment") {
-                    gh variable set "$varName" --body "$varValue" --repo "$ghOrg/$targetRepo" --env "$targetEnv"
+                $result = Set-GitHubVariable -Scope $targetScope -Org $ghOrg -Repo $targetRepo -Env $targetEnv -Name $varName -Value $varValue
+                if ($result -match "404|Not Found|error|failed") {
+                    $status = "Error: $result"
+                } else {
                     $status = "Success"
                 }
             } catch {
