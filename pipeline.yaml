@@ -20,10 +20,10 @@ steps:
       targetType: inline
       script: |
         # Find the script wherever it is in the repo
-        $scriptPath = Get-ChildItem -Path "$(Build.SourcesDirectory)" -Filter "ADO-Metadata-Tool.ps1" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+        $scriptPath = Get-ChildItem -Path "$(Build.SourcesDirectory)" -Filter "metadata.ps1" -Recurse | Select-Object -First 1 -ExpandProperty FullName
 
         if (-not $scriptPath) {
-          Write-Error "ADO-Metadata-Tool.ps1 not found in repo. Check the file name and path."
+          Write-Error "metadata-Tool.ps1 not found in repo. Check the file name and path."
           exit 1
         }
 
