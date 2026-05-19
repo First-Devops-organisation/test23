@@ -68,3 +68,27 @@ stages:
         filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/migrate-variables.ps1'
         arguments: '-Organization "$(Organization)" -Project "$(Project)" -AdoPat "$(Pat)" -GhPat "$(Git_pat)" -ConfigPath "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json"'
         pwsh: true
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Migration Dashboard (Markdown)'
+      condition: always()
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/Migration-Dashboard.md'
+        artifact: 'Migration-Dashboard'
+        publishLocation: 'pipeline'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Migration Summary (CSV)'
+      condition: always()
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/Migration-Summary.csv'
+        artifact: 'Migration-Summary-CSV'
+        publishLocation: 'pipeline'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Phase 3 Secrets Pipeline'
+      condition: always()
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/phase3-secrets-migration.yml'
+        artifact: 'Phase3-Secrets-Pipeline'
+        publishLocation: 'pipeline'
