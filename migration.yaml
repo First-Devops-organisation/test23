@@ -704,6 +704,7 @@ stages:
           - task: DownloadPipelineArtifact@2
             displayName: "Download rewritten config.yml from MigrateReusables"
             continueOnError: true
+            condition: in(dependencies.MigrateReusables.result, 'Succeeded', 'SucceededWithIssues')
             inputs:
               artifact: "pipeline-reusables"
               path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
