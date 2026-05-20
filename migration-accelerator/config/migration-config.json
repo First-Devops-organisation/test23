@@ -41,9 +41,9 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [836],
-  "PIPELINE_REPO_MAP": {"836": "SampleAzurePipelineCSharp"},
+  "PIPELINE_IDS": [836,509,511,1156],
+  "PIPELINE_REPO_MAP": {"836": "SampleAzurePipelineCSharp","509": "test1","511": "test2","1156": "sample"},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "migrate",
-  "GH_REPO": "Appinsight"
+  "GH_REPO": ""
 }
