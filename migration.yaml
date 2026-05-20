@@ -1,3 +1,384 @@
+# trigger: none
+
+# pool:
+#   vmImage: ubuntu-latest
+
+
+# variables:
+#   - group: pipeline-migration # ADO_ORG, ADO_PROJECT, ADO_PAT
+  
+
+# stages:
+#   # ===========================================================================
+#   # STAGE 1 – DISCOVER  (reuse existing scripts — already working)
+#   # ===========================================================================
+#   - stage: Discover
+#     displayName: "1. Discover & Audit Pipelines"
+#     jobs:
+#       - job: AuditPipelines
+#         displayName: "1.1 Audit ADO Pipelines (actions-importer)"
+#         timeoutInMinutes: 60
+
+#         steps:
+#           - checkout: self
+#             fetchDepth: 0
+#           - task: PowerShell@2
+#             displayName: 'Install required tooling'
+#             inputs:
+#               targetType: 'filePath'
+#               filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+#               pwsh: true
+#             env:
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+
+#           - task: PowerShell@2
+#             displayName: "Run audit-pipelines.ps1"
+#             inputs:
+#               filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/audit-pipelines.ps1'
+#               arguments: >-
+#                 -AdoOrg "$(ADO_ORG)"
+#                 -AdoProject "$(ADO_PROJECT)"
+#                 -AdoPat "$(ADO_PAT)"
+#                 -GitHubPat "$(GH_PAT)"
+#                 -OutputDir "output/pipeline-audit"
+#               pwsh: true
+#               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+#             env:
+#               ADO_PAT: $(ADO_PAT)
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+
+#           - task: PowerShell@2
+#             displayName: "List all ADO Pipeline IDs"
+#             inputs:
+#               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+#               arguments: >-
+#                 -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+#                 -AdoProject "$(ADO_PROJECT)"
+#                 -Mode "list"
+#               pwsh: true
+#               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+#             env:
+             
+#               ADO_PAT: $(ADO_PAT)
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+
+#           - task: PublishPipelineArtifact@1
+#             displayName: "Publish Audit Artifact"
+#             condition: always()
+#             inputs:
+#               targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit'
+#               artifact: "pipeline-audit"
+#               publishLocation: pipeline
+
+#           - task: PublishHtmlReport@1
+#             displayName: "Audit Dashboard on Pipeline Tab"
+#             condition: always()
+#             inputs:
+#               reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
+#               tabName: "Pipeline Audit Dashboard"
+
+#           - task: PowerShell@2
+#             displayName: "Parse config for pipeline conditions"
+#             name: checkConfig
+#             inputs:
+#               targetType: 'inline'
+#               script: |
+#                 $configPath = "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+#                 $ids = ""
+#                 $mode = ""
+#                 $type = ""
+#                 if (Test-Path $configPath) {
+#                     $config = Get-Content $configPath -Raw | ConvertFrom-Json
+#                     if ($null -ne $config.PIPELINE_IDS) { $ids = ($config.PIPELINE_IDS -join ',') }
+#                     if ($config.MIGRATE_MODE) { $mode = $config.MIGRATE_MODE }
+#                     elseif ($config.MODE) { $mode = $config.MODE }
+#                     if ($config.PIPELINE_TYPE) { $type = $config.PIPELINE_TYPE }
+#                 }
+                
+#                 # If config doesn't have it, fallback to env (var group)
+#                 $literalIds = '$' + '(PIPELINE_IDS)'
+#                 $literalMode = '$' + '(MIGRATE_MODE)'
+#                 $literalType = '$' + '(PIPELINE_TYPE)'
+                
+#                 $macroIds = '$(PIPELINE_IDS)'
+#                 $macroMode = '$(MIGRATE_MODE)'
+#                 $macroType = '$(PIPELINE_TYPE)'
+                
+#                 if (-not $ids -and $macroIds -ne $literalIds) { $ids = $macroIds }
+#                 if (-not $mode -and $macroMode -ne $literalMode) { $mode = $macroMode }
+#                 if (-not $type -and $macroType -ne $literalType) { $type = $macroType }
+#                 if (-not $mode) { $mode = "dry-run" } # Default is dry-run if left totally blank
+#                 if (-not $type) { $type = "build" }
+                
+#                 Write-Host "Resolved PIPELINE_IDS: $ids"
+#                 Write-Host "Resolved MIGRATE_MODE: $mode"
+#                 Write-Host "Resolved PIPELINE_TYPE: $type"
+                
+#                 Write-Host "##vso[task.setvariable variable=HAS_IDS;isOutput=true]$(if ($ids) { 'true' } else { 'false' })"
+#                 Write-Host "##vso[task.setvariable variable=RESOLVED_IDS;isOutput=true]$ids"
+#                 Write-Host "##vso[task.setvariable variable=RESOLVED_MODE;isOutput=true]$mode"
+#                 Write-Host "##vso[task.setvariable variable=RESOLVED_TYPE;isOutput=true]$type"
+
+#   # ===========================================================================
+#   # STAGE 2 – MIGRATE
+#   # ===========================================================================
+#   - stage: MigratePipeline
+#     displayName: "2. Migrate Pipelines"
+#     dependsOn: Discover
+#     condition: and(succeeded(), eq(dependencies.Discover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'))
+#     variables:
+#       PIPELINE_IDS: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_IDS'] ]
+#       MIGRATE_MODE: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'] ]
+#       PIPELINE_TYPE: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_TYPE'] ]
+#     jobs:
+#       - job: DryRun
+#         displayName: "2.1 Dry-Run Preview"
+#         condition: succeeded()
+#         steps:
+#           - checkout: self
+#             fetchDepth: 0
+
+#           - task: PowerShell@2
+#             displayName: 'Install required tooling'
+#             inputs:
+#               targetType: 'filePath'
+#               filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+#               pwsh: true
+#             env:
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+
+#           - task: PowerShell@2
+#             displayName: "Dry-Run pipelines: $(PIPELINE_IDS)"
+#             inputs:
+#               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+#               arguments: >-
+#                 -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+#                 -AdoProject "$(ADO_PROJECT)"
+#                 -PipelineId $(PIPELINE_IDS)
+#                 -PipelineType "$(PIPELINE_TYPE)"
+#                 -Mode "dry-run"
+#               pwsh: true
+#               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+#             env:
+#               ADO_ORG: $(ADO_ORG)
+#               ADO_PAT: $(ADO_PAT)
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+#               GH_REPO: $(GH_REPO)
+#               PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
+ 
+           
+#           - task: PublishPipelineArtifact@1
+#             displayName: "Publish Dry-Run Output"
+#             condition: always()
+#             inputs:
+#               targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+#               artifact: "pipeline-dry-run"
+#               publishLocation: pipeline
+
+#       # ---------------------------------------------------------------------
+#       # 2.1.b  Migrate reusable workflows + composite actions to central repo
+#       # ---------------------------------------------------------------------
+#       # Runs only when REUSABLES_REPO is defined in the variable group
+#       # (e.g. "my-org/reusable-workflows"). It uses the GEI-produced
+#       # config.yml and rewrites every target_url to that single shared repo.
+#       - job: MigrateReusables
+#         displayName: "2.1.b Migrate Reusable Templates -> Central Repo"
+#         dependsOn: DryRun
+#         condition: and(succeeded(), ne(variables['REUSABLES_REPO'], ''))
+#         steps:
+#           - checkout: self
+#             fetchDepth: 0
+
+#           - task: PowerShell@2
+#             displayName: 'Install required tooling'
+#             inputs:
+#               targetType: 'filePath'
+#               filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+#               pwsh: true
+#             env:
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+
+#           - task: DownloadPipelineArtifact@2
+#             displayName: "Download dry-run output (for config.yml)"
+#             inputs:
+#               artifact: "pipeline-dry-run"
+#               path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+
+#           - task: PowerShell@2
+#             displayName: "Ensure central reusables repo exists on GitHub"
+#             inputs:
+#               targetType: 'inline'
+#               pwsh: true
+#               script: |
+#                 $repo = "$(REUSABLES_REPO)"   # e.g. my-org/reusable-workflows
+#                 if ([string]::IsNullOrWhiteSpace($repo)) {
+#                   Write-Host "REUSABLES_REPO not set; skipping."
+#                   exit 0
+#                 }
+#                 $env:GH_TOKEN = "$(GH_PAT)"
+#                 gh repo view $repo *> $null
+#                 if ($LASTEXITCODE -ne 0) {
+#                   Write-Host "Creating $repo ..."
+#                   gh repo create $repo --private --add-readme `
+#                     --description "Central reusable workflows + composite actions migrated from Azure DevOps"
+#                   if ($LASTEXITCODE -ne 0) { Write-Error "Failed to create $repo"; exit 1 }
+#                 } else {
+#                   Write-Host "$repo already exists."
+#                 }
+#             env:
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+
+#           - task: PowerShell@2
+#             displayName: "Audit (refresh config.yml listing reusables)"
+#             inputs:
+#               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+#               arguments: >-
+#                 -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+#                 -AdoProject "$(ADO_PROJECT)"
+#                 -Mode "audit"
+#                 -OutputDir "output/pipelines"
+#               pwsh: true
+#               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+#             env:
+#               ADO_ORG: $(ADO_ORG)
+#               ADO_PAT: $(ADO_PAT)
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+
+#           - task: PowerShell@2
+#             displayName: "Migrate reusables to $(REUSABLES_REPO)@$(REUSABLES_REF)"
+#             inputs:
+#               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+#               arguments: >-
+#                 -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+#                 -AdoProject "$(ADO_PROJECT)"
+#                 -Mode "migrate-reusables"
+#                 -PipelineId $(PIPELINE_IDS)
+#                 -PipelineType "$(PIPELINE_TYPE)"
+#                 -ConfigFilePath "output/pipelines/config.yml"
+#                 -ReusablesTargetRepo "$(REUSABLES_REPO)"
+#                 -ReusablesRef "$(REUSABLES_REF)"
+#                 -OutputDir "output/pipelines"
+#               pwsh: true
+#               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+#             env:
+#               ADO_ORG: $(ADO_ORG)
+#               ADO_PAT: $(ADO_PAT)
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+#               GH_REPO: $(GH_REPO)
+
+#           - task: PublishPipelineArtifact@1
+#             displayName: "Publish reusables config + output"
+#             condition: always()
+#             inputs:
+#               targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+#               artifact: "pipeline-reusables"
+#               publishLocation: pipeline
+
+#       - job: Migrate
+#         displayName: "2.2 Migrate to GitHub"
+#         dependsOn:
+#           - DryRun
+#           - MigrateReusables
+#         condition: |
+#           and(
+#             in(dependencies.DryRun.result, 'Succeeded', 'SucceededWithIssues'),
+#             in(dependencies.MigrateReusables.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'),
+#             eq(stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'], 'migrate')
+#           )
+#         steps:
+#           - checkout: self
+#             fetchDepth: 0
+
+#           - task: PowerShell@2
+#             displayName: 'Install required tooling'
+#             inputs:
+#               targetType: 'filePath'
+#               filePath: 'migration-accelerator/01-prep/install-tools.ps1'
+#               pwsh: true
+#             env:
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+
+#           # Pull the rewritten config.yml (4-field entries with `path:`) produced by
+#           # MigrateReusables. Without this, `Test-Path output/pipelines/config.yml`
+#           # below is false, the script drops --config-file-path, and GEI inlines
+#           # every template as a local `./.github/actions/<name>` ref in the
+#           # consumer repo. If MigrateReusables was skipped (no REUSABLES_REPO),
+#           # this download is a no-op via `continueOnError`.
+#           - task: DownloadPipelineArtifact@2
+#             displayName: "Download rewritten config.yml from MigrateReusables"
+#             continueOnError: true
+#             inputs:
+#               artifact: "pipeline-reusables"
+#               path: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+
+#           - task: PowerShell@2
+#             displayName: "Verify config.yml is present"
+#             inputs:
+#               targetType: 'inline'
+#               pwsh: true
+#               script: |
+#                 $cfg = "$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/config.yml"
+#                 if (Test-Path $cfg) {
+#                   Write-Host "config.yml found at $cfg" -ForegroundColor Green
+#                   Write-Host "First 20 lines:" -ForegroundColor Gray
+#                   Get-Content $cfg -TotalCount 20 | ForEach-Object { Write-Host "  $_" }
+#                 } else {
+#                   Write-Host "WARNING: $cfg NOT found. GEI will inline templates as local refs." -ForegroundColor Yellow
+#                 }
+
+#           - task: PowerShell@2
+#             displayName: "Migrate pipelines: $(PIPELINE_IDS)"
+#             inputs:
+#               filePath: '$(Build.SourcesDirectory)/migration-accelerator/02-migrate/migrate-pipelines.ps1'
+#               arguments: >-
+#                 -ConfigFile "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
+#                 -AdoProject "$(ADO_PROJECT)"
+#                 -PipelineId $(PIPELINE_IDS)
+#                 -PipelineType "$(PIPELINE_TYPE)"
+#                 -Mode "migrate"
+#                 -ConfigFilePath "output/pipelines/config.yml"
+#               pwsh: true
+#               workingDirectory: '$(Build.SourcesDirectory)/migration-accelerator'
+#             env:
+#               ADO_ORG: $(ADO_ORG)
+#               ADO_PAT: $(ADO_PAT)
+#               GH_PAT: $(GH_PAT)
+#               GH_TOKEN: $(GH_PAT)
+#               GH_REPO: $(GH_REPO)
+#               PIPELINE_REPO_MAP: $(PIPELINE_REPO_MAP)
+
+#           - task: PublishPipelineArtifact@1
+#             displayName: "Publish Migration Output"
+#             condition: always()
+#             inputs:
+#               targetPath: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines'
+#               artifact: "pipeline-migrate"
+#               publishLocation: pipeline
+
+#           - task: PublishHtmlReport@1
+#             displayName: "Migration Dashboard on Pipeline Tab"
+#             condition: always()
+#             inputs:
+#               reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
+#               tabName: "Migration Dashboard"
+
+
+
+
+#  added new yaml for skip migrate reusable if not present 
+Here is the updated YAML with the changes applied exactly where they need to be. You can copy and paste this to replace your file:
+
+```yaml
 trigger: none
 
 pool:
@@ -88,11 +469,13 @@ stages:
               script: |
                 $configPath = "$(Build.SourcesDirectory)/migration-accelerator/config/migration-config.json"
                 $ids = ""
+                $reusableIds = ""
                 $mode = ""
                 $type = ""
                 if (Test-Path $configPath) {
                     $config = Get-Content $configPath -Raw | ConvertFrom-Json
                     if ($null -ne $config.PIPELINE_IDS) { $ids = ($config.PIPELINE_IDS -join ',') }
+                    if ($null -ne $config.REUSABLE_PIPELINE_IDS) { $reusableIds = ($config.REUSABLE_PIPELINE_IDS -join ',') }
                     if ($config.MIGRATE_MODE) { $mode = $config.MIGRATE_MODE }
                     elseif ($config.MODE) { $mode = $config.MODE }
                     if ($config.PIPELINE_TYPE) { $type = $config.PIPELINE_TYPE }
@@ -100,25 +483,30 @@ stages:
                 
                 # If config doesn't have it, fallback to env (var group)
                 $literalIds = '$' + '(PIPELINE_IDS)'
+                $literalReusableIds = '$' + '(REUSABLE_PIPELINE_IDS)'
                 $literalMode = '$' + '(MIGRATE_MODE)'
                 $literalType = '$' + '(PIPELINE_TYPE)'
                 
                 $macroIds = '$(PIPELINE_IDS)'
+                $macroReusableIds = '$(REUSABLE_PIPELINE_IDS)'
                 $macroMode = '$(MIGRATE_MODE)'
                 $macroType = '$(PIPELINE_TYPE)'
                 
                 if (-not $ids -and $macroIds -ne $literalIds) { $ids = $macroIds }
+                if (-not $reusableIds -and $macroReusableIds -ne $literalReusableIds) { $reusableIds = $macroReusableIds }
                 if (-not $mode -and $macroMode -ne $literalMode) { $mode = $macroMode }
                 if (-not $type -and $macroType -ne $literalType) { $type = $macroType }
                 if (-not $mode) { $mode = "dry-run" } # Default is dry-run if left totally blank
                 if (-not $type) { $type = "build" }
                 
                 Write-Host "Resolved PIPELINE_IDS: $ids"
+                Write-Host "Resolved REUSABLE_PIPELINE_IDS: $reusableIds"
                 Write-Host "Resolved MIGRATE_MODE: $mode"
                 Write-Host "Resolved PIPELINE_TYPE: $type"
                 
                 Write-Host "##vso[task.setvariable variable=HAS_IDS;isOutput=true]$(if ($ids) { 'true' } else { 'false' })"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_IDS;isOutput=true]$ids"
+                Write-Host "##vso[task.setvariable variable=HAS_REUSABLE_IDS;isOutput=true]$(if ($reusableIds) { 'true' } else { 'false' })"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_MODE;isOutput=true]$mode"
                 Write-Host "##vso[task.setvariable variable=RESOLVED_TYPE;isOutput=true]$type"
 
@@ -131,6 +519,7 @@ stages:
     condition: and(succeeded(), eq(dependencies.Discover.outputs['AuditPipelines.checkConfig.HAS_IDS'], 'true'))
     variables:
       PIPELINE_IDS: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_IDS'] ]
+      HAS_REUSABLE_IDS: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.HAS_REUSABLE_IDS'] ]
       MIGRATE_MODE: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'] ]
       PIPELINE_TYPE: $[ stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_TYPE'] ]
     jobs:
@@ -189,7 +578,7 @@ stages:
       - job: MigrateReusables
         displayName: "2.1.b Migrate Reusable Templates -> Central Repo"
         dependsOn: DryRun
-        condition: and(succeeded(), ne(variables['REUSABLES_REPO'], ''))
+        condition: and(succeeded(), ne(variables['REUSABLES_REPO'], ''), eq(variables['HAS_REUSABLE_IDS'], 'true'))
         steps:
           - checkout: self
             fetchDepth: 0
@@ -371,3 +760,4 @@ stages:
             inputs:
               reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
               tabName: "Migration Dashboard"
+```
