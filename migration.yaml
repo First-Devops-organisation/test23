@@ -376,9 +376,7 @@
 
 
 #  added new yaml for skip migrate reusable if not present 
-Here is the updated YAML with the changes applied exactly where they need to be. You can copy and paste this to replace your file:
 
-```yaml
 trigger: none
 
 pool:
