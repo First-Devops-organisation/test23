@@ -758,4 +758,3 @@ stages:
             inputs:
               reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipelines/dashboard'
               tabName: "Migration Dashboard"
-```
