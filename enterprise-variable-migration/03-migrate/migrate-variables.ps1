@@ -176,14 +176,20 @@ jobs:
         $yamlContent += "        echo `"`$(Git_pat)`" | gh auth login --with-token`n"
 
         foreach ($secret in $secretsByGroup[$groupName]) {
+            $origName    = $secret['OriginalName']
+            $migratedName = $secret['MigratedName']
+            $secScope    = $secret['TargetScope']
+            $secRepo     = $secret['TargetRepo']
+            $secEnv      = $secret['TargetEnv']
+            $val         = "`$($origName)"
+
             $cmd = ""
-            $val = "`$(`$($secret.OriginalName))"
-            if ($secret.TargetScope -eq "organization") {
-                $cmd = "gh secret set `"$($secret.MigratedName)`" --body `"$val`" --org `"$ghOrg`" --visibility private"
-            } elseif ($secret.TargetScope -eq "repository") {
-                $cmd = "gh secret set `"$($secret.MigratedName)`" --body `"$val`" --repo `"$ghOrg/$($secret.TargetRepo)`""
-            } elseif ($secret.TargetScope -eq "environment") {
-                $cmd = "gh secret set `"$($secret.MigratedName)`" --body `"$val`" --repo `"$ghOrg/$($secret.TargetRepo)`" --env `"$($secret.TargetEnv)`""
+            if ($secScope -eq "organization") {
+                $cmd = "gh secret set `"$migratedName`" --body `"$val`" --org `"$ghOrg`" --visibility private"
+            } elseif ($secScope -eq "repository") {
+                $cmd = "gh secret set `"$migratedName`" --body `"$val`" --repo `"$ghOrg/$secRepo`""
+            } elseif ($secScope -eq "environment") {
+                $cmd = "gh secret set `"$migratedName`" --body `"$val`" --repo `"$ghOrg/$secRepo`" --env `"$secEnv`""
             }
             $yamlContent += "        $cmd`n"
         }
