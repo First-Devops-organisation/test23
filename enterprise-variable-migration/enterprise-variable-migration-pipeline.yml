@@ -259,71 +259,72 @@ stages:
           gh secret set "environment_set_up_GH_PAT" --body "$(GH_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
   - job: Migrate_Secrets_KeyVaultSnowflake
+    continueOnError: true
     variables:
     - group: DevOpsConfig
-    - group: 'KeyVaultSnowflakeCredentials'
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'KeyVaultSnowflakeCredentials'  ← ON HOLD: vault unreachable
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: KeyVaultSnowflakeCredentials'
+      displayName: '[SKIPPED] KeyVaultSnowflakeCredentials — KV ON HOLD'
       inputs:
         targetType: 'inline'
         pwsh: true
         script: |
-          echo "$(Git_pat)" | gh auth login --with-token
-          gh secret set "SNOWFLAKEACCOUNT"   --body "$(SNOWFLAKEACCOUNT)"   --repo "Second-Devops-organisation1/snowflake-database"
-          gh secret set "SNOWFLAKEDATABASE"  --body "$(SNOWFLAKEDATABASE)"  --repo "Second-Devops-organisation1/snowflake-database"
-          gh secret set "SNOWFLAKEPASSWORD"  --body "$(SNOWFLAKEPASSWORD)"  --repo "Second-Devops-organisation1/snowflake-database"
-          gh secret set "SNOWFLAKESCHEMA"    --body "$(SNOWFLAKESCHEMA)"    --repo "Second-Devops-organisation1/snowflake-database"
-          gh secret set "SNOWFLAKEUSER"      --body "$(SNOWFLAKEUSER)"      --repo "Second-Devops-organisation1/snowflake-database"
-          gh secret set "SNOWFLAKEWAREHOUSE" --body "$(SNOWFLAKEWAREHOUSE)" --repo "Second-Devops-organisation1/snowflake-database"
+          Write-Warning "SKIPPED: KeyVaultSnowflakeCredentials is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Resolve Key Vault 'CATSnowflakeCredentials' first."
+          Write-Warning "Secrets affected: SNOWFLAKEACCOUNT, SNOWFLAKEDATABASE, SNOWFLAKEPASSWORD, SNOWFLAKESCHEMA, SNOWFLAKEUSER, SNOWFLAKEWAREHOUSE"
 
   - job: Migrate_Secrets_kv_demoapp_dev
+    continueOnError: true
     variables:
     - group: DevOpsConfig
-    - group: 'kv-demoapp-dev'
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'kv-demoapp-dev'  ← ON HOLD
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: kv-demoapp-dev'
+      displayName: '[SKIPPED] kv-demoapp-dev — KV ON HOLD'
       inputs:
         targetType: 'inline'
         pwsh: true
         script: |
-          echo "$(Git_pat)" | gh auth login --with-token
-          gh secret set "sampleservice-BaseUrl"  --body "$(sampleservice-BaseUrl)"  --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "dev"
-          gh secret set "sampleservice-Password" --body "$(sampleservice-Password)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "dev"
-          gh secret set "sampleservice-UserName" --body "$(sampleservice-UserName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "dev"
+          Write-Warning "SKIPPED: kv-demoapp-dev is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Confirm Key Vault solution first."
+          Write-Warning "Secrets affected: sampleservice-BaseUrl, sampleservice-Password, sampleservice-UserName"
 
   - job: Migrate_Secrets_kv_demoapp_prd
+    continueOnError: true
     variables:
     - group: DevOpsConfig
-    - group: 'kv-demoapp-prd'
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'kv-demoapp-prd'  ← ON HOLD
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: kv-demoapp-prd'
+      displayName: '[SKIPPED] kv-demoapp-prd — KV ON HOLD'
       inputs:
         targetType: 'inline'
         pwsh: true
         script: |
-          echo "$(Git_pat)" | gh auth login --with-token
-          gh secret set "sampleservice-BaseUrl"  --body "$(sampleservice-BaseUrl)"  --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "production"
-          gh secret set "sampleservice-Password" --body "$(sampleservice-Password)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "production"
-          gh secret set "sampleservice-UserName" --body "$(sampleservice-UserName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "production"
+          Write-Warning "SKIPPED: kv-demoapp-prd is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Confirm Key Vault solution first."
+          Write-Warning "Secrets affected: sampleservice-BaseUrl, sampleservice-Password, sampleservice-UserName"
 
   - job: Migrate_Secrets_kv_demoapp_uate
+    continueOnError: true
     variables:
     - group: DevOpsConfig
-    - group: 'kv-demoapp-uate'
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'kv-demoapp-uate'  ← ON HOLD
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: kv-demoapp-uate'
+      displayName: '[SKIPPED] kv-demoapp-uate — KV ON HOLD'
       inputs:
         targetType: 'inline'
         pwsh: true
         script: |
-          echo "$(Git_pat)" | gh auth login --with-token
-          gh secret set "sampleservice-BaseUrl"  --body "$(sampleservice-BaseUrl)"  --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "uate"
-          gh secret set "sampleservice-Password" --body "$(sampleservice-Password)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "uate"
-          gh secret set "sampleservice-UserName" --body "$(sampleservice-UserName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "uate"
+          Write-Warning "SKIPPED: kv-demoapp-uate is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Confirm Key Vault solution first."
+          Write-Warning "Secrets affected: sampleservice-BaseUrl, sampleservice-Password, sampleservice-UserName"
 
   - job: Migrate_Secrets_log
     variables:
@@ -489,19 +490,21 @@ stages:
           gh secret set "setup_github_org_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
   - job: Migrate_Secrets_SnowflakeCredentials
+    continueOnError: true
     variables:
     - group: DevOpsConfig
-    - group: 'SnowflakeCredentials'
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'SnowflakeCredentials'  ← ON HOLD
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: SnowflakeCredentials'
+      displayName: '[SKIPPED] SnowflakeCredentials — KV ON HOLD'
       inputs:
         targetType: 'inline'
         pwsh: true
         script: |
-          echo "$(Git_pat)" | gh auth login --with-token
-          gh secret set "SNOWFLAKE_ACCOUNT"  --body "$(SNOWFLAKE_ACCOUNT)"  --repo "Second-Devops-organisation1/snowflake-database"
-          gh secret set "SNOWFLAKE_PASSWORD" --body "$(SNOWFLAKE_PASSWORD)" --repo "Second-Devops-organisation1/snowflake-database"
+          Write-Warning "SKIPPED: SnowflakeCredentials is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Confirm Key Vault solution first."
+          Write-Warning "Secrets affected: SNOWFLAKE_ACCOUNT, SNOWFLAKE_PASSWORD"
 
   - job: Migrate_Secrets_urvashi_adotogit_Copy
     variables:
