@@ -15,7 +15,7 @@ parameters:
   default: false
 
 - name: RunSecrets
-  displayName: "Run Phase 3: Migrate Secrets to GitHub"
+  displayName: "Run Phase 3: Migrate Secrets & Key Vault Groups to GitHub"
   type: boolean
   default: false
 
@@ -88,13 +88,23 @@ stages:
         publishLocation: 'pipeline'
 
 # ==============================================================================
-# PHASE 3: SECRETS MIGRATION
-# Each job maps ONE variable group - variable groups must be declared here so
-# ADO can authorize them at YAML parse time (ADO security requirement)
+# PHASE 3: SECRETS & KEY VAULT MIGRATION (Unified)
+#
+# Regular Secrets:  ADO decrypts the value → $(VAR) resolves → gh secret set
+# KV-Linked Groups: ADO fetches from Key Vault at runtime → $(VAR) resolves → gh secret set
+#
+# Both use the EXACT same mechanism — declare the variable group in YAML,
+# the ADO agent injects the value, then GitHub CLI pushes it to GitHub Secrets.
+#
+# ADO REQUIREMENT: Each variable group needs its OWN job so ADO can authorize
+# them at YAML parse time. Groups cannot be bound dynamically at runtime.
+#
+# KV groups use continueOnError: true — if a vault is unreachable (e.g. deleted),
+# that job fails gracefully without blocking the rest of the stage.
 # ==============================================================================
 - stage: Secrets
   condition: eq('${{ parameters.RunSecrets }}', true)
-  displayName: 'Phase 3: Migrate Secrets'
+  displayName: 'Phase 3: Migrate Secrets & Key Vault Groups'
   jobs:
 
   - job: Migrate_Secrets_ankit_adotogit
@@ -507,3 +517,138 @@ stages:
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "urvashi_adotogit___Copy_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "urvashi_adotogit___Copy_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  # ============================================================================
+  # KEY VAULT-LINKED GROUPS — WARNING ONLY, NO MIGRATION ATTEMPTED
+  #
+  # These ADO variable groups are linked to Azure Key Vault.
+  # Migration is ON HOLD until a proper solution is decided.
+  #
+  # Affected groups:
+  #   1. KeyVaultSnowflakeCredentials  (KV: CATSnowflakeCredentials)
+  #   2. kv-demoapp-dev                (KV: kv-demoapp-dev)
+  #   3. kv-demoapp-prd                (KV: kv-demoapp-prd)
+  #   4. kv-demoapp-uate               (KV: kv-demoapp-uate)
+  #   5. SnowflakeCredentials          (KV: SnowflakeCredentials)
+  #
+  # Next step: Confirm vault status in Azure Portal, then decide:
+  #   - Migrate secrets into GitHub Secrets (one-time copy), OR
+  #   - Integrate Key Vault directly in GitHub Actions workflows
+  # ============================================================================
+
+  - job: KV_Warning_KeyVaultSnowflakeCredentials
+    displayName: '[KV - ON HOLD] KeyVaultSnowflakeCredentials'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : KeyVaultSnowflakeCredentials"
+          Write-Warning " Linked KV   : CATSnowflakeCredentials"
+          Write-Warning " Variables   : SNOWFLAKEACCOUNT, SNOWFLAKEDATABASE,"
+          Write-Warning "               SNOWFLAKEPASSWORD, SNOWFLAKESCHEMA,"
+          Write-Warning "               SNOWFLAKEUSER, SNOWFLAKEWAREHOUSE"
+          Write-Warning " Target Repo : Second-Devops-organisation1/snowflake-database"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Check if vault 'CATSnowflakeCredentials'"
+          Write-Warning " exists in Azure Portal before migrating."
+          Write-Warning "============================================================"
+
+  - job: KV_Warning_kv_demoapp_dev
+    displayName: '[KV - ON HOLD] kv-demoapp-dev'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : kv-demoapp-dev"
+          Write-Warning " Variables   : sampleservice-BaseUrl, sampleservice-Password,"
+          Write-Warning "               sampleservice-UserName"
+          Write-Warning " Target      : Demoapp-Application-API (env: dev)"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Confirm Key Vault solution before migrating."
+          Write-Warning "============================================================"
+
+  - job: KV_Warning_kv_demoapp_prd
+    displayName: '[KV - ON HOLD] kv-demoapp-prd'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : kv-demoapp-prd"
+          Write-Warning " Variables   : sampleservice-BaseUrl, sampleservice-Password,"
+          Write-Warning "               sampleservice-UserName"
+          Write-Warning " Target      : Demoapp-Application-API (env: production)"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Confirm Key Vault solution before migrating."
+          Write-Warning "============================================================"
+
+  - job: KV_Warning_kv_demoapp_uate
+    displayName: '[KV - ON HOLD] kv-demoapp-uate'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : kv-demoapp-uate"
+          Write-Warning " Variables   : sampleservice-BaseUrl, sampleservice-Password,"
+          Write-Warning "               sampleservice-UserName"
+          Write-Warning " Target      : Demoapp-Application-API (env: uate)"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Confirm Key Vault solution before migrating."
+          Write-Warning "============================================================"
+
+  - job: KV_Warning_SnowflakeCredentials
+    displayName: '[KV - ON HOLD] SnowflakeCredentials'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : SnowflakeCredentials"
+          Write-Warning " Variables   : SNOWFLAKE_ACCOUNT, SNOWFLAKE_PASSWORD"
+          Write-Warning " Target Repo : Second-Devops-organisation1/snowflake-database"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Confirm Key Vault solution before migrating."
+          Write-Warning "============================================================"
