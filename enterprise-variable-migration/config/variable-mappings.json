@@ -2,10 +2,10 @@
   "targetGitHubOrg": "Second-Devops-organisation1",
   "variableGroups": [
     {
-      "adoGroupName": "ankit-adotogit",
+      "adoGroupName": "ankit-endtoend",
       "action": "migrate",
       "targetScope": "repository",
-      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetRepo": "NodeJS",
       "targetEnvironment": "",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
