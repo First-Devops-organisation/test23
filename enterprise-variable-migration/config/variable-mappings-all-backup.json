@@ -1,0 +1,416 @@
+{
+  "_comment": "This is the perfectly curated Enterprise Variable Mapping config.",
+  "targetGitHubOrg": "Second-Devops-organisation1",
+  "variableGroups": [
+    {
+      "adoGroupName": "ankit-adotogit",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "ankit-endtoend",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "NodeJS",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "apim-automation",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across APIOPS and APIOPS-poc pipelines",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "artifact-migration",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "BoardMigrationConfig",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Board_migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "boards-migration",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "Demo-Nuget-API",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-Dev",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "dev",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-Prod",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "production",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-Test",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "test",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-UAT_E",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "uat_e",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-UAT_I",
+      "action": "skip",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Unused",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "DevOpsConfig",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "environment_set_up",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "JsonVariableGrp",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across SSPM and owsap pipelines",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "KeyVaultSnowflakeCredentials",
+      "action": "keyvault-hold",
+      "targetScope": "repository",
+      "targetRepo": "snowflake-database",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": true,
+      "keyVaultName": "CATSnowflakeCredentials",
+      "notes": "[KEY VAULT LINKED] Vault: 'CATSnowflakeCredentials'. Migration ON HOLD \u2014 resolve vault access first."
+    },
+    {
+      "adoGroupName": "kv-demoapp-dev",
+      "action": "keyvault-hold",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "dev",
+      "isKeyVaultLinked": true,
+      "keyVaultName": "kv-demoapp-dev",
+      "notes": "[KEY VAULT LINKED] Vault: 'kv-demoapp-dev'. Migration ON HOLD \u2014 resolve vault access first."
+    },
+    {
+      "adoGroupName": "kv-demoapp-prd",
+      "action": "keyvault-hold",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "production",
+      "isKeyVaultLinked": true,
+      "keyVaultName": "kv-demoapp-prd",
+      "notes": "[KEY VAULT LINKED] Vault: 'kv-demoapp-prd'. Migration ON HOLD \u2014 resolve vault access first."
+    },
+    {
+      "adoGroupName": "kv-demoapp-tst",
+      "action": "keyvault-hold",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "[KEY VAULT LINKED] Vault: 'kv-demoapp-tst'. Migration ON HOLD \u2014 resolve vault access first.",
+      "isKeyVaultLinked": true,
+      "keyVaultName": "kv-demoapp-tst"
+    },
+    {
+      "adoGroupName": "kv-demoapp-uate",
+      "action": "keyvault-hold",
+      "targetScope": "environment",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "uate",
+      "isKeyVaultLinked": true,
+      "keyVaultName": "kv-demoapp-uate",
+      "notes": "[KEY VAULT LINKED] Vault: 'kv-demoapp-uate'. Migration ON HOLD \u2014 resolve vault access first."
+    },
+    {
+      "adoGroupName": "kv-demoapp-uati",
+      "action": "keyvault-hold",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "[KEY VAULT LINKED] Vault: 'kv-demoapp-uati'. Migration ON HOLD \u2014 resolve vault access first.",
+      "isKeyVaultLinked": true,
+      "keyVaultName": "kv-demoapp-uati"
+    },
+    {
+      "adoGroupName": "log",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across ado-to-github-migration and ADO_To_GHAS_Migration",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "metadata",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "migration-branch-policies",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "MySecretsGroup",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Fake-Repo-Does-Not-Exist",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "owsap",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across eShopOnWeb and reusable_testing",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "pipeline-migration",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "Repo_migration",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ado-to-github-migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "repo-migration-discove",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "repo-migration-discover",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "repo-migration-discoverB",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "repo-migration-migrate",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "Sampleproject-AppConfiguration-Dev",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "Sampleproject-AppConfiguration",
+      "targetEnvironment": "dev",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "ServiceConnection",
+      "action": "migrate",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Shared across Sampleproject-AppConfiguration and Demoapp-Application-API",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "setup-github-org",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "snowflake-credentials",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "CAT-DevOps",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "SnowflakeCredentials",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "snowflake-database",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "snowflakeimperative",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "snowflakeimperative",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "StorageAccountDetails",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Sampleproject-AppConfiguration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "terraform-dev",
+      "action": "skip",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Unused",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "terraform-prod",
+      "action": "skip",
+      "targetScope": "repository",
+      "targetRepo": "",
+      "targetEnvironment": "",
+      "notes": "Unused",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "Test",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "java-app-goals",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "urvashi-adotogit - Copy",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "ADO_To_GHAS_Migration",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    }
+  ]
+}
