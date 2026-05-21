@@ -61,6 +61,22 @@ foreach ($mapping in $config.variableGroups) {
     $adoGroup = $allAdoGroups | Where-Object { $_.name -eq $mapping.adoGroupName }
     if (-not $adoGroup) { continue }
 
+    # AUTO-DETECT: Key Vault-linked groups cannot be read via API — skip automatically
+    if ($adoGroup.type -eq "AzureKeyVault") {
+        $kvName = $adoGroup.providerData.vault
+        Write-Warning "SKIPPED (Key Vault Linked): '$($mapping.adoGroupName)' is linked to vault '$kvName'. Migration ON HOLD — resolve vault access first."
+        $summaryReport += [PSCustomObject]@{
+            Group       = $mapping.adoGroupName
+            Variable    = "ALL VARIABLES"
+            Scope       = $mapping.targetScope
+            Target      = $mapping.targetRepo
+            Environment = $mapping.targetEnvironment
+            Status      = "SKIPPED — Key Vault Linked (Vault: $kvName)"
+            Notes       = "KV-linked groups cannot be read via API. Resolve vault access before migrating."
+        }
+        continue
+    }
+
     $targetScope = $mapping.targetScope
     $targetRepos = @($mapping.targetRepo -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
     $targetEnv = $mapping.targetEnvironment

@@ -60,8 +60,10 @@ $reportData = @()
 
 Write-Host "Analyzing pipeline usage for each variable group..."
 foreach ($group in $varGroupsResponse.value) {
-    $groupId = $group.id
-    $groupName = $group.name
+    $groupId   = $group.id
+    $groupName  = $group.name
+    $isKvLinked = ($group.type -eq "AzureKeyVault")
+    $kvName     = if ($isKvLinked) { $group.providerData.vault } else { "" }
 
     # API to get Pipeline Permissions for a specific Variable Group
     $permissionsUrl = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/pipelinepermissions/variablegroup/$groupId`?api-version=7.1-preview.1"
@@ -80,13 +82,17 @@ foreach ($group in $varGroupsResponse.value) {
                 if ($pipeDetails) {
                     $reportData += [PSCustomObject]@{
                         VariableGroupName = $groupName
+                        IsKeyVaultLinked  = $isKvLinked
+                        KeyVaultName      = $kvName
                         PipelineName      = $pipeDetails.PipelineName
                         RepositoryName    = $pipeDetails.RepoName
-                        Status            = "Mapped"
+                        Status            = if ($isKvLinked) { "KEY VAULT LINKED — Migration ON HOLD" } else { "Mapped" }
                     }
                 } else {
                     $reportData += [PSCustomObject]@{
                         VariableGroupName = $groupName
+                        IsKeyVaultLinked  = $isKvLinked
+                        KeyVaultName      = $kvName
                         PipelineName      = "Unknown Pipeline ID: $pipeId"
                         RepositoryName    = "Unknown"
                         Status            = "Pipeline Not Found (Might be deleted or Classic Release)"
@@ -99,9 +105,11 @@ foreach ($group in $varGroupsResponse.value) {
         if (-not $hasPipelines) {
             $reportData += [PSCustomObject]@{
                 VariableGroupName = $groupName
+                IsKeyVaultLinked  = $isKvLinked
+                KeyVaultName      = $kvName
                 PipelineName      = "N/A"
                 RepositoryName    = "N/A"
-                Status            = "Unused / No Pipeline Permissions"
+                Status            = if ($isKvLinked) { "KEY VAULT LINKED — Migration ON HOLD" } else { "Unused / No Pipeline Permissions" }
             }
         }
 
@@ -122,39 +130,48 @@ $jsonGroups = @()
 $groupedData = $reportData | Group-Object VariableGroupName
 
 foreach ($group in $groupedData) {
-    # Guess environment based on common ADO naming conventions
+    # Look up this group's type from the ADO API response
+    $adoGroupObj  = $varGroupsResponse.value | Where-Object { $_.name -eq $group.Name }
+    $isKvLinked   = ($adoGroupObj.type -eq "AzureKeyVault")
+    $kvName       = if ($isKvLinked) { $adoGroupObj.providerData.vault } else { "" }
+    $pipelinesList = ($group.Group.PipelineName | Select-Object -Unique) -join ", "
+
+    # Auto-detect scope suggestion
     $uniqueRepos = @($group.Group | Where-Object { $_.RepositoryName -ne "N/A" -and $_.RepositoryName -ne "Unknown" } | Select-Object -ExpandProperty RepositoryName -Unique)
-    
     $suggestedScope = "repository"
-    $suggestedRepo = ""
+    $suggestedRepo  = ""
     $suggestedEnvironment = ""
-    
+
     if ($uniqueRepos.Count -eq 1) {
         $suggestedRepo = $uniqueRepos[0]
-        
-        # Guess environment based on common ADO naming conventions
         if ($group.Name -match "(?i)-(dev|prod|prd|qa|uat.*|tst|test|stg|staging)$") {
             $suggestedScope = "environment"
             $suggestedEnvironment = $matches[1].ToLower()
-            
-            # Normalize common abbreviations
             if ($suggestedEnvironment -eq "prd") { $suggestedEnvironment = "production" }
             if ($suggestedEnvironment -eq "tst") { $suggestedEnvironment = "test" }
         }
     } elseif ($uniqueRepos.Count -gt 1) {
         $suggestedScope = "organization"
-        $suggestedRepo = "MULTIPLE_REPOS_DETECTED"
+        $suggestedRepo  = "MULTIPLE_REPOS_DETECTED"
     }
 
-    $pipelinesList = ($group.Group.PipelineName | Select-Object -Unique) -join ", "
+    # KV-linked groups are automatically held — no manual config needed
+    $action = if ($isKvLinked) { "keyvault-hold" } else { "skip" }
+    $notes  = if ($isKvLinked) {
+        "[KEY VAULT LINKED] Vault: '$kvName'. Migration ON HOLD — resolve vault access first. Used by: $pipelinesList"
+    } else {
+        "Used by pipelines: $pipelinesList"
+    }
 
     $jsonGroups += @{
         adoGroupName      = $group.Name
-        action            = "skip" # Default to skip for safety
+        action            = $action
+        isKeyVaultLinked  = $isKvLinked
+        keyVaultName      = $kvName
         targetScope       = $suggestedScope
         targetRepo        = $suggestedRepo
         targetEnvironment = $suggestedEnvironment
-        notes             = "Used by pipelines: $pipelinesList"
+        notes             = $notes
     }
 }
 
