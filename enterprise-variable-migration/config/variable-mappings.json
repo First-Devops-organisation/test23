@@ -1,5 +1,5 @@
 {
-  "targetGitHubOrg": "Second-Devops-organisation1",
+  "targetGitHubOrg": "Second-Devops-organisation",
   "variableGroups": [
     {
       "adoGroupName": "ankit-endtoend",
