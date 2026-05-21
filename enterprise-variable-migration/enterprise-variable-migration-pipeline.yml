@@ -118,6 +118,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'ankit-adotogit' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'ankit-adotogit' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
@@ -133,6 +139,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'artifact-migration' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'artifact-migration' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "artifact_migration_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "artifact_migration_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
@@ -148,6 +160,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'BoardMigrationConfig' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'BoardMigrationConfig' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/Board_migration"
           gh secret set "GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/Board_migration"
@@ -163,6 +181,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'boards-migration' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'boards-migration' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "boards_migration_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "boards_migration_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
@@ -178,6 +202,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'DemoApp-Application-API' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'DemoApp-Application-API' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "projectkey"      --body "$(projectkey)"      --repo "Second-Devops-organisation1/Demoapp-Application-API"
           gh secret set "ProjectName"     --body "$(ProjectName)"     --repo "Second-Devops-organisation1/Demoapp-Application-API"
@@ -194,6 +224,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'DemoApp-Application-API-Prod' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'DemoApp-Application-API-Prod' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "Name"              --body "$(Name)"              --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "production"
           gh secret set "resourceGroupName" --body "$(resourceGroupName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "production"
@@ -209,6 +245,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'DemoApp-Application-API-Test' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'DemoApp-Application-API-Test' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "Name"              --body "$(Name)"              --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "test"
           gh secret set "resourceGroupName" --body "$(resourceGroupName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "test"
@@ -225,6 +267,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'DemoApp-Application-API-UAT_E' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'DemoApp-Application-API-UAT_E' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "Name"              --body "$(Name)"              --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "uat_e"
           gh secret set "resourceGroupName" --body "$(resourceGroupName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "uat_e"
@@ -255,6 +303,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'environment_set_up' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'environment_set_up' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "environment_set_up_GH_PAT" --body "$(GH_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
@@ -337,6 +391,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'log' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'log' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "ADO_PAT" --body "$(ADO_PAT)" --org "Second-Devops-organisation1" --visibility private
           gh secret set "GH_PAT"  --body "$(GH_PAT)"  --org "Second-Devops-organisation1" --visibility private
@@ -352,6 +412,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'metadata' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'metadata' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "AZURE_DEVOPS_EXT_PAT" --body "$(AZURE_DEVOPS_EXT_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
@@ -366,6 +432,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'migration-branch-policies' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'migration-branch-policies' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "migration_branch_policies_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "migration_branch_policies_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
@@ -381,6 +453,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'MySecretsGroup' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'MySecretsGroup' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "clientSecret"   --body "$(clientSecret)"   --repo "Second-Devops-organisation1/Fake-Repo-Does-Not-Exist"
           gh secret set "storageKey"     --body "$(storageKey)"     --repo "Second-Devops-organisation1/Fake-Repo-Does-Not-Exist"
@@ -398,6 +476,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'pipeline-migration' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'pipeline-migration' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "pipeline_migration_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "pipeline_migration_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
@@ -413,6 +497,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'Repo_migration' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'Repo_migration' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ado-to-github-migration"
           gh secret set "GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ado-to-github-migration"
@@ -428,6 +518,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discove' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-discove' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "repo_migration_discove_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
@@ -442,6 +538,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discover' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-discover' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "repo_migration_discover_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "repo_migration_discover_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
@@ -457,6 +559,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discoverB' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-discoverB' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "repo_migration_discoverB_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
@@ -471,6 +579,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-migrate' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-migrate' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "repo_migration_migrate_GH_PAT" --body "$(GH_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
@@ -485,6 +599,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'setup-github-org' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'setup-github-org' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "setup_github_org_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "setup_github_org_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
@@ -517,6 +637,12 @@ stages:
         targetType: 'inline'
         pwsh: true
         script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'urvashi-adotogit - Copy' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'urvashi-adotogit - Copy' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "urvashi_adotogit___Copy_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
           gh secret set "urvashi_adotogit___Copy_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
