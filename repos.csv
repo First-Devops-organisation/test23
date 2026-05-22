@@ -17,6 +17,6 @@ GHRepo,EnvName,BranchName,ReviewerUsernames,WaitTimer
 ADO-githubcopilot-repo,development,develop,,0
 ADO-githubcopilot-repo,qa,release,varsha-patilyash,5
 Demoapp-Application-API,development,develop,,0
-Demoapp-Application-API,qa,release,varsha-patilyash|ankitpanwar1,30
+Demoapp-Application-API,qa,release,varsha-patilyash|Urvashi773,30
 SSPM,main,prod,ankitpanwar1,20
 test1,qa,release,varsha-patilyash,20
