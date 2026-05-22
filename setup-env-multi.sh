@@ -1,376 +1,432 @@
-<#
-.SYNOPSIS
-    Sets up GitHub deployment environments for multiple repositories from a CSV file.
+#!/usr/bin/env bash
+# ==============================================================================
+# Multi-Repo GitHub Environment Setup -- Linux/Ubuntu (Bash)
+# ==============================================================================
+#
+# SYNOPSIS:
+#   Sets up GitHub deployment environments for multiple repositories from a CSV.
+#
+# USAGE:
+#   # Dry-run first
+#   ./setup-env-multi.sh --org "My-Org" --dry-run
+#
+#   # Execute for real
+#   ./setup-env-multi.sh --org "My-Org" --csv ./repos.csv
+#
+#   # Custom retries and log path
+#   ./setup-env-multi.sh --org "My-Org" --csv ./repos.csv --retries 3 --log /tmp/setup.log
+#
+# PREREQUISITES:
+#   - gh CLI installed and authenticated (gh auth login)
+#   - jq installed (sudo apt-get install jq)
+#   - CSV file with header row (see repos.csv)
+#
+# ==============================================================================
 
-.DESCRIPTION
-    Reads a CSV file containing repository configurations and creates/updates
-    GitHub environments with deployment branch policies and optional reviewer gates.
-    Supports dry-run mode, detailed logging, retry logic, and generates a summary report.
-
-.PARAMETER GHOrg
-    The GitHub organization name (applies to all repos in the CSV).
-
-.PARAMETER CsvPath
-    Path to the CSV configuration file. Default: repos.csv in the same directory.
-
-.PARAMETER DryRun
-    If set, validates the CSV and shows what would be done WITHOUT making any API calls.
-
-.PARAMETER MaxRetries
-    Number of retries for failed API calls. Default: 2.
-
-.PARAMETER LogPath
-    Path to write the log file. Default: setup-env-multi-<timestamp>.log in TEMP.
-
-.EXAMPLE
-    # Dry-run first to validate
-    .\setup-env-multi.ps1 -GHOrg "My-Org" -DryRun
-
-    # Execute for real
-    .\setup-env-multi.ps1 -GHOrg "My-Org" -CsvPath ".\repos.csv"
-
-    # With custom log path
-    .\setup-env-multi.ps1 -GHOrg "My-Org" -LogPath "C:\logs\env-setup.log"
-#>
-
-[CmdletBinding(SupportsShouldProcess)]
-param (
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [string]$GHOrg,
-
-    [Parameter(Mandatory = $false)]
-    [string]$CsvPath = (Join-Path $PSScriptRoot "repos.csv"),
-
-    [Parameter(Mandatory = $false)]
-    [switch]$DryRun,
-
-    [Parameter(Mandatory = $false)]
-    [ValidateRange(0, 5)]
-    [int]$MaxRetries = 2,
-
-    [Parameter(Mandatory = $false)]
-    [string]$LogPath = (Join-Path $env:TEMP "setup-env-multi-$(Get-Date -Format 'yyyyMMdd-HHmmss').log")
-)
+set -euo pipefail
 
 # ==============================================================================
-# STRICT MODE & ERROR PREFERENCES
+# DEFAULTS
 # ==============================================================================
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GH_ORG=""
+CSV_PATH="${SCRIPT_DIR}/repos.csv"
+DRY_RUN=false
+MAX_RETRIES=2
+LOG_PATH="/tmp/setup-env-multi-$(date +%Y%m%d-%H%M%S).log"
+
+# ==============================================================================
+# COLORS
+# ==============================================================================
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+GRAY='\033[0;90m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# ==============================================================================
+# COUNTERS FOR SUMMARY
+# ==============================================================================
+TOTAL=0
+SUCCESS_COUNT=0
+FAILED_COUNT=0
+SKIPPED_COUNT=0
+SUMMARY_LINES=()
+
+# ==============================================================================
+# USAGE
+# ==============================================================================
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Required:
+  --org <name>        GitHub organization name
+
+Optional:
+  --csv <path>        Path to CSV config file (default: ./repos.csv)
+  --dry-run           Validate only, no API calls
+  --retries <n>       Max retries for failed API calls (default: 2, max: 5)
+  --log <path>        Log file path (default: /tmp/setup-env-multi-<timestamp>.log)
+  -h, --help          Show this help message
+
+Examples:
+  $(basename "$0") --org "My-Org" --dry-run
+  $(basename "$0") --org "My-Org" --csv ./prod-repos.csv --retries 3
+EOF
+    exit 0
+}
+
+# ==============================================================================
+# ARGUMENT PARSING
+# ==============================================================================
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --org)       GH_ORG="$2"; shift 2 ;;
+        --csv)       CSV_PATH="$2"; shift 2 ;;
+        --dry-run)   DRY_RUN=true; shift ;;
+        --retries)   MAX_RETRIES="$2"; shift 2 ;;
+        --log)       LOG_PATH="$2"; shift 2 ;;
+        -h|--help)   usage ;;
+        *)           echo "Unknown option: $1"; usage ;;
+    esac
+done
+
+# Validate required args
+if [[ -z "$GH_ORG" ]]; then
+    echo -e "${RED}ERROR: --org is required${NC}"
+    usage
+fi
+
+if [[ "$MAX_RETRIES" -gt 5 ]]; then
+    MAX_RETRIES=5
+fi
 
 # ==============================================================================
 # LOGGING
 # ==============================================================================
-function Write-Log {
-    param (
-        [string]$Message,
-        [ValidateSet("INFO", "WARN", "ERROR", "SUCCESS", "DEBUG")]
-        [string]$Level = "INFO"
-    )
+log() {
+    local level="${1}"
+    local message="${2}"
+    local timestamp
+    timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+    local log_entry="[${timestamp}] [${level}] ${message}"
 
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry  = "[$timestamp] [$Level] $Message"
+    case "$level" in
+        INFO)    echo -e "${CYAN}${log_entry}${NC}" ;;
+        WARN)    echo -e "${YELLOW}${log_entry}${NC}" ;;
+        ERROR)   echo -e "${RED}${log_entry}${NC}" ;;
+        SUCCESS) echo -e "${GREEN}${log_entry}${NC}" ;;
+        DEBUG)   echo -e "${GRAY}${log_entry}${NC}" ;;
+    esac
 
-    # Console colors
-    $color = switch ($Level) {
-        "INFO"    { "Cyan" }
-        "WARN"    { "Yellow" }
-        "ERROR"   { "Red" }
-        "SUCCESS" { "Green" }
-        "DEBUG"   { "DarkGray" }
-    }
-
-    Write-Host $logEntry -ForegroundColor $color
-
-    # Append to log file
-    $logEntry | Out-File -FilePath $LogPath -Append -Encoding utf8
+    echo "${log_entry}" >> "${LOG_PATH}"
 }
 
 # ==============================================================================
-# GH CLI WRAPPER WITH RETRY
+# GH API WRAPPER WITH RETRY + EXPONENTIAL BACKOFF
 # ==============================================================================
-function Invoke-GhApi {
-    param (
-        [string]$Method,
-        [string]$Endpoint,
-        [string]$InputFile = $null
-    )
+invoke_gh_api() {
+    local method="$1"
+    local endpoint="$2"
+    local input_file="${3:-}"
 
-    for ($attempt = 1; $attempt -le ($MaxRetries + 1); $attempt++) {
-        try {
-            $args = @("api", "-X", $Method, $Endpoint, "--header", "Accept: application/vnd.github+json")
-            if ($InputFile) {
-                $args += @("--input", $InputFile)
-            }
+    local attempt
+    for attempt in $(seq 1 $((MAX_RETRIES + 1))); do
+        local args=("api" "-X" "${method}" "${endpoint}" "--header" "Accept: application/vnd.github+json")
+        if [[ -n "$input_file" ]]; then
+            args+=("--input" "${input_file}")
+        fi
 
-            $result = & gh @args 2>&1
-            $exitCode = $LASTEXITCODE
+        local result
+        if result=$(gh "${args[@]}" 2>&1); then
+            echo "${result}"
+            return 0
+        fi
 
-            if ($exitCode -eq 0) {
-                return $result
-            }
+        # Check for non-retryable errors
+        if echo "${result}" | grep -qiE "404|Not Found"; then
+            log "ERROR" "Resource not found: ${endpoint}"
+            return 1
+        fi
+        if echo "${result}" | grep -qiE "422|Validation Failed"; then
+            log "ERROR" "Validation error on ${endpoint} -- check input payload"
+            return 1
+        fi
 
-            # Specific error handling
-            $resultStr = $result -join "`n"
-            if ($resultStr -match "404|Not Found") {
-                throw "Resource not found: $Endpoint"
-            }
-            if ($resultStr -match "422|Validation Failed") {
-                throw "Validation error on $Endpoint -- check input payload"
-            }
-
-            throw "gh api returned exit code $exitCode : $resultStr"
-        }
-        catch {
-            if ($attempt -le $MaxRetries) {
-                $waitSeconds = [math]::Pow(2, $attempt)  # Exponential backoff: 2s, 4s, 8s
-                Write-Log "Attempt $attempt failed for $Method $Endpoint. Retrying in ${waitSeconds}s... ($_)" -Level "WARN"
-                Start-Sleep -Seconds $waitSeconds
-            }
-            else {
-                throw $_
-            }
-        }
-    }
+        if [[ "$attempt" -le "$MAX_RETRIES" ]]; then
+            local wait_seconds=$((2 ** attempt))
+            log "WARN" "Attempt ${attempt} failed for ${method} ${endpoint}. Retrying in ${wait_seconds}s..."
+            sleep "${wait_seconds}"
+        else
+            log "ERROR" "All ${attempt} attempts failed for ${method} ${endpoint}: ${result}"
+            return 1
+        fi
+    done
 }
 
 # ==============================================================================
-# REVIEWER LOOKUP (CACHED)
+# REVIEWER LOOKUP WITH CACHE
 # ==============================================================================
-$script:UserIdCache = @{}
+declare -A USER_ID_CACHE
 
-function Get-GitHubUserId {
-    param ([string]$Username)
+get_github_user_id() {
+    local username="$1"
 
-    if ($script:UserIdCache.ContainsKey($Username)) {
-        return $script:UserIdCache[$Username]
-    }
+    # Check cache
+    if [[ -v USER_ID_CACHE["${username}"] ]]; then
+        echo "${USER_ID_CACHE[${username}]}"
+        return 0
+    fi
 
-    $userId = (gh api "users/$Username" --jq '.id' 2>$null)
-    if ($LASTEXITCODE -eq 0 -and $userId) {
-        $script:UserIdCache[$Username] = [int]$userId
-        Write-Log "  Resolved $Username -> ID $userId" -Level "DEBUG"
-        return [int]$userId
-    }
+    local user_id
+    user_id=$(gh api "users/${username}" --jq '.id' 2>/dev/null) || true
 
-    Write-Log "  Could not resolve username '$Username' -- skipping" -Level "WARN"
-    return $null
+    if [[ -n "$user_id" && "$user_id" =~ ^[0-9]+$ ]]; then
+        USER_ID_CACHE["${username}"]="${user_id}"
+        log "DEBUG" "  Resolved ${username} -> ID ${user_id}"
+        echo "${user_id}"
+        return 0
+    fi
+
+    log "WARN" "  Could not resolve username '${username}' -- skipping"
+    return 1
 }
 
 # ==============================================================================
-# ENVIRONMENT SETUP (SINGLE REPO + ENV)
+# SETUP SINGLE ENVIRONMENT
 # ==============================================================================
-function Set-GitHubEnvironment {
-    param (
-        [string]$Org,
-        [string]$Repo,
-        [string]$EnvName,
-        [string]$BranchName,
-        [string[]]$Reviewers,
-        [int]$WaitTimer
-    )
+setup_environment() {
+    local org="$1"
+    local repo="$2"
+    local env_name="$3"
+    local branch_name="$4"
+    local reviewers_str="$5"
+    local wait_timer="$6"
 
-    $repoSlug = "$Org/$Repo"
-    Write-Log "--- Setting up '$EnvName' on $repoSlug ---"
+    local repo_slug="${org}/${repo}"
+    log "INFO" "--- Setting up '${env_name}' on ${repo_slug} ---"
 
-    # 1. Build reviewer list
-    $reviewerObjects = @()
-    foreach ($username in $Reviewers) {
-        if ([string]::IsNullOrWhiteSpace($username)) { continue }
-        $userId = Get-GitHubUserId -Username $username.Trim()
-        if ($userId) {
-            $reviewerObjects += @{ type = "User"; id = $userId }
-        }
-    }
+    # 1. Build reviewer JSON array
+    local reviewers_json="[]"
+    if [[ -n "$reviewers_str" ]]; then
+        local reviewer_array=()
+        IFS='|' read -ra USERNAMES <<< "${reviewers_str}"
+        for username in "${USERNAMES[@]}"; do
+            username="$(echo "${username}" | xargs)"  # trim whitespace
+            [[ -z "$username" ]] && continue
 
-    # 2. Build environment config
-    $envConfig = @{
-        wait_timer               = $WaitTimer
-        deployment_branch_policy = @{
-            protected_branches      = $false
-            custom_branch_policies  = $true
-        }
-    }
+            local uid
+            if uid=$(get_github_user_id "${username}"); then
+                reviewer_array+=("{\"type\":\"User\",\"id\":${uid}}")
+            fi
+        done
 
-    if (@($reviewerObjects).Count -gt 0) {
-        $envConfig["reviewers"] = $reviewerObjects
-    }
+        if [[ ${#reviewer_array[@]} -gt 0 ]]; then
+            reviewers_json="[$(IFS=,; echo "${reviewer_array[*]}")]"
+        fi
+    fi
 
-    # 3. Write JSON without BOM (avoids 400 errors)
-    $envJson     = $envConfig | ConvertTo-Json -Depth 5
-    $envJsonFile = Join-Path $env:TEMP "env-config-$Repo-$EnvName.json"
-    [System.IO.File]::WriteAllText($envJsonFile, $envJson)
-    Write-Log "  Payload: $envJson" -Level "DEBUG"
+    # 2. Build environment config JSON
+    local env_json
+    if [[ "$reviewers_json" != "[]" ]]; then
+        env_json=$(cat <<ENDJSON
+{
+  "wait_timer": ${wait_timer},
+  "reviewers": ${reviewers_json},
+  "deployment_branch_policy": {
+    "protected_branches": false,
+    "custom_branch_policies": true
+  }
+}
+ENDJSON
+)
+    else
+        env_json=$(cat <<ENDJSON
+{
+  "wait_timer": ${wait_timer},
+  "deployment_branch_policy": {
+    "protected_branches": false,
+    "custom_branch_policies": true
+  }
+}
+ENDJSON
+)
+    fi
+
+    # 3. Write JSON to temp file
+    local env_json_file
+    env_json_file="$(mktemp /tmp/env-config-${repo}-${env_name}-XXXXXX.json)"
+    echo "${env_json}" > "${env_json_file}"
+    log "DEBUG" "  Payload: ${env_json}"
 
     # 4. Create / Update environment
-    if (-not $DryRun) {
-        Invoke-GhApi -Method "PUT" -Endpoint "repos/$repoSlug/environments/$EnvName" -InputFile $envJsonFile
-        Write-Log "  Environment '$EnvName' applied" -Level "SUCCESS"
-    }
-    else {
-        Write-Log "  [DRY-RUN] Would PUT repos/$repoSlug/environments/$EnvName" -Level "INFO"
-    }
+    if [[ "$DRY_RUN" == true ]]; then
+        log "INFO" "  [DRY-RUN] Would PUT repos/${repo_slug}/environments/${env_name}"
+    else
+        if ! invoke_gh_api "PUT" "repos/${repo_slug}/environments/${env_name}" "${env_json_file}" > /dev/null; then
+            rm -f "${env_json_file}"
+            return 1
+        fi
+        log "SUCCESS" "  Environment '${env_name}' applied"
+    fi
 
-    # 5. Clean existing branch policies (avoid duplicates on re-run)
-    if (-not $DryRun) {
-        Write-Log "  Cleaning old branch policies..." -Level "DEBUG"
-        $existing = gh api "repos/$repoSlug/environments/$EnvName/deployment-branch-policies" --jq '.branch_policies[].id' 2>$null
-        foreach ($policyId in $existing) {
-            if ([string]::IsNullOrWhiteSpace($policyId)) { continue }
-            Invoke-GhApi -Method "DELETE" -Endpoint "repos/$repoSlug/environments/$EnvName/deployment-branch-policies/$policyId"
-            Write-Log "  Deleted old policy $policyId" -Level "DEBUG"
-        }
-    }
+    # 5. Clean existing branch policies (idempotent re-runs)
+    if [[ "$DRY_RUN" == false ]]; then
+        log "DEBUG" "  Cleaning old branch policies..."
+        local policy_ids
+        policy_ids=$(gh api "repos/${repo_slug}/environments/${env_name}/deployment-branch-policies" \
+            --jq '.branch_policies[].id' 2>/dev/null) || true
+
+        while IFS= read -r policy_id; do
+            [[ -z "$policy_id" ]] && continue
+            invoke_gh_api "DELETE" "repos/${repo_slug}/environments/${env_name}/deployment-branch-policies/${policy_id}" > /dev/null
+            log "DEBUG" "  Deleted old policy ${policy_id}"
+        done <<< "${policy_ids}"
+    fi
 
     # 6. Add branch deployment rule
-    $branchJson     = @{ name = $BranchName } | ConvertTo-Json
-    $branchJsonFile = Join-Path $env:TEMP "branch-config-$Repo-$EnvName.json"
-    [System.IO.File]::WriteAllText($branchJsonFile, $branchJson)
+    local branch_json_file
+    branch_json_file="$(mktemp /tmp/branch-config-${repo}-${env_name}-XXXXXX.json)"
+    echo "{\"name\":\"${branch_name}\"}" > "${branch_json_file}"
 
-    if (-not $DryRun) {
-        Invoke-GhApi -Method "POST" -Endpoint "repos/$repoSlug/environments/$EnvName/deployment-branch-policies" -InputFile $branchJsonFile
-        Write-Log "  Branch locked to '$BranchName'" -Level "SUCCESS"
-    }
-    else {
-        Write-Log "  [DRY-RUN] Would lock branch to '$BranchName'" -Level "INFO"
-    }
+    if [[ "$DRY_RUN" == true ]]; then
+        log "INFO" "  [DRY-RUN] Would lock branch to '${branch_name}'"
+    else
+        if ! invoke_gh_api "POST" "repos/${repo_slug}/environments/${env_name}/deployment-branch-policies" "${branch_json_file}" > /dev/null; then
+            rm -f "${env_json_file}" "${branch_json_file}"
+            return 1
+        fi
+        log "SUCCESS" "  Branch locked to '${branch_name}'"
+    fi
 
     # 7. Cleanup temp files
-    Remove-Item $envJsonFile    -ErrorAction SilentlyContinue
-    Remove-Item $branchJsonFile -ErrorAction SilentlyContinue
+    rm -f "${env_json_file}" "${branch_json_file}"
+    return 0
 }
 
 # ==============================================================================
 # MAIN
 # ==============================================================================
-function Main {
-    Write-Log "=========================================="
-    Write-Log "  Multi-Repo Environment Setup"
-    Write-Log "=========================================="
-    Write-Log "Org      : $GHOrg"
-    Write-Log "CSV      : $CsvPath"
-    Write-Log "Log      : $LogPath"
-    Write-Log "Dry-Run  : $DryRun"
-    Write-Log "Retries  : $MaxRetries"
-    Write-Log ""
+main() {
+    log "INFO" "=========================================="
+    log "INFO" "  Multi-Repo Environment Setup (Linux)"
+    log "INFO" "=========================================="
+    log "INFO" "Org      : ${GH_ORG}"
+    log "INFO" "CSV      : ${CSV_PATH}"
+    log "INFO" "Log      : ${LOG_PATH}"
+    log "INFO" "Dry-Run  : ${DRY_RUN}"
+    log "INFO" "Retries  : ${MAX_RETRIES}"
+    log "INFO" ""
 
-    # ---- Pre-flight checks ----
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        Write-Log "GitHub CLI (gh) is not installed or not in PATH." -Level "ERROR"
+    # -- Pre-flight checks --
+    if ! command -v gh &> /dev/null; then
+        log "ERROR" "GitHub CLI (gh) is not installed. Install: https://cli.github.com"
         exit 1
-    }
+    fi
 
-    # Verify authentication
-    $authStatus = gh auth status 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "Not authenticated with gh CLI. Run 'gh auth login' first." -Level "ERROR"
-        Write-Log $($authStatus -join "`n") -Level "ERROR"
+    if ! command -v jq &> /dev/null; then
+        log "WARN" "jq is not installed. Some features may not work. Install: sudo apt-get install jq"
+    fi
+
+    if ! gh auth status &> /dev/null; then
+        log "ERROR" "Not authenticated with gh CLI. Run 'gh auth login' first."
         exit 1
-    }
-    Write-Log "gh CLI authenticated OK" -Level "SUCCESS"
+    fi
+    log "SUCCESS" "gh CLI authenticated OK"
 
-    # Validate CSV exists
-    if (-not (Test-Path $CsvPath)) {
-        Write-Log "CSV file not found: $CsvPath" -Level "ERROR"
+    if [[ ! -f "$CSV_PATH" ]]; then
+        log "ERROR" "CSV file not found: ${CSV_PATH}"
         exit 1
-    }
+    fi
 
-    # ---- Parse CSV ----
-    $rawLines = Get-Content $CsvPath | Where-Object {
-        $_.Trim() -ne "" -and -not $_.TrimStart().StartsWith("#")
-    }
+    # -- Parse CSV --
+    # Read non-empty, non-comment lines, skip header
+    mapfile -t data_lines < <(grep -v '^\s*#' "${CSV_PATH}" | grep -v '^\s*$' | tail -n +2)
 
-    # Expect a header row
-    $header = $rawLines[0]
-    $dataLines = $rawLines | Select-Object -Skip 1
-
-    if (@($dataLines).Count -eq 0) {
-        Write-Log "CSV file has no data rows." -Level "WARN"
+    local total_rows=${#data_lines[@]}
+    if [[ "$total_rows" -eq 0 ]]; then
+        log "WARN" "CSV file has no data rows."
         exit 0
-    }
+    fi
 
-    Write-Log "Found $(@($dataLines).Count) environment configuration(s) to process." -Level "INFO"
-    Write-Log ""
+    log "INFO" "Found ${total_rows} environment configuration(s) to process."
+    log "INFO" ""
 
-    # ---- Process each row ----
-    $results = @()     # Track pass/fail per row
-    $rowIndex = 0
+    # -- Process each row --
+    local row_index=0
 
-    foreach ($line in $dataLines) {
-        $rowIndex++
-        $fields = $line.Split(",")
+    for line in "${data_lines[@]}"; do
+        ((row_index++)) || true
+        TOTAL=$row_index
 
-        # Validate minimum columns
-        if ($fields.Count -lt 3) {
-            Write-Log "Row $rowIndex -- Skipping malformed row (need at least 3 columns): $line" -Level "WARN"
-            $results += [PSCustomObject]@{ Row=$rowIndex; Repo=$line; Env="?"; Status="SKIPPED"; Error="Malformed row" }
-            continue
-        }
+        # Parse CSV columns
+        IFS=',' read -r repo env_name branch reviewers wait_timer <<< "${line}"
 
-        $repo       = $fields[0].Trim()
-        $envName    = $fields[1].Trim()
-        $branch     = $fields[2].Trim()
-        $reviewers  = if ($fields.Count -ge 4 -and $fields[3].Trim()) { $fields[3].Trim().Split("|") } else { @() }
-        $waitTimer  = if ($fields.Count -ge 5 -and $fields[4].Trim()) { [int]$fields[4].Trim() } else { 0 }
+        # Trim whitespace
+        repo="$(echo "${repo}" | xargs)"
+        env_name="$(echo "${env_name}" | xargs)"
+        branch="$(echo "${branch}" | xargs)"
+        reviewers="$(echo "${reviewers}" | xargs)"
+        wait_timer="$(echo "${wait_timer}" | xargs)"
+
+        # Default wait_timer
+        [[ -z "$wait_timer" ]] && wait_timer=0
 
         # Validate required fields
-        if ([string]::IsNullOrWhiteSpace($repo) -or [string]::IsNullOrWhiteSpace($envName) -or [string]::IsNullOrWhiteSpace($branch)) {
-            Write-Log "Row $rowIndex -- Missing required field(s). Skipping." -Level "WARN"
-            $results += [PSCustomObject]@{ Row=$rowIndex; Repo=$repo; Env=$envName; Status="SKIPPED"; Error="Missing required field" }
+        if [[ -z "$repo" || -z "$env_name" || -z "$branch" ]]; then
+            log "WARN" "Row ${row_index} -- Missing required field(s). Skipping: ${line}"
+            ((SKIPPED_COUNT++)) || true
+            SUMMARY_LINES+=("$(printf '  %-4s %-25s %-15s %-12s %s' "${row_index}" "${repo:-?}" "${env_name:-?}" "SKIPPED" "Missing required field")")
             continue
-        }
+        fi
 
-        Write-Log ""
-        Write-Log "=== Row $rowIndex / $(@($dataLines).Count): $repo [$envName] ==="
+        log "INFO" ""
+        log "INFO" "=== Row ${row_index} / ${total_rows}: ${repo} [${env_name}] ==="
 
-        try {
-            Set-GitHubEnvironment `
-                -Org        $GHOrg `
-                -Repo       $repo `
-                -EnvName    $envName `
-                -BranchName $branch `
-                -Reviewers  $reviewers `
-                -WaitTimer  $waitTimer
+        if setup_environment "${GH_ORG}" "${repo}" "${env_name}" "${branch}" "${reviewers}" "${wait_timer}"; then
+            local status
+            if [[ "$DRY_RUN" == true ]]; then
+                status="DRY-RUN OK"
+            else
+                status="SUCCESS"
+            fi
+            ((SUCCESS_COUNT++)) || true
+            SUMMARY_LINES+=("$(printf '  %-4s %-25s %-15s %-12s' "${row_index}" "${repo}" "${env_name}" "${status}")")
+        else
+            ((FAILED_COUNT++)) || true
+            SUMMARY_LINES+=("$(printf '  %-4s %-25s %-15s %-12s %s' "${row_index}" "${repo}" "${env_name}" "FAILED" "See log for details")")
+        fi
+    done
 
-            $status = if ($DryRun) { "DRY-RUN OK" } else { "SUCCESS" }
-            $results += [PSCustomObject]@{ Row=$rowIndex; Repo=$repo; Env=$envName; Status=$status; Error="" }
-        }
-        catch {
-            Write-Log "Row $rowIndex -- FAILED: $_" -Level "ERROR"
-            $results += [PSCustomObject]@{ Row=$rowIndex; Repo=$repo; Env=$envName; Status="FAILED"; Error=$_.ToString() }
-            # Continue to next row -- don't abort the whole batch
-        }
-    }
+    # -- Summary Report --
+    log "INFO" ""
+    log "INFO" "=========================================="
+    log "INFO" "  SUMMARY REPORT"
+    log "INFO" "=========================================="
+    log "INFO" "Total: ${TOTAL}  |  Success: ${SUCCESS_COUNT}  |  Failed: ${FAILED_COUNT}  |  Skipped: ${SKIPPED_COUNT}"
+    log "INFO" ""
+    log "INFO" "$(printf '  %-4s %-25s %-15s %-12s %s' 'Row' 'Repo' 'Env' 'Status' 'Error')"
+    log "INFO" "  $(printf '%.0s-' {1..70})"
 
-    # ---- Summary Report ----
-    Write-Log ""
-    Write-Log "=========================================="
-    Write-Log "  SUMMARY REPORT"
-    Write-Log "=========================================="
+    for summary_line in "${SUMMARY_LINES[@]}"; do
+        log "INFO" "${summary_line}"
+    done
 
-    $successCount = @($results | Where-Object { $_.Status -in @("SUCCESS", "DRY-RUN OK") }).Count
-    $failedCount  = @($results | Where-Object { $_.Status -eq "FAILED" }).Count
-    $skippedCount = @($results | Where-Object { $_.Status -eq "SKIPPED" }).Count
-
-    Write-Log "Total: $(@($results).Count)  |  Success: $successCount  |  Failed: $failedCount  |  Skipped: $skippedCount"
-    Write-Log ""
-
-    # Table output
-    $results | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Log $_ -Level "INFO" }
-
-    # Log file location
-    Write-Log "Full log saved to: $LogPath" -Level "INFO"
+    log "INFO" ""
+    log "INFO" "Full log saved to: ${LOG_PATH}"
 
     # Exit code
-    if ($failedCount -gt 0) {
-        Write-Log "Completed with $failedCount failure(s)." -Level "WARN"
+    if [[ "$FAILED_COUNT" -gt 0 ]]; then
+        log "WARN" "Completed with ${FAILED_COUNT} failure(s)."
         exit 1
-    }
+    fi
 
-    Write-Log "All environments configured successfully!" -Level "SUCCESS"
+    log "SUCCESS" "All environments configured successfully!"
     exit 0
 }
 
 # Run
-Main
+main
