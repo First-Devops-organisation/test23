@@ -54,6 +54,7 @@ steps:
   # -- Make script executable and run --
   - script: |
       chmod +x "$(Build.SourcesDirectory)/setup-env-multi.sh"
+      mkdir -p "$(Build.SourcesDirectory)/logs"
 
       DRY_RUN_FLAG=""
       if [ "${{ parameters.DryRun }}" = "True" ]; then
@@ -63,6 +64,7 @@ steps:
       "$(Build.SourcesDirectory)/setup-env-multi.sh" \
         --org "$(GH_Org)" \
         --csv "$(Build.SourcesDirectory)/repos.csv" \
+        --log "$(Build.SourcesDirectory)/logs/setup-env-multi.log" \
         --retries 2 \
         $DRY_RUN_FLAG
     displayName: "Setup environments for all repos"
@@ -74,6 +76,6 @@ steps:
     displayName: "Publish setup log"
     condition: always()
     inputs:
-      PathtoPublish: "/tmp"
+      PathtoPublish: "$(Build.SourcesDirectory)/logs"
       ArtifactName: "env-setup-logs"
       publishLocation: "Container"
