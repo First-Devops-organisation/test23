@@ -311,7 +311,7 @@ foreach ($entry in $repoList) {
             do {
                 $prRaw  = Invoke-WebRequest -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=$prStatus&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
                 $prResp = $prRaw.Content | ConvertFrom-Json
-                $batch  = [int](<Get-JsonProp $prResp 'count' 0>)
+                $batch  = [int](Get-JsonProp $prResp 'count' 0)
                 $adoPrCount += $batch
                 $skip += $batch
             } while ($batch -eq 1000)
