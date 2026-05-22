@@ -14,9 +14,9 @@
 ##   - ReviewerUsernames use | as separator (e.g. user1|user2)
 ## =========================================================
 GHRepo,EnvName,BranchName,ReviewerUsernames,WaitTimer
-dummy-secretymigr,development,develop,,0
-dummy-secretymigr,qa,release,varsha-patilyash,5
-repo-two,development,develop,,0
-repo-two,qa,release,varsha-patilyash|reviewer2,5
-repo-three,development,develop,,0
-repo-three,qa,release,varsha-patilyash,5
+ADO-githubcopilot-repo,development,develop,,0
+ADO-githubcopilot-repo,qa,release,varsha-patilyash,5
+Demoapp-Application-API,development,develop,,0
+Demoapp-Application-API,qa,release,varsha-patilyash|ankitpanwar1,30
+SSPM,main,prod,ankitpanwar1,20
+test1,qa,release,varsha-patilyash,20
