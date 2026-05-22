@@ -466,6 +466,26 @@ stages:
               artifact: "MigrationDashboard-Single"
               publishLocation: pipeline
 
+          - task: PowerShell@2
+            displayName: "Fix HTML Viewer Tab Name"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                $ghRepo = '$(RESOLVED_REPO)'
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = '${{ parameters.ADORepo }}'.Trim() }
+                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = '${{ parameters.GHRepo }}'.Trim() }
+                
+                $dashboardDir = "$(Build.SourcesDirectory)/repo-migration/output/dashboard/$ghRepo"
+                $originalHtml = "$dashboardDir/migration-report-$ghRepo.html"
+                
+                # Rename the file to index.html so the HTML Viewer extension uses the correct Tab Name!
+                if (Test-Path $originalHtml) {
+                    Rename-Item -Path $originalHtml -NewName "index.html" -Force
+                    Write-Host "Successfully renamed report to index.html"
+                }
+              pwsh: true
+
           - task: PublishHtmlReport@1
             displayName: "Show HTML on Pipeline Tab"
             condition: always()
