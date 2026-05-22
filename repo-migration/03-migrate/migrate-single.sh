@@ -590,7 +590,7 @@ else
     prHeadMd="| Source Branch (head) | Open | Merged | Closed | Total |\n|---|---|---|---|---|\n"
     prByHead=$(echo "$allPRs" | jq '
       reduce .[] as $pr ({}; 
-        local $head = $pr.head.ref;
+        ($pr.head.ref) as $head |
         .[$head].Open += (if $pr.state == "open" then 1 else 0 end) |
         .[$head].Merged += (if $pr.merged_at != null then 1 else 0 end) |
         .[$head].Closed += (if $pr.state != "open" and $pr.merged_at == null then 1 else 0 end)
@@ -611,7 +611,7 @@ else
     prBaseMd="| Target Branch (base) | Open | Merged | Closed | Total |\n|---|---|---|---|---|\n"
     prByBase=$(echo "$allPRs" | jq '
       reduce .[] as $pr ({}; 
-        local $base = $pr.base.ref;
+        ($pr.base.ref) as $base |
         .[$base].Open += (if $pr.state == "open" then 1 else 0 end) |
         .[$base].Merged += (if $pr.merged_at != null then 1 else 0 end) |
         .[$base].Closed += (if $pr.state != "open" and $pr.merged_at == null then 1 else 0 end)
@@ -630,7 +630,7 @@ else
 
     mdTable="| # | Branch | Status | Files | Latest Commit | Date |\n|---|---|---|---|---|---|\n"
     mdTableRows=$(jq -rn --argjson refMeta "$refMeta" --argjson bNames "$ghBranchList" --argjson missing "$missingInGH" --arg bStatus "$branchStatus" --arg bFiles "$bFileCount" --arg db "$defaultBranch" '
-      local $all = ($bNames | map({Branch: ., Status: $bStatus, Files: (if . == $db then $bFiles else "-" end)}) ) + ($missing | map({Branch: ., Status: "Missing", Files: "-"}) );
+      ( ($bNames | map({Branch: ., Status: $bStatus, Files: (if . == $db then $bFiles else "-" end)})) + ($missing | map({Branch: ., Status: "Missing", Files: "-"})) ) as $all |
       $all | sort_by(.Branch) | .[]
     ' | jq -c '.')
     
