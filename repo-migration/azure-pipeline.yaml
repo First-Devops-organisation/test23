@@ -466,12 +466,12 @@ stages:
               artifact: "MigrationDashboard-Single"
               publishLocation: pipeline
 
-          - task: PublishHtmlReport@1
-            displayName: "Show HTML on Pipeline Tab"
-            condition: always()
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/dashboard/$(RESOLVED_REPO)'
-              tabName: "Migration Report"
+          # - task: PublishHtmlReport@1
+          #   displayName: "Show HTML on Pipeline Tab"
+          #   condition: always()
+          #   inputs:
+          #     reportDir: '$(Build.SourcesDirectory)/repo-migration/output/dashboard/$(RESOLVED_REPO)'
+          #     tabName: "Migration Report"
 
   # ===========================================================================
   # STAGE 3B – BATCH REPO MIGRATION
