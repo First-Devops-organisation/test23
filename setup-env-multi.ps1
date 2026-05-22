@@ -193,7 +193,7 @@ function Set-GitHubEnvironment {
         }
     }
 
-    if ($reviewerObjects.Count -gt 0) {
+    if (@($reviewerObjects).Count -gt 0) {
         $envConfig["reviewers"] = $reviewerObjects
     }
 
@@ -285,12 +285,12 @@ function Main {
     $header = $rawLines[0]
     $dataLines = $rawLines | Select-Object -Skip 1
 
-    if ($dataLines.Count -eq 0) {
+    if (@($dataLines).Count -eq 0) {
         Write-Log "CSV file has no data rows." -Level "WARN"
         exit 0
     }
 
-    Write-Log "Found $($dataLines.Count) environment configuration(s) to process." -Level "INFO"
+    Write-Log "Found $(@($dataLines).Count) environment configuration(s) to process." -Level "INFO"
     Write-Log ""
 
     # ---- Process each row ----
@@ -322,7 +322,7 @@ function Main {
         }
 
         Write-Log ""
-        Write-Log "=== Row $rowIndex / $($dataLines.Count): $repo [$envName] ==="
+        Write-Log "=== Row $rowIndex / $(@($dataLines).Count): $repo [$envName] ==="
 
         try {
             Set-GitHubEnvironment `
@@ -349,11 +349,11 @@ function Main {
     Write-Log "  SUMMARY REPORT"
     Write-Log "=========================================="
 
-    $successCount = ($results | Where-Object { $_.Status -in @("SUCCESS", "DRY-RUN OK") }).Count
-    $failedCount  = ($results | Where-Object { $_.Status -eq "FAILED" }).Count
-    $skippedCount = ($results | Where-Object { $_.Status -eq "SKIPPED" }).Count
+    $successCount = @($results | Where-Object { $_.Status -in @("SUCCESS", "DRY-RUN OK") }).Count
+    $failedCount  = @($results | Where-Object { $_.Status -eq "FAILED" }).Count
+    $skippedCount = @($results | Where-Object { $_.Status -eq "SKIPPED" }).Count
 
-    Write-Log "Total: $($results.Count)  |  Success: $successCount  |  Failed: $failedCount  |  Skipped: $skippedCount"
+    Write-Log "Total: $(@($results).Count)  |  Success: $successCount  |  Failed: $failedCount  |  Skipped: $skippedCount"
     Write-Log ""
 
     # Table output
