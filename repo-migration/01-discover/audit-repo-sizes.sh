@@ -191,7 +191,8 @@ while read -r repo_json; do
           maxBlobSize=$(awk -v size="$maxSize" 'BEGIN { printf "%.2f", size / 1048576 }')
         fi
 
-        # Find largest blobs
+        # Find largest blobs (temporarily disable pipefail to prevent SIGPIPE/141 from head -n 10)
+        set +o pipefail
         top10_list=$(git rev-list --objects --all 2>/dev/null | \
           git cat-file --batch-check='%(objecttype) %(objectsize) %(objectname) %(rest)' 2>/dev/null | \
           awk '/^blob/ {
@@ -202,6 +203,7 @@ while read -r repo_json; do
           }' | \
           sort -k 1 -rn | \
           head -n 10)
+        set -o pipefail
           
         largestBlobs=$(echo "$top10_list" | jq -R -s -c '
           split("\n") | map(select(length > 0)) | map(
