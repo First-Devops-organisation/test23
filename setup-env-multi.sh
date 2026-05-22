@@ -115,11 +115,11 @@ log() {
     local log_entry="[${timestamp}] [${level}] ${message}"
 
     case "$level" in
-        INFO)    echo -e "${CYAN}${log_entry}${NC}" ;;
-        WARN)    echo -e "${YELLOW}${log_entry}${NC}" ;;
-        ERROR)   echo -e "${RED}${log_entry}${NC}" ;;
-        SUCCESS) echo -e "${GREEN}${log_entry}${NC}" ;;
-        DEBUG)   echo -e "${GRAY}${log_entry}${NC}" ;;
+        INFO)    echo -e "${CYAN}${log_entry}${NC}" >&2 ;;
+        WARN)    echo -e "${YELLOW}${log_entry}${NC}" >&2 ;;
+        ERROR)   echo -e "${RED}${log_entry}${NC}" >&2 ;;
+        SUCCESS) echo -e "${GREEN}${log_entry}${NC}" >&2 ;;
+        DEBUG)   echo -e "${GRAY}${log_entry}${NC}" >&2 ;;
     esac
 
     echo "${log_entry}" >> "${LOG_PATH}"
