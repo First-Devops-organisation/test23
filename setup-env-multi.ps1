@@ -117,7 +117,7 @@ function Invoke-GhApi {
                 throw "Resource not found: $Endpoint"
             }
             if ($resultStr -match "422|Validation Failed") {
-                throw "Validation error on $Endpoint — check input payload"
+                throw "Validation error on $Endpoint -- check input payload"
             }
 
             throw "gh api returned exit code $exitCode : $resultStr"
@@ -154,7 +154,7 @@ function Get-GitHubUserId {
         return [int]$userId
     }
 
-    Write-Log "  Could not resolve username '$Username' — skipping" -Level "WARN"
+    Write-Log "  Could not resolve username '$Username' -- skipping" -Level "WARN"
     return $null
 }
 
@@ -172,7 +172,7 @@ function Set-GitHubEnvironment {
     )
 
     $repoSlug = "$Org/$Repo"
-    Write-Log "─── Setting up '$EnvName' on $repoSlug ───"
+    Write-Log "--- Setting up '$EnvName' on $repoSlug ---"
 
     # 1. Build reviewer list
     $reviewerObjects = @()
@@ -268,7 +268,7 @@ function Main {
         Write-Log $($authStatus -join "`n") -Level "ERROR"
         exit 1
     }
-    Write-Log "gh CLI authenticated ✓" -Level "SUCCESS"
+    Write-Log "gh CLI authenticated OK" -Level "SUCCESS"
 
     # Validate CSV exists
     if (-not (Test-Path $CsvPath)) {
@@ -303,7 +303,7 @@ function Main {
 
         # Validate minimum columns
         if ($fields.Count -lt 3) {
-            Write-Log "Row $rowIndex — Skipping malformed row (need at least 3 columns): $line" -Level "WARN"
+            Write-Log "Row $rowIndex -- Skipping malformed row (need at least 3 columns): $line" -Level "WARN"
             $results += [PSCustomObject]@{ Row=$rowIndex; Repo=$line; Env="?"; Status="SKIPPED"; Error="Malformed row" }
             continue
         }
@@ -316,13 +316,13 @@ function Main {
 
         # Validate required fields
         if ([string]::IsNullOrWhiteSpace($repo) -or [string]::IsNullOrWhiteSpace($envName) -or [string]::IsNullOrWhiteSpace($branch)) {
-            Write-Log "Row $rowIndex — Missing required field(s). Skipping." -Level "WARN"
+            Write-Log "Row $rowIndex -- Missing required field(s). Skipping." -Level "WARN"
             $results += [PSCustomObject]@{ Row=$rowIndex; Repo=$repo; Env=$envName; Status="SKIPPED"; Error="Missing required field" }
             continue
         }
 
         Write-Log ""
-        Write-Log "━━━ Row $rowIndex / $($dataLines.Count): $repo [$envName] ━━━"
+        Write-Log "=== Row $rowIndex / $($dataLines.Count): $repo [$envName] ==="
 
         try {
             Set-GitHubEnvironment `
@@ -337,9 +337,9 @@ function Main {
             $results += [PSCustomObject]@{ Row=$rowIndex; Repo=$repo; Env=$envName; Status=$status; Error="" }
         }
         catch {
-            Write-Log "Row $rowIndex — FAILED: $_" -Level "ERROR"
+            Write-Log "Row $rowIndex -- FAILED: $_" -Level "ERROR"
             $results += [PSCustomObject]@{ Row=$rowIndex; Repo=$repo; Env=$envName; Status="FAILED"; Error=$_.ToString() }
-            # Continue to next row — don't abort the whole batch
+            # Continue to next row -- don't abort the whole batch
         }
     }
 
