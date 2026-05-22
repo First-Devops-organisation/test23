@@ -47,7 +47,7 @@ param(
     [Parameter(Mandatory = $false)] 
     [AllowEmptyString()]
     [string]$ADORepo,
-    [Parameter(Mandatory = $false)] [string]$OutputDir         = "$PSScriptRoot\..\output",
+    [Parameter(Mandatory = $false)] [string]$OutputDir         = "$PSScriptRoot/../output",
     [Parameter(Mandatory = $false)] [string]$ExpectedVisibility = "internal",
     [Parameter(Mandatory = $false)] [string]$BatchSummaryJson
 )
@@ -59,7 +59,7 @@ $ErrorActionPreference = "Stop"
 $global:LASTEXITCODE = 0
 
 # ── Read visibility from config (config takes precedence) ────────────────────
-$configPath = "$PSScriptRoot\..\config\repo-migration-config.json"
+$configPath = "$PSScriptRoot/../config/repo-migration-config.json"
 if (Test-Path $configPath) {
     $configData = Get-Content $configPath -Raw | ConvertFrom-Json
     if ($configData.migration.targetRepoVisibility) {
@@ -87,7 +87,7 @@ $ghHeaders  = @{ Authorization = "Bearer $ghPat"; Accept = "application/vnd.gith
 # Set GH_TOKEN for gh CLI — more reliable than Invoke-RestMethod on PS 5.1/7
 $env:GH_TOKEN = $ghPat
 
-$reportDir = "$OutputDir\reports"
+$reportDir = "$OutputDir/reports"
 New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 
 # ── Build repo list to validate ───────────────────────────────────────────────
@@ -122,8 +122,8 @@ if (-not [string]::IsNullOrWhiteSpace($GHRepo)) {
     
     # Try to load the migration state (SKIPPED, COMPLETE, etc.) from the log file
     $state = $null
-    $logDir = "$OutputDir\logs"
-    $stateFile = "$logDir\migration-state-$GHRepo.txt"
+    $logDir = "$OutputDir/logs"
+    $stateFile = "$logDir/migration-state-$GHRepo.txt"
     
     Write-Host "  [DEBUG] Checking for state file at: $stateFile" -ForegroundColor Gray
     if (Test-Path $stateFile) {
@@ -137,7 +137,7 @@ if (-not [string]::IsNullOrWhiteSpace($GHRepo)) {
 }
 else {
     # Load from batch summary
-    $summaryPath = if ($BatchSummaryJson) { $BatchSummaryJson } else { "$reportDir\batch-migration-summary.json" }
+    $summaryPath = if ($BatchSummaryJson) { $BatchSummaryJson } else { "$reportDir/batch-migration-summary.json" }
     if (-not (Test-Path $summaryPath)) { Write-Error "Batch summary not found: $summaryPath. Specify –GHRepo for single-repo validation." }
     $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
     foreach ($entry in $summary) {
@@ -156,7 +156,7 @@ Write-Host "============================================"
 
 # ── Helper functions ──────────────────────────────────────────────────────────
 function Get-AuditVal($auditDir, $file) {
-    $p = "$auditDir\$file"
+    $p = "$auditDir/$file"
     if (Test-Path $p) { return (Get-Content $p -Raw).Trim() }
     return $null
 }
@@ -179,7 +179,7 @@ foreach ($entry in $repoList) {
     $adoRepoName = $entry['ADORepo']
     $ghRepoName  = $entry['GHRepo']
     $migState    = $entry['State']
-    $auditDir    = "$OutputDir\audit\$ghRepoName"
+    $auditDir    = "$OutputDir/audit/$ghRepoName"
 
     # ── Skip validation for repos whose migration was skipped (already existed) ──
     if ($migState -eq 'SKIPPED') {
@@ -311,7 +311,7 @@ foreach ($entry in $repoList) {
             do {
                 $prRaw  = Invoke-WebRequest -Uri "$adoRepoUrl/pullrequests?searchCriteria.status=$prStatus&`$top=1000&`$skip=$skip&api-version=7.1" -Headers $adoHeaders -UseBasicParsing
                 $prResp = $prRaw.Content | ConvertFrom-Json
-                $batch  = [int](Get-JsonProp $prResp 'count' 0)
+                $batch  = [int](<Get-JsonProp $prResp 'count' 0>)
                 $adoPrCount += $batch
                 $skip += $batch
             } while ($batch -eq 1000)
@@ -549,8 +549,8 @@ foreach ($entry in $repoList) {
 }
 
 # ── Write JSON + CSV ──────────────────────────────────────────────────────────
-$jsonPath = "$reportDir\validation-results.json"
-$csvPath  = "$reportDir\validation-results.csv"
+$jsonPath = "$reportDir/validation-results.json"
+$csvPath  = "$reportDir/validation-results.csv"
 $allResults | ConvertTo-Json -Depth 5 | Out-File $jsonPath -Encoding utf8
 
 # Flat CSV — one row per check per repo
@@ -641,7 +641,7 @@ $html += "<thead><tr><th>ADO Repo</th><th>GitHub Repo</th><th>Status</th><th sty
 $html += "<tbody>$tableRows</tbody></table></div>" + $nl
 $html += "<div class='footer'>Generated $migDate &bull; ADO-to-GitHub Migration Validation</div></div></body></html>"
 
-$htmlPath = "$reportDir\validation-report.html"
+$htmlPath = "$reportDir/validation-report.html"
 $html | Out-File $htmlPath -Encoding utf8
 
 # ── Markdown summary ──────────────────────────────────────────────────────────
@@ -663,7 +663,7 @@ if ($failRepos -gt 0) {
         $md += "`n"
     }
 }
-$mdPath = "$reportDir\validation-summary.md"
+$mdPath = "$reportDir/validation-summary.md"
 $md | Out-File $mdPath -Encoding utf8
 
 # ── Console summary ───────────────────────────────────────────────────────────
