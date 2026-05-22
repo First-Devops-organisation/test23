@@ -1,21 +1,118 @@
-trigger: none
+# trigger: none
+
+# pool:
+#   vmImage: 'windows-latest'
+
+# variables:
+#   - group: environment_set_up
+
+# steps:
+#   - checkout: self
+
+#   - task: PowerShell@2
+#     displayName: 'Run QA Environment Setup Script'
+#     inputs:
+#       filePath: '$(Build.SourcesDirectory)/setup-env-multi.ps1'
+#       arguments: >
+#         -GHOrg "$(GH_Org)"
+#         -GHRepo "$(GHRepo)"
+#         -EnvName "$(EnvName)"
+#         -BranchName "$(BranchName)"
+#         -ReviewerUsernames "$(ReviewerUsernames)"
+#         -WaitTimer $(WaitTimer)
+#     env:
+#       GH_TOKEN: $(GH_PAT)
+
+
+# ==============================================================================
+# Multi-Repo Environment Setup — Azure DevOps Pipeline
+# ==============================================================================
+# This pipeline reads repos.csv and sets up GitHub environments for ALL repos
+# in a single run. Supports dry-run mode via pipeline variable.
+#
+# Prerequisites:
+#   - Variable group 'environment_set_up' must contain:
+#       GH_Org       — GitHub org name
+#       GH_PAT       — GitHub PAT with repo + environment permissions
+#   - repos.csv must be committed to the same repository
+# ==============================================================================
+
+# ==============================================================================
+# Multi-Repo Environment Setup — Azure DevOps Pipeline
+# ==============================================================================
+# This pipeline reads repos.csv and sets up GitHub environments for ALL repos
+# in a single run. Supports dry-run mode via pipeline variable.
+#
+# Prerequisites:
+#   - Variable group 'environment_set_up' must contain:
+#       GH_Org       — GitHub org name
+#       GH_PAT       — GitHub PAT with repo + environment permissions
+#   - repos.csv must be committed to the same repository
+# ==============================================================================
+
+trigger: none   # Manual trigger only
+
+parameters:
+  - name: DryRun
+    displayName: "Dry Run (validate only, no API calls)"
+    type: boolean
+    default: false
 
 pool:
-  vmImage: 'windows-latest'
+  vmImage: "windows-latest"
 
 variables:
   - group: environment_set_up
 
 steps:
   - checkout: self
+    displayName: "Checkout repository"
 
+  # -- Validate prerequisites --
   - task: PowerShell@2
-    displayName: 'Run QA Environment Setup Script'
+    displayName: "Validate: gh CLI and CSV file"
     inputs:
-      filePath: '$(Build.SourcesDirectory)/setup-env-multi.ps1'
+      targetType: inline
+      script: |
+        # Check gh CLI
+        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            Write-Error "GitHub CLI (gh) not found. Install it or use a pipeline image that includes it."
+            exit 1
+        }
+        Write-Host "gh CLI found: $(gh --version)" -ForegroundColor Green
+
+        # Check CSV exists
+        $csvPath = Join-Path "$(Build.SourcesDirectory)" "repos.csv"
+        if (-not (Test-Path $csvPath)) {
+            Write-Error "CSV file not found at: $csvPath"
+            exit 1
+        }
+
+        $lineCount = (Get-Content $csvPath | Where-Object { $_.Trim() -and -not $_.TrimStart().StartsWith("#") } | Select-Object -Skip 1).Count
+        Write-Host "CSV validated: $lineCount repo-environment configuration(s) found." -ForegroundColor Cyan
+
+  # -- Run multi-repo setup --
+  - task: PowerShell@2
+    displayName: "Setup environments for all repos"
+    inputs:
+      filePath: "$(Build.SourcesDirectory)/setup-env-multi.ps1"
       arguments: >
         -GHOrg "$(GH_Org)"
-
-     
+        -CsvPath "$(Build.SourcesDirectory)/repos.csv"
+        -MaxRetries 2
+        ${{ if eq(parameters.DryRun, true) }}:
+          -DryRun
     env:
       GH_TOKEN: $(GH_PAT)
+
+  # ── Publish log as pipeline artifact ────────────────────────
+  - task: PublishBuildArtifacts@1
+    displayName: "Publish setup log"
+    condition: always()
+    inputs:
+      PathtoPublish: "$(TEMP)"
+      ArtifactName: "env-setup-logs"
+      publishLocation: "Container"
+      # Note: The log file is written to TEMP with a timestamped name.
+      # In production, you may want to write to a known path for easier pickup.
+
