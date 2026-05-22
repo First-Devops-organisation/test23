@@ -315,7 +315,9 @@ process_repo() {
       if [ -n "$commit" ] && [ "$commit" != "null" ]; then
         local branchOutput=$(git --git-dir="$clonePath" branch --contains "$commit" 2>/dev/null || true)
         if [ -n "$branchOutput" ]; then
-          branchName=$(echo "$branchOutput" | sed 's/^[ *]*//' | grep -v '^$' | head -n 1)
+          local cleaned_branches
+          cleaned_branches=$(echo "$branchOutput" | sed 's/^[ *]*//' | grep -v '^$')
+          read -r branchName <<< "$cleaned_branches"
           if [ -z "$branchName" ]; then branchName="UNKNOWN"; fi
         fi
       fi
