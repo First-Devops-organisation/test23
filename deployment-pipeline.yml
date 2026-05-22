@@ -50,6 +50,19 @@
 #   - repos.csv must be committed to the same repository
 # ==============================================================================
 
+# ==============================================================================
+# Multi-Repo Environment Setup — Azure DevOps Pipeline
+# ==============================================================================
+# This pipeline reads repos.csv and sets up GitHub environments for ALL repos
+# in a single run. Supports dry-run mode via pipeline variable.
+#
+# Prerequisites:
+#   - Variable group 'environment_set_up' must contain:
+#       GH_Org       — GitHub org name
+#       GH_PAT       — GitHub PAT with repo + environment permissions
+#   - repos.csv must be committed to the same repository
+# ==============================================================================
+
 trigger: none   # Manual trigger only
 
 parameters:
@@ -100,8 +113,7 @@ steps:
         -GHOrg "$(GH_Org)"
         -CsvPath "$(Build.SourcesDirectory)/repos.csv"
         -MaxRetries 2
-        ${{ if eq(parameters.DryRun, true) }}:
-          -DryRun
+        -DryRun:$${{ parameters.DryRun }}
     env:
       GH_TOKEN: $(GH_PAT)
 
@@ -115,4 +127,3 @@ steps:
       publishLocation: "Container"
       # Note: The log file is written to TEMP with a timestamped name.
       # In production, you may want to write to a known path for easier pickup.
-
