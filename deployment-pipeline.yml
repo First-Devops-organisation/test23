@@ -1,65 +1,13 @@
-# trigger: none
-
-# pool:
-#   vmImage: 'windows-latest'
-
-# variables:
-#   - group: environment_set_up
-
-# steps:
-#   - checkout: self
-
-#   - task: PowerShell@2
-#     displayName: 'Run QA Environment Setup Script'
-#     inputs:
-#       filePath: '$(Build.SourcesDirectory)/setup-env-multi.ps1'
-#       arguments: >
-#         -GHOrg "$(GH_Org)"
-#         -GHRepo "$(GHRepo)"
-#         -EnvName "$(EnvName)"
-#         -BranchName "$(BranchName)"
-#         -ReviewerUsernames "$(ReviewerUsernames)"
-#         -WaitTimer $(WaitTimer)
-#     env:
-#       GH_TOKEN: $(GH_PAT)
-
-
 # ==============================================================================
-# Multi-Repo Environment Setup — Azure DevOps Pipeline
+# Multi-Repo Environment Setup -- Azure DevOps Pipeline (Linux/Ubuntu)
 # ==============================================================================
 # This pipeline reads repos.csv and sets up GitHub environments for ALL repos
-# in a single run. Supports dry-run mode via pipeline variable.
+# in a single run on an Ubuntu agent. Supports dry-run mode via pipeline variable.
 #
 # Prerequisites:
 #   - Variable group 'environment_set_up' must contain:
-#       GH_Org       — GitHub org name
-#       GH_PAT       — GitHub PAT with repo + environment permissions
-#   - repos.csv must be committed to the same repository
-# ==============================================================================
-
-# ==============================================================================
-# Multi-Repo Environment Setup — Azure DevOps Pipeline
-# ==============================================================================
-# This pipeline reads repos.csv and sets up GitHub environments for ALL repos
-# in a single run. Supports dry-run mode via pipeline variable.
-#
-# Prerequisites:
-#   - Variable group 'environment_set_up' must contain:
-#       GH_Org       — GitHub org name
-#       GH_PAT       — GitHub PAT with repo + environment permissions
-#   - repos.csv must be committed to the same repository
-# ==============================================================================
-
-# ==============================================================================
-# Multi-Repo Environment Setup — Azure DevOps Pipeline
-# ==============================================================================
-# This pipeline reads repos.csv and sets up GitHub environments for ALL repos
-# in a single run. Supports dry-run mode via pipeline variable.
-#
-# Prerequisites:
-#   - Variable group 'environment_set_up' must contain:
-#       GH_Org       — GitHub org name
-#       GH_PAT       — GitHub PAT with repo + environment permissions
+#       GH_Org       -- GitHub org name
+#       GH_PAT       -- GitHub PAT with repo + environment permissions
 #   - repos.csv must be committed to the same repository
 # ==============================================================================
 
@@ -72,7 +20,7 @@ parameters:
     default: false
 
 pool:
-  vmImage: "windows-latest"
+  vmImage: "ubuntu-latest"
 
 variables:
   - group: environment_set_up
@@ -81,49 +29,51 @@ steps:
   - checkout: self
     displayName: "Checkout repository"
 
+  # -- Install gh CLI if not present --
+  - script: |
+      if ! command -v gh &> /dev/null; then
+        echo "Installing GitHub CLI..."
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt-get update && sudo apt-get install gh -y
+      fi
+      echo "gh version: $(gh --version)"
+    displayName: "Ensure gh CLI is installed"
+
   # -- Validate prerequisites --
-  - task: PowerShell@2
-    displayName: "Validate: gh CLI and CSV file"
-    inputs:
-      targetType: inline
-      script: |
-        # Check gh CLI
-        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-            Write-Error "GitHub CLI (gh) not found. Install it or use a pipeline image that includes it."
-            exit 1
-        }
-        Write-Host "gh CLI found: $(gh --version)" -ForegroundColor Green
+  - script: |
+      CSV_PATH="$(Build.SourcesDirectory)/repos.csv"
+      if [ ! -f "$CSV_PATH" ]; then
+        echo "##[error]CSV file not found at: $CSV_PATH"
+        exit 1
+      fi
+      LINE_COUNT=$(grep -v '^\s*#' "$CSV_PATH" | grep -v '^\s*$' | tail -n +2 | wc -l)
+      echo "CSV validated: $LINE_COUNT repo-environment configuration(s) found."
+    displayName: "Validate CSV file"
 
-        # Check CSV exists
-        $csvPath = Join-Path "$(Build.SourcesDirectory)" "repos.csv"
-        if (-not (Test-Path $csvPath)) {
-            Write-Error "CSV file not found at: $csvPath"
-            exit 1
-        }
+  # -- Make script executable and run --
+  - script: |
+      chmod +x "$(Build.SourcesDirectory)/setup-env-multi.sh"
 
-        $lineCount = (Get-Content $csvPath | Where-Object { $_.Trim() -and -not $_.TrimStart().StartsWith("#") } | Select-Object -Skip 1).Count
-        Write-Host "CSV validated: $lineCount repo-environment configuration(s) found." -ForegroundColor Cyan
+      DRY_RUN_FLAG=""
+      if [ "${{ parameters.DryRun }}" = "True" ]; then
+        DRY_RUN_FLAG="--dry-run"
+      fi
 
-  # -- Run multi-repo setup --
-  - task: PowerShell@2
+      "$(Build.SourcesDirectory)/setup-env-multi.sh" \
+        --org "$(GH_Org)" \
+        --csv "$(Build.SourcesDirectory)/repos.csv" \
+        --retries 2 \
+        $DRY_RUN_FLAG
     displayName: "Setup environments for all repos"
-    inputs:
-      filePath: "$(Build.SourcesDirectory)/setup-env-multi.ps1"
-      arguments: >
-        -GHOrg "$(GH_Org)"
-        -CsvPath "$(Build.SourcesDirectory)/repos.csv"
-        -MaxRetries 2
-        -DryRun:$${{ parameters.DryRun }}
     env:
       GH_TOKEN: $(GH_PAT)
 
-  # ── Publish log as pipeline artifact ────────────────────────
+  # -- Publish log as pipeline artifact --
   - task: PublishBuildArtifacts@1
     displayName: "Publish setup log"
     condition: always()
     inputs:
-      PathtoPublish: "$(TEMP)"
+      PathtoPublish: "/tmp"
       ArtifactName: "env-setup-logs"
       publishLocation: "Container"
-      # Note: The log file is written to TEMP with a timestamped name.
-      # In production, you may want to write to a known path for easier pickup.
