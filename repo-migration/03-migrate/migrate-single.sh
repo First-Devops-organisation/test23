@@ -415,7 +415,7 @@ else
         if [ "$cDateRaw" != "N/A" ]; then
           cDate="${cDateRaw:0:10}"
         fi
-        cMsg=$(echo "$cRaw" | jq -r '.commit.message // "N/A"' | head -n 1)
+        cMsg=$(echo "$cRaw" | jq -r '.commit.message // "N/A" | split("\n")[0]')
         shortSha="${bSha:0:12}"
         refMeta=$(jq --arg bn "$bName" --arg sha "$shortSha" --arg auth "$cAuthor" --arg date "$cDate" --arg msg "$cMsg" \
           '. + {($bn): {Hash: $sha, Author: $auth, Date: $date, Msg: $msg}}' <<< "$refMeta")
