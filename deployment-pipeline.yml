@@ -15,11 +15,7 @@ steps:
       filePath: '$(Build.SourcesDirectory)/setup-env-multi.ps1'
       arguments: >
         -GHOrg "$(GH_Org)"
-        -GHRepo "$(GHRepo)"
-        -EnvName "$(EnvName)"
-        -BranchName "$(BranchName)"
-        -ReviewerUsernames "$(ReviewerUsernames)"
-        -WaitTimer $(WaitTimer)
+
      
     env:
       GH_TOKEN: $(GH_PAT)
