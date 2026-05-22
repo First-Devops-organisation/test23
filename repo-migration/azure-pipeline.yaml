@@ -466,32 +466,8 @@ stages:
               artifact: "MigrationDashboard-Single"
               publishLocation: pipeline
 
-          - task: PowerShell@2
-            displayName: "Fix HTML Viewer Tab Name"
-            condition: always()
-            inputs:
-              targetType: inline
-              script: |
-                $ghRepo = '$(RESOLVED_REPO)'
-                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = '${{ parameters.ADORepo }}'.Trim() }
-                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = '${{ parameters.GHRepo }}'.Trim() }
-                
-                $dashboardDir = "$(Build.SourcesDirectory)/repo-migration/output/dashboard/$ghRepo"
-                $originalHtml = "$dashboardDir/migration-report-$ghRepo.html"
-                
-                # Rename the file to index.html so the HTML Viewer extension uses the correct Tab Name!
-                if (Test-Path $originalHtml) {
-                    Rename-Item -Path $originalHtml -NewName "index.html" -Force
-                    Write-Host "Successfully renamed report to index.html"
-                }
-              pwsh: true
-
-          - task: PublishHtmlReport@1
-            displayName: "Show HTML on Pipeline Tab"
-            condition: always()
-            inputs:
-              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/dashboard/$(RESOLVED_REPO)'
-              tabName: "Migration Report"
+          # We purposefully DO NOT publish the HTML report here to avoid ugly tab names.
+          # The Validate stage will handle generating the proper "Migration Report" tab.
 
   # ===========================================================================
   # STAGE 3B – BATCH REPO MIGRATION
@@ -893,29 +869,41 @@ stages:
               targetType: inline
               script: |
                 $src = "$(Build.SourcesDirectory)/repo-migration/output/dashboard"
+                $reportOutDir = "$(Build.SourcesDirectory)/repo-migration/output/dashboard-tab"
+                New-Item -ItemType Directory -Path $reportOutDir -Force | Out-Null
 
                 # For Single mode: use pipeline parameters
                 $adoRepo = '${{ parameters.ADORepo }}'.Trim()
                 $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
                 if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
-                $singleFile = "$src/$ghRepo/migration-report-$ghRepo.html"
+                
+                # Use Get-ChildItem to bypass Linux case-sensitivity issues!
+                $dashboardDir = "$src/$ghRepo"
+                $htmlFiles = @()
+                if (Test-Path $dashboardDir) {
+                    $htmlFiles = @(Get-ChildItem -Path $dashboardDir -Filter "*.html" -ErrorAction SilentlyContinue)
+                }
 
-                if (Test-Path $singleFile) {
-                    Write-Host "Single mode — using: $singleFile"
-                    Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
+                if ($htmlFiles.Count -eq 1) {
+                    Write-Host "Single mode — using: $($htmlFiles[0].FullName)"
+                    # Copy and rename to index.html so ADO respects the tabName!
+                    Copy-Item -Path $htmlFiles[0].FullName -Destination "$reportOutDir/index.html" -Force
+                    Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_DIR]$reportOutDir"
                 }
                 else {
                     # Batch mode or Single file not found — find all HTML files
-                    $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
-                    Write-Host "Found $($htmlFiles.Count) HTML file(s) in dashboard"
-                    if ($htmlFiles.Count -eq 1) {
-                        Write-Host "Using: $($htmlFiles[0].FullName)"
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$($htmlFiles[0].FullName)"
+                    $allHtml = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
+                    Write-Host "Found $($allHtml.Count) HTML file(s) total in dashboard"
+                    
+                    if ($allHtml.Count -eq 1) {
+                        Write-Host "Using: $($allHtml[0].FullName)"
+                        Copy-Item -Path $allHtml[0].FullName -Destination "$reportOutDir/index.html" -Force
+                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_DIR]$reportOutDir"
                     }
-                    elseif ($htmlFiles.Count -gt 1) {
-                        $dst = "$src/combined-migration-report.html"
+                    elseif ($allHtml.Count -gt 1) {
+                        $dst = "$reportOutDir/index.html"
                         $combined = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>"
-                        foreach ($f in $htmlFiles) {
+                        foreach ($f in $allHtml) {
                             $content = Get-Content $f.FullName -Raw -Encoding utf8
                             $content = $content -replace '<!DOCTYPE[^>]*>', '' -replace '</?html[^>]*>', '' -replace '<head>.*?</head>', '' -replace '</?body[^>]*>', ''
                             $combined += "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>"
@@ -923,11 +911,11 @@ stages:
                         }
                         $combined += "</body></html>"
                         $combined | Out-File $dst -Encoding utf8
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$dst"
+                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_DIR]$reportOutDir"
                     }
                     else {
                         Write-Warning "No migration HTML files found"
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]"
+                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_DIR]"
                     }
                 }
               pwsh: true
@@ -936,7 +924,8 @@ stages:
             displayName: "Show Migration Report on Pipeline Tab"
             condition: always()
             inputs:
-              reportDir: '$(MIGRATION_REPORT_PATH)'
+              # Notice we are passing the DIRECTORY now, not the file!
+              reportDir: '$(MIGRATION_REPORT_DIR)'
               tabName: "Migration Report"
 
           - task: PowerShell@2
