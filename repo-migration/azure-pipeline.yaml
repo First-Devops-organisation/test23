@@ -1,6 +1,6 @@
 trigger: none
 
-pool: migration-pool
+pool: linux
   # vmImage: windows-latest
 
 # =============================================================================
