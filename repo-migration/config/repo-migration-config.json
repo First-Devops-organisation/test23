@@ -12,7 +12,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "",
+    "singleRepo": "SSPM",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
