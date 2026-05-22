@@ -108,7 +108,7 @@ get_repo_size_via_api() {
         })
     else
       []
-    fi
+    end
   '
   local top10=$(echo "$itemsResp" | jq "$jq_filter")
   local maxBlobSize=$(echo "$top10" | jq '.[0].SizeMB // 0')
