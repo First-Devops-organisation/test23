@@ -18,7 +18,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Pat,
 
-    [string]$OutputDir = "./output/inventory"
+    [string]$OutputDir = "./output/inventory",
     # NEW PARAMETER: Optional project name to scope the inventory
     [string]$ProjectName = "" 
 )
