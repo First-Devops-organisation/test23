@@ -666,6 +666,36 @@ stages:
                         }
                     }
                 fi
+          - task: PowerShell@2
+            displayName: "Install GitHub CLI"
+            inputs:
+              targetType: inline
+              script: |
+                # Install GitHub CLI from tar.gz — no elevation required on self-hosted agents
+                $ghDir = "$env:AGENT_TOOLSDIRECTORY/gh"
+                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+                    Write-Host "Installing GitHub CLI (Linux tar.gz)..."
+                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_linux_amd64.tar.gz" -OutFile gh.tar.gz
+                    New-Item -ItemType Directory -Path $ghDir -Force | Out-Null
+                    tar -xzf gh.tar.gz -C $ghDir
+                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter "gh" -File | Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1).DirectoryName
+                    if (-not $ghBin) {
+                        $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter "gh" -File | Select-Object -First 1).DirectoryName
+                    }
+                    chmod +x "$ghBin/gh"
+                    Write-Host "##vso[task.prependpath]$ghBin"
+                    $env:PATH = "${ghBin}:$env:PATH"
+                }
+                gh --version
+
+                # Authenticate gh CLI
+                $env:GH_TOKEN = "$(GH_PAT)"
+                "$(GH_PAT)" | gh auth login --with-token
+                gh auth status
+              pwsh: true
+            env:
+              GH_TOKEN: $(GH_PAT)
+
 
           - task: PowerShell@2
             displayName: "Replace config tokens"
