@@ -1,0 +1,22 @@
+## =========================================================
+## repos.csv — Multi-Repo Environment Configuration
+## =========================================================
+## Columns:
+##   GHRepo             — GitHub repository name (required)
+##   EnvName            — GitHub environment name (required)
+##   BranchName         — Deployment branch to lock to (required)
+##   ReviewerUsernames  — Pipe-separated GitHub usernames (optional)
+##   WaitTimer          — Minutes to wait before deploy (optional, default 0)
+##
+## Notes:
+##   - Lines starting with # are ignored
+##   - Blank lines are ignored
+##   - ReviewerUsernames use | as separator (e.g. user1|user2)
+## =========================================================
+GHRepo,EnvName,BranchName,ReviewerUsernames,WaitTimer
+dummy-secretymigr,development,develop,,0
+dummy-secretymigr,qa,release,varsha-patilyash,5
+repo-two,development,develop,,0
+repo-two,qa,release,varsha-patilyash|reviewer2,5
+repo-three,development,develop,,0
+repo-three,qa,release,varsha-patilyash,5
