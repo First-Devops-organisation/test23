@@ -930,5 +930,3 @@ stages:
                     Write-Host "##vso[task.uploadsummary]$valSummary"
                 } else { Write-Warning "Validation summary not found: $valSummary" }
               pwsh: true
-
- 
