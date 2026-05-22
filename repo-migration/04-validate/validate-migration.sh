@@ -76,6 +76,16 @@ repoList="[]"
 isSingleMode=false
 if [ -n "$GHRepo" ] || [ -n "$ADORepo" ]; then
   isSingleMode=true
+else
+  if [ -f "$configPath" ]; then
+    cfg_single=$(jq -r '.migration.singleRepo // empty' "$configPath" | tr -d '\r')
+    if [ -n "$cfg_single" ]; then
+      GHRepo=$(echo "$cfg_single" | xargs)
+      ADORepo="$GHRepo"
+      isSingleMode=true
+      echo "  No explicit repo passed. Found default repo in config: $GHRepo"
+    fi
+  fi
 fi
 
 if [ "$isSingleMode" = "true" ] && [ -z "$GHRepo" ]; then
@@ -386,7 +396,7 @@ for ((r_idx=0; r_idx<len_repos; r_idx++)); do
   # Show branch list preview in logs
   maxShow=20
   if [ "$adoBranchCount" -gt 0 ]; then
-    adoSorted=$(echo "$adoBranches" | jq -r 'sort[]' | head -n $maxShow | tr '\n' ',' | sed 's/,$//')
+    adoSorted=$(echo "$adoBranches" | jq -r --argjson max "$maxShow" 'sort | .[0:$max] | .[]' | tr '\n' ',' | sed 's/,$//')
     adoMore=""
     if [ "$adoBranchCount" -gt "$maxShow" ]; then
       adoMore=" ... and $((adoBranchCount - maxShow)) more"
@@ -394,7 +404,7 @@ for ((r_idx=0; r_idx<len_repos; r_idx++)); do
     echo "      ADO Branches ($adoBranchCount): $adoSorted$adoMore"
   fi
   if [ "$ghBranchCount" -gt 0 ]; then
-    ghSorted=$(echo "$ghBranches" | jq -r 'sort[]' | head -n $maxShow | tr '\n' ',' | sed 's/,$//')
+    ghSorted=$(echo "$ghBranches" | jq -r --argjson max "$maxShow" 'sort | .[0:$max] | .[]' | tr '\n' ',' | sed 's/,$//')
     ghMore=""
     if [ "$ghBranchCount" -gt "$maxShow" ]; then
       ghMore=" ... and $((ghBranchCount - maxShow)) more"
@@ -407,7 +417,7 @@ for ((r_idx=0; r_idx<len_repos; r_idx++)); do
     missing=$(jq -n --argjson ado "$adoBranches" --argjson gh "$ghBranches" '$ado - $gh')
     missingCount=$(echo "$missing" | jq '. | length')
     if [ "$missingCount" -gt 0 ]; then
-      mShown=$(echo "$missing" | jq -r '.[]' | head -n 10 | tr '\n' ',' | sed 's/,$//')
+      mShown=$(echo "$missing" | jq -r '.[0:10] | .[]' | tr '\n' ',' | sed 's/,$//')
       mMore=""
       if [ "$missingCount" -gt 10 ]; then
         mMore=" ... and $((missingCount - 10)) more"
@@ -445,7 +455,7 @@ for ((r_idx=0; r_idx<len_repos; r_idx++)); do
     missingTagsCount=$(echo "$missingTags" | jq '. | length')
     tagDetail=""
     if [ "$missingTagsCount" -gt 0 ]; then
-      mTagsShown=$(echo "$missingTags" | jq -r '.[]' | head -n 10 | tr '\n' ',' | sed 's/,$//')
+      mTagsShown=$(echo "$missingTags" | jq -r '.[0:10] | .[]' | tr '\n' ',' | sed 's/,$//')
       mTagsMore=""
       if [ "$missingTagsCount" -gt 10 ]; then
         mTagsMore=" ... and $((missingTagsCount - 10)) more"
