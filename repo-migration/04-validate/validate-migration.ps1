@@ -55,6 +55,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Initialize LASTEXITCODE to prevent StrictMode errors when gh is not found or fails
+$global:LASTEXITCODE = 0
+
 # ── Read visibility from config (config takes precedence) ────────────────────
 $configPath = "$PSScriptRoot\..\config\repo-migration-config.json"
 if (Test-Path $configPath) {
