@@ -844,17 +844,17 @@ stages:
                         for f in "${htmlFiles[@]}"; do
                             echo "  Merged: $(basename "$f")"
                             content=$(python3 -c "
-import sys, re
-try:
-    content = open(sys.argv[1], 'r', encoding='utf-8', errors='ignore').read()
-    content = re.sub(r'(?i)<!DOCTYPE[^>]*>', '', content)
-    content = re.sub(r'(?i)</?html[^>]*>', '', content)
-    content = re.sub(r'(?i)<head>.*?</head>', '', content, flags=re.DOTALL)
-    content = re.sub(r'(?i)</?body[^>]*>', '', content)
-    print(content)
-except Exception as e:
-    print(f'<p>Error merging file: {e}</p>')
-" "$f")
+                            import sys, re
+                            try:
+                                content = open(sys.argv[1], 'r', encoding='utf-8', errors='ignore').read()
+                                content = re.sub(r'(?i)<!DOCTYPE[^>]*>', '', content)
+                                content = re.sub(r'(?i)</?html[^>]*>', '', content)
+                                content = re.sub(r'(?i)<head>.*?</head>', '', content, flags=re.DOTALL)
+                                content = re.sub(r'(?i)</?body[^>]*>', '', content)
+                                print(content)
+                            except Exception as e:
+                                print(f'<p>Error merging file: {e}</p>')
+                            " "$f")
                             echo "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>" >> "$dst"
                         done
                         echo "</body></html>" >> "$dst"
