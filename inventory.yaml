@@ -30,9 +30,9 @@ stages:
             displayName: '0.1 Inventory Project Assets'
             inputs:
               filePath: '$(Build.SourcesDirectory)\inventory-assets.ps1'
-              arguments: '-OrgUrl "$(ADO_ORG)" -Pat "$(ADO_PAT)" -ProjectName "$(ADO_PROJECT)" -OutputDir "$(Build.SourcesDirectory)\repo-migration\output\inventory"'
+              arguments: '-OrgUrl "$(ADO_ORG)" -Pat "$(ADO_PAT)" -ProjectName "$(ADO_PROJECT)" -OutputDir "$(Build.SourcesDirectory)\output\inventory"'
               pwsh: true
-              workingDirectory: '$(Build.SourcesDirectory)\repo-migration'
+              workingDirectory: '$(Build.SourcesDirectory)'
             env:
               ADO_PAT: $(ADO_PAT)
 
