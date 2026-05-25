@@ -431,11 +431,11 @@ else
       idx=0
       for bn in "${slice[@]}"; do
         qualName="refs/heads/$bn"
-        aliases="${aliases}  b${idx}: ref(qualifiedName: \"${qualName}\") { target { ... on Commit { history { totalCount } } } }\n"
+        aliases="${aliases}  b${idx}: ref(qualifiedName: \"${qualName}\") { target { ... on Commit { history { totalCount } } } }"$'\n'
         idx=$((idx + 1))
       done
-      gqlQuery="{ repository(owner: \"$GHOrg\", name: \"$GHRepo\") {\n${aliases}\n} }"
-      gqlRaw=$(gh api graphql -f query="$gqlQuery" 2>/dev/null || echo "")
+      gqlQuery="{ repository(owner: \"$GHOrg\", name: \"$GHRepo\") {"$'\n'"${aliases}"$'\n'"} }"
+      gqlRaw=$(gh api graphql -f query="$gqlQuery" || echo "")
       if [ -n "$gqlRaw" ] && echo "$gqlRaw" | jq -e '.data.repository' >/dev/null 2>&1; then
         idx=0
         for bn in "${slice[@]}"; do
