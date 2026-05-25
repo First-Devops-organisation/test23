@@ -62,7 +62,7 @@ $inventory = @{
 
 # --- Fetch Project ---
 $project = Invoke-AdoApi "$OrgUrl/_apis/projects/$ProjectName"
-if (-not $project) { Write-Error "Failed to find project '$ProjectName'. Check PAT and project name."; exit 1 }
+if (-not $project -or -not $project.id) { Write-Error "Failed to find project '$ProjectName'. Check PAT, organization URL, and project name."; exit 1 }
 
 $projName = $project.name
 Write-Host "Scanning project: $projName" -ForegroundColor Yellow
@@ -561,7 +561,7 @@ $htmlContent = @"
         <tr><th>Project</th><th>Visibility</th><th>Repos</th><th>Size (GB)</th><th>Pipelines</th><th>Releases</th><th>Teams</th><th>Work Items</th><th>Svc Conns</th><th>Var Groups</th><th>Environments</th></tr>
       </thead>
       <tbody>
-`$reportRows
+$reportRows
       </tbody>
     </table>
   </div>
