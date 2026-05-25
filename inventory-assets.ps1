@@ -1,14 +1,17 @@
 <#
 .SYNOPSIS
-    Inventories all Azure DevOps assets (projects, repos, pipelines, teams, work items, service connections, etc.)
+    Inventories Azure DevOps assets for a specific project (repos, pipelines, teams, work items, service connections, etc.)
 .DESCRIPTION
     Connects to ADO REST API and produces a JSON inventory report for migration planning.
+    Scoped to a single project rather than the entire organization.
 .PARAMETER OrgUrl
     Azure DevOps organization URL (e.g., https://dev.azure.com/myorg)
 .PARAMETER Pat
     Personal Access Token with full scope or at minimum: Code(Read), Build(Read), Release(Read), Work Items(Read), Project(Read)
+.PARAMETER ProjectName
+    Name of the Azure DevOps project to inventory.
 .PARAMETER OutputDir
-    Directory for output files. Defaults to ./output/inventory
+    Directory for output files. Defaults to .\output\inventory
 #>
 [CmdletBinding()]
 param(
@@ -16,12 +19,12 @@ param(
     [string]$OrgUrl,
 
     [Parameter(Mandatory = $true)]
-    [string]$ProjectName,
-
-    [Parameter(Mandatory = $true)]
     [string]$Pat,
 
-    [string]$OutputDir = "./output/inventory"
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectName,
+
+    [string]$OutputDir = ".\output\inventory"
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,10 +51,11 @@ function Invoke-AdoApi {
 if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
 
 $orgName = ($OrgUrl -replace "https://dev.azure.com/", "").TrimEnd("/")
-Write-Host "=== ADO Inventory: $orgName ===" -ForegroundColor Cyan
+Write-Host "=== ADO Inventory: $orgName / $ProjectName ===" -ForegroundColor Cyan
 
 $inventory = @{
     organization    = $orgName
+    projectName     = $ProjectName
     scanDate        = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
     projects        = @()
     totalRepos      = 0
@@ -60,12 +64,16 @@ $inventory = @{
     totalTeams      = 0
 }
 
-# --- Fetch Project ---
+# --- Fetch Specified Project ---
 $project = Invoke-AdoApi "$OrgUrl/_apis/projects/$ProjectName"
-if (-not $project -or -not $project.id) { Write-Error "Failed to find project '$ProjectName'. Check PAT, organization URL, and project name."; exit 1 }
+if (-not $project) { Write-Error "Failed to find project '$ProjectName'. Check PAT, org URL, and project name."; exit 1 }
 
-$projName = $project.name
-Write-Host "Scanning project: $projName" -ForegroundColor Yellow
+Write-Host "Found project: $($project.name) (id: $($project.id))" -ForegroundColor Green
+
+# --- Begin project scan (single project) ---
+& {
+    $projName = $project.name
+    Write-Host "  Scanning project: $projName" -ForegroundColor Yellow
 
     $projData = @{
         name             = $projName
@@ -237,10 +245,11 @@ Write-Host "Scanning project: $projName" -ForegroundColor Yellow
     }
 
     $inventory.projects += $projData
+}  # end of single-project scan block
 
 # --- Summary ---
-Write-Host "`n=== Inventory Summary ===" -ForegroundColor Cyan
-Write-Host "Projects:    $($inventory.projects.Count)"
+Write-Host "`n=== Inventory Summary for $ProjectName ===" -ForegroundColor Cyan
+Write-Host "Project:     $ProjectName"
 Write-Host "Repos:       $($inventory.totalRepos)"
 Write-Host "Pipelines:   $($inventory.totalPipelines)"
 Write-Host "Work Items:  $($inventory.totalWorkItems)"
@@ -485,7 +494,7 @@ $htmlContent = @"
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ADO Inventory Dashboard — $([System.Net.WebUtility]::HtmlEncode($orgName))</title>
+<title>ADO Inventory Dashboard — $([System.Net.WebUtility]::HtmlEncode($orgName)) / $([System.Net.WebUtility]::HtmlEncode($ProjectName))</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f0f2f5;color:#24292f;padding:20px}
@@ -538,7 +547,7 @@ $htmlContent = @"
 <body>
 <div class="container">
   <h1>&#128202; ADO Inventory Dashboard</h1>
-  <p class="subtitle">Organization: <b>$([System.Net.WebUtility]::HtmlEncode($orgName))</b> &mdash; Generated: $timestamp</p>
+  <p class="subtitle">Organization: <b>$([System.Net.WebUtility]::HtmlEncode($orgName))</b> &mdash; Project: <b>$([System.Net.WebUtility]::HtmlEncode($ProjectName))</b> &mdash; Generated: $timestamp</p>
 
   <div class="cards">
     <div class="card"><div class="value">$($inventory.projects.Count)</div><div class="label">Projects</div></div>
@@ -561,7 +570,7 @@ $htmlContent = @"
         <tr><th>Project</th><th>Visibility</th><th>Repos</th><th>Size (GB)</th><th>Pipelines</th><th>Releases</th><th>Teams</th><th>Work Items</th><th>Svc Conns</th><th>Var Groups</th><th>Environments</th></tr>
       </thead>
       <tbody>
-$reportRows
+`$reportRows
       </tbody>
     </table>
   </div>
@@ -575,7 +584,7 @@ $reportRows
 
 $projectCards
 
-  <p class="footer">ADO Inventory &mdash; $([System.Net.WebUtility]::HtmlEncode($orgName)) &mdash; $timestamp</p>
+  <p class="footer">ADO Inventory &mdash; $([System.Net.WebUtility]::HtmlEncode($orgName)) / $([System.Net.WebUtility]::HtmlEncode($ProjectName)) &mdash; $timestamp</p>
 </div>
 <script>
 function toggleProject(id){
