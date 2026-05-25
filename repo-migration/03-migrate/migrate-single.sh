@@ -736,44 +736,48 @@ if [ "$migState" = "SKIPPED" ]; then
   migResult="Already Exists"
   statusColor="#f0ad4e"
   statusBg="#fff8e1"
-  statusText="Skipped - Repository Already Exists"
+  statusEmoji="&#x26A0;&#xFE0F;"
+  statusText="Skipped &#x2014; Repository Already Exists"
   reasonText="Target repository was detected in GitHub prior to migration."
 elif [ "$migState" = "DRY_RUN" ]; then
   migResult="Dry Run"
   statusColor="#0969da"
   statusBg="#ddf4ff"
-  statusText="Dry Run - No changes made"
+  statusEmoji="&#x1F4CB;"
+  statusText="Dry Run &#x2014; No changes made"
   reasonText="Dry run mode: GEI command was printed but not executed."
 elif [ "$migState" = "COMPLETE" ]; then
   migResult="Success"
   statusColor="#28a745"
   statusBg="#e6f9ed"
-  statusText="Completed - Migration Successful"
+  statusEmoji="&#x2705;"
+  statusText="Completed &#x2014; Migration Successful"
   reasonText="Repository migrated successfully from ADO to GitHub."
 else
   migResult="Failed"
   statusColor="#dc3545"
   statusBg="#fdecea"
-  statusText="Failed - Migration Error"
+  statusEmoji="&#x274C;"
+  statusText="Failed &#x2014; Migration Error"
   reasonText="Check migration logs for error details."
 fi
 
 phaseHtml=""
 if [ "$migState" = "SKIPPED" ]; then
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[SKIPPED]</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[-]</td><td><strong>Migration</strong></td><td style='color:#f0ad4e;font-weight:600;'>Skipped</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[SKIPPED]</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[SKIPPED]</td><td><strong>Result</strong></td><td style='color:#f0ad4e;font-weight:600;'>Repository Already Exists</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x23ED;&#xFE0F;</td><td><strong>Migration</strong></td><td style='color:#f0ad4e;font-weight:600;'>Skipped</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x26A0;&#xFE0F;</td><td><strong>Result</strong></td><td style='color:#f0ad4e;font-weight:600;'>Repository Already Exists</td></tr>\n"
 elif [ "$migState" = "COMPLETE" ]; then
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[PASS]</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[PASS]</td><td><strong>Migration</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[PASS]</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[PASS]</td><td><strong>Result</strong></td><td style='color:#28a745;font-weight:600;'>Migration Successful</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Migration</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Result</strong></td><td style='color:#28a745;font-weight:600;'>Migration Successful</td></tr>\n"
 else
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[PASS]</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[FAIL]</td><td><strong>Migration</strong></td><td style='color:#dc3545;font-weight:600;'>Failed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[PASS]</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:16px;text-align:center;'>[FAIL]</td><td><strong>Result</strong></td><td style='color:#dc3545;font-weight:600;'>Migration Failed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x274C;</td><td><strong>Migration</strong></td><td style='color:#dc3545;font-weight:600;'>Failed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x274C;</td><td><strong>Result</strong></td><td style='color:#dc3545;font-weight:600;'>Migration Failed</td></tr>\n"
 fi
 
 topBranchHtml=""
@@ -816,9 +820,9 @@ if [ -f "$branchCsvFile" ]; then
     if [ "$Branch" = "Branch" ]; then continue; fi
     badge=""
     case "$Status" in
-      "Missing") badge="<span style='background:#ffebe9;color:#cf222e;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>[MISSING]</span>" ;;
-      "Already Existed") badge="<span style='background:#fff8c5;color:#9a6700;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>[ALREADY EXISTS]</span>" ;;
-      *) badge="<span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>[MIGRATED]</span>" ;;
+      "Missing") badge="<span style='background:#ffebe9;color:#cf222e;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x274C; Missing</span>" ;;
+      "Already Existed") badge="<span style='background:#fff8c5;color:#9a6700;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x26A0;&#xFE0F; Already Existed</span>" ;;
+      *) badge="<span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x2705; Migrated</span>" ;;
     esac
     allBranchHtml+="<tr><td style='text-align:center;'>$idx</td><td><code>$Branch</code></td><td style='text-align:center;'>$badge</td></tr>\n"
     idx=$((idx + 1))
@@ -881,22 +885,22 @@ cat <<EOF > "$dashDir/migration-report-$GHRepo.html"
 <body>
 <div class="container">
   <div class="header">
-    <h1>[MIGRATION] ADO -> GitHub Migration Report</h1>
-    <div class="status-banner">$statusText</div>
+    <h1>&#x1F680; ADO &#x2192; GitHub Migration Report</h1>
+    <div class="status-banner">$statusEmoji $statusText</div>
   </div>
   
   <div class="card">
-    <h2>[OVERVIEW] Migration Overview</h2>
+    <h2>&#x1F4C2; Migration Overview</h2>
     <table class="overview-table">
-      <tr><td>Date</td><td>$migDate</td></tr>
-      <tr><td>Source (ADO)</td><td><code>$ADOOrg / $ADOProject / $ADORepo</code></td></tr>
-      <tr><td>Target (GitHub)</td><td><code>$GHOrg / $GHRepo</code></td></tr>
-      <tr><td>Default Branch</td><td><code>$defaultBranch</code></td></tr>
+      <tr><td>&#x1F4C5; Migration Date</td><td>$migDate</td></tr>
+      <tr><td>&#x1F4E6; Source (ADO)</td><td><code>$ADOOrg / $ADOProject / $ADORepo</code></td></tr>
+      <tr><td>&#x1F3AF; Target (GitHub)</td><td><code>$GHOrg / $GHRepo</code></td></tr>
+      <tr><td>&#x1F33F; Default Branch</td><td><code>$defaultBranch</code></td></tr>
     </table>
   </div>
   
   <div class="card">
-    <h2>[STATUS] Pipeline Execution Status</h2>
+    <h2>&#x1F6A6; Pipeline Execution Status</h2>
     <table>
       <thead>
         <tr><th style="width:50px;"></th><th>Phase</th><th>Status</th></tr>
@@ -905,26 +909,26 @@ cat <<EOF > "$dashDir/migration-report-$GHRepo.html"
         $phaseHtml
       </tbody>
     </table>
-    <div class="reason"><strong>Info:</strong> $reasonText</div>
+    <div class="reason">&#x2139;&#xFE0F; <strong>Reason:</strong> $reasonText</div>
   </div>
   
   <div class="card">
-    <h2>[METRICS] Repository Snapshot</h2>
+    <h2>&#x1F4CA; Repository Snapshot</h2>
     <div class="stat-grid">
-      <div class="stat-box"><div class="num">$branchCount</div><div class="label">Branches</div></div>
-      <div class="stat-box"><div class="num">$tagCount</div><div class="label">Tags</div></div>
-      <div class="stat-box"><div class="num">$commitCount</div><div class="label">Commits</div></div>
-      <div class="stat-box"><div class="num">$prCount</div><div class="label">Pull Requests</div></div>
+      <div class="stat-box"><div class="num">$branchCount</div><div class="label">&#x1F33F; Branches</div></div>
+      <div class="stat-box"><div class="num">$tagCount</div><div class="label">&#x1F3F7;&#xFE0F; Tags</div></div>
+      <div class="stat-box"><div class="num">$commitCount</div><div class="label">&#x1F4DD; Commits</div></div>
+      <div class="stat-box"><div class="num">$prCount</div><div class="label">&#x1F500; Pull Requests</div></div>
     </div>
     <div class="pr-pills" style="margin-top:14px;">
-      <span class="pr-pill pr-open">Open: $prOpen</span>
-      <span class="pr-pill pr-merged">Merged: $prMerged</span>
-      <span class="pr-pill pr-closed">Closed: $prClosed</span>
+      <span class="pr-pill pr-open">&#x1F7E2; $prOpen Open</span>
+      <span class="pr-pill pr-merged">&#x1F7E3; $prMerged Merged</span>
+      <span class="pr-pill pr-closed">&#x1F534; $prClosed Closed</span>
     </div>
   </div>
   
   <div class="card">
-    <h2>[KEYS] Key Branches</h2>
+    <h2>&#x1F511; Key Branches</h2>
     <table>
       <thead>
         <tr><th style="text-align:center;">#</th><th>Branch</th><th style="text-align:right;">Commits</th></tr>
@@ -936,9 +940,9 @@ cat <<EOF > "$dashDir/migration-report-$GHRepo.html"
   </div>
   
   <div class="card">
-    <h2>[BRANCHES] All Branches ($branchSummary)</h2>
+    <h2>&#x1F33F; All Branches ($branchSummary)</h2>
     <details>
-      <summary>Click to expand all branches</summary>
+      <summary>&#x25B6;&#xFE0F; Click to expand all branches</summary>
       <table style="margin-top:10px;">
         <thead>
           <tr><th style="text-align:center;">#</th><th>Branch</th><th style="text-align:center;">Status</th></tr>
@@ -951,8 +955,8 @@ cat <<EOF > "$dashDir/migration-report-$GHRepo.html"
   </div>
   
   <div class="card">
-    <h2>[ARTIFACTS] Audit &amp; Artifacts</h2>
-    <p style="font-size:16px;margin-bottom:10px;">The following compliance files are available in the <strong>MigrationAudit</strong> artifact:</p>
+    <h2>&#x1F4E6; Audit &amp; Artifacts</h2>
+    <p style="font-size:16px;margin-bottom:10px;">&#x1F4E5; The following compliance files are available in the <strong>MigrationAudit</strong> artifact:</p>
     <ul style="margin-left:24px;font-size:15px;line-height:2;">
       <li>Folder-wise file inventory (<code>gh-folder-wise-files.csv</code>, <code>gh-folder-summary-default.md</code>)</li>
       <li>PR breakdown by source branch (<code>gh-pr-by-source-branch.md</code>)</li>
@@ -960,7 +964,7 @@ cat <<EOF > "$dashDir/migration-report-$GHRepo.html"
       <li>Branch-wise commit table (<code>gh-branch-wise-table.md</code>)</li>
       <li>Validation checks</li>
     </ul>
-    <p style="margin-top:12px;font-size:15px;">Recommended for compliance reviews.</p>
+    <p style="margin-top:12px;font-size:15px;">&#x2705; Recommended for compliance reviews.</p>
   </div>
   
   <div class="footer">Generated $migDate &bull; ADO-to-GitHub Migration Pipeline</div>
