@@ -1,17 +1,37 @@
 trigger: none
 
-pool: linux
-  
+pool:
+  vmImage: 'ubuntu-latest'
+
 parameters:
-  - name: stages
-    displayName: 'Stages to run (Discovery runs first, then Approval, then these stages)'
-    type: string
-    default: 'create-teams,sync-users,sync-repos'
-    values:
-      - 'create-teams,sync-users,sync-repos'
-      - 'sync-users,sync-repos'
-      - 'offboard,onboard'
-      - 'validate'
+  - name: runDiscovery
+    displayName: 'Stage 1: Run Discovery (Export ADO Teams)'
+    type: boolean
+    default: true
+  - name: runValidate
+    displayName: 'Stage 3: Validate Org'
+    type: boolean
+    default: false
+  - name: runCreateTeams
+    displayName: 'Stage 3: Create GitHub Teams'
+    type: boolean
+    default: true
+  - name: runSyncUsers
+    displayName: 'Stage 3: Sync Users to Teams'
+    type: boolean
+    default: true
+  - name: runSyncRepos
+    displayName: 'Stage 3: Sync Repo Permissions'
+    type: boolean
+    default: true
+  - name: runOffboard
+    displayName: 'Stage 3: Offboard Users (Remove missing)'
+    type: boolean
+    default: false
+  - name: runOnboard
+    displayName: 'Stage 3: Onboard Users (Invite new)'
+    type: boolean
+    default: false
   - name: removeFromOrg
     displayName: 'Remove offboarded users from GitHub Org completely (if offboard stage is selected)?'
     type: boolean
@@ -34,7 +54,7 @@ stages:
 # -----------------------------------------------------------------
 - stage: Discovery
   displayName: '1. Discovery — Export ADO Teams'
-  condition: ne('${{ parameters.stages }}', 'validate')
+  condition: eq('${{ parameters.runDiscovery }}', true)
   jobs:
   - job: ExportTeams
     displayName: 'Export ADO Teams to JSON'
@@ -128,7 +148,7 @@ stages:
           --gh-org "$(GH_Org)" \
           --gh-pat "$(GH_PAT)"
       displayName: 'Execute: Validate Org'
-      condition: contains('${{ parameters.stages }}', 'validate')
+      condition: eq('${{ parameters.runValidate }}', true)
 
     - script: |
         chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
@@ -141,7 +161,7 @@ stages:
           --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
           --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv"
       displayName: 'Execute: Create Teams'
-      condition: contains('${{ parameters.stages }}', 'create-teams')
+      condition: eq('${{ parameters.runCreateTeams }}', true)
 
     - script: |
         chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
@@ -154,7 +174,7 @@ stages:
           --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
           --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv"
       displayName: 'Execute: Sync Users'
-      condition: contains('${{ parameters.stages }}', 'sync-users')
+      condition: eq('${{ parameters.runSyncUsers }}', true)
 
     - script: |
         chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
@@ -167,7 +187,7 @@ stages:
           --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
           --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv"
       displayName: 'Execute: Sync Repos'
-      condition: contains('${{ parameters.stages }}', 'sync-repos')
+      condition: eq('${{ parameters.runSyncRepos }}', true)
 
     - script: |
         EXTRA_FLAGS=""
@@ -185,7 +205,7 @@ stages:
           --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv" \
           $EXTRA_FLAGS
       displayName: 'Execute: Offboard Users'
-      condition: contains('${{ parameters.stages }}', 'offboard')
+      condition: eq('${{ parameters.runOffboard }}', true)
 
     - script: |
         chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
@@ -198,4 +218,4 @@ stages:
           --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
           --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv"
       displayName: 'Execute: Onboard Users'
-      condition: contains('${{ parameters.stages }}', 'onboard')
+      condition: eq('${{ parameters.runOnboard }}', true)
