@@ -20,13 +20,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_CONFIG_PATH="${SCRIPT_DIR}/../config/repo-migration-config.json"
 DEFAULT_OUTPUT_DIR="${SCRIPT_DIR}/../output"
 
+isGHRepoBound=false
+isADORepoBound=false
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     --ado-org|-ADOOrg) ADOOrg="$2"; shift 2 ;;
     --ado-project|-ADOProject) ADOProject="$2"; shift 2 ;;
     --github-org|-GHOrg) GHOrg="$2"; shift 2 ;;
-    --github-repo|-GHRepo) GHRepo="$2"; shift 2 ;;
-    --ado-repo|-ADORepo) ADORepo="$2"; shift 2 ;;
+    --github-repo|-GHRepo) GHRepo="$2"; isGHRepoBound=true; shift 2 ;;
+    --ado-repo|-ADORepo) ADORepo="$2"; isADORepoBound=true; shift 2 ;;
     --output-dir|-OutputDir) OutputDir="$2"; shift 2 ;;
     --expected-visibility|-ExpectedVisibility) ExpectedVisibility="$2"; shift 2 ;;
     --batch-summary-json|-BatchSummaryJson) BatchSummaryJson="$2"; shift 2 ;;
@@ -74,18 +77,8 @@ mkdir -p "$reportDir"
 repoList="[]"
 
 isSingleMode=false
-if [ -n "$GHRepo" ] || [ -n "$ADORepo" ]; then
+if [ "$isGHRepoBound" = "true" ] || [ "$isADORepoBound" = "true" ]; then
   isSingleMode=true
-else
-  if [ -f "$configPath" ]; then
-    cfg_single=$(jq -r '.migration.singleRepo // empty' "$configPath" | tr -d '\r')
-    if [ -n "$cfg_single" ]; then
-      GHRepo=$(echo "$cfg_single" | xargs)
-      ADORepo="$GHRepo"
-      isSingleMode=true
-      echo "  No explicit repo passed. Found default repo in config: $GHRepo"
-    fi
-  fi
 fi
 
 if [ "$isSingleMode" = "true" ] && [ -z "$GHRepo" ]; then
@@ -104,7 +97,7 @@ if [ "$isSingleMode" = "true" ] && [ -z "$GHRepo" ] && [ -n "$ADORepo" ]; then
   GHRepo="$ADORepo"
 fi
 
-if [ -n "$GHRepo" ]; then
+if [ "$isSingleMode" = "true" ] && [ -n "$GHRepo" ]; then
   adoName="${ADORepo:-$GHRepo}"
   stateFile="$OutputDir/logs/migration-state-$GHRepo.txt"
   state="UNKNOWN"
@@ -667,6 +660,9 @@ for ((idx=0; idx<len_results; idx++)); do
   repoAccColor="#dc3545"
   acc_int=${acc%.*}
   acc_int=${acc_int:-0}
+  if [[ ! "$acc_int" =~ ^[0-9]+$ ]]; then
+    acc_int=0
+  fi
   if [ "$acc_int" -ge 90 ]; then
     repoAccColor="#28a745"
   elif [ "$acc_int" -ge 70 ]; then
