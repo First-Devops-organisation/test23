@@ -415,7 +415,7 @@ else
         if [ "$cDateRaw" != "N/A" ]; then
           cDate="${cDateRaw:0:10}"
         fi
-        cMsg=$(echo "$cRaw" | jq -r '.commit.message // "N/A" | split("\n")[0]')
+        cMsg=$(echo "$cRaw" | jq -r '.commit.message // "N/A" | split("")[0]')
         shortSha="${bSha:0:12}"
         refMeta=$(jq --arg bn "$bName" --arg sha "$shortSha" --arg auth "$cAuthor" --arg date "$cDate" --arg msg "$cMsg" \
           '. + {($bn): {Hash: $sha, Author: $auth, Date: $date, Msg: $msg}}' <<< "$refMeta")
@@ -481,18 +481,18 @@ else
           ')
           bFolderCount=$(echo "$folders_json" | jq '. | keys | length')
           
-          folderSummaryMd="| Folder | Files |\n|---|---|\n"
+          folderSummaryMd="| Folder | Files |\n|---|---|"
           while read -r folder; do
             fc=$(echo "$folders_json" | jq -r --arg f "$folder" '.[$f]')
-            folderSummaryMd="${folderSummaryMd}| $folder | $fc |\n"
+            folderSummaryMd="${folderSummaryMd}| $folder | $fc |"
             echo "\"$defaultBranch\",\"$folder\",\"$fc\"" >> "$csvFolderSummary"
           done < <(echo "$folders_json" | jq -r 'keys[]')
           
-          folderSummaryMd="${folderSummaryMd}| **Total** | **$bFileCount** |\n"
+          folderSummaryMd="${folderSummaryMd}| **Total** | **$bFileCount** |"
           echo -e "$folderSummaryMd" > "$auditDir/gh-folder-summary-default.md"
 
           safeBranch=$(echo "$defaultBranch" | sed 's/[/\\]/--/g')
-          branchFileMd="# Files in branch: $defaultBranch\n\n"
+          branchFileMd="# Files in branch: $defaultBranch"
           
           mapfile -t paths < <(echo "$blobEntries" | jq -r '.[].path')
           declare -A grouped_files
@@ -505,14 +505,14 @@ else
           done
 
           for dir in "${!grouped_files[@]}"; do
-            branchFileMd="${branchFileMd}## $dir/\n"
+            branchFileMd="${branchFileMd}## $dir/"
             sorted_f=$(echo -n "${grouped_files[$dir]}" | sort)
             while read -r file; do
               if [ -n "$file" ]; then
-                branchFileMd="${branchFileMd}- $file\n"
+                branchFileMd="${branchFileMd}- $file"
               fi
             done <<< "$sorted_f"
-            branchFileMd="${branchFileMd}\n"
+            branchFileMd="${branchFileMd}"
           done
           echo -e "$branchFileMd" > "$folderDir/gh-files-$safeBranch.md"
         fi
@@ -587,7 +587,7 @@ else
     totalMerged=$(echo "$allPRs" | jq '[.[] | select(.merged_at != null)] | length')
     totalClosed=$((totalPRs - totalOpen - totalMerged))
 
-    prHeadMd="| Source Branch (head) | Open | Merged | Closed | Total |\n|---|---|---|---|---|\n"
+    prHeadMd="| Source Branch (head) | Open | Merged | Closed | Total |\n|---|---|---|---|---|"
     prByHead=$(echo "$allPRs" | jq '
       reduce .[] as $pr ({}; 
         ($pr.head.ref) as $head |
@@ -602,13 +602,13 @@ else
         m=$(echo "$prByHead" | jq -r --arg h "$head" '.[$h].Merged // 0')
         c=$(echo "$prByHead" | jq -r --arg h "$head" '.[$h].Closed // 0')
         t=$((o + m + c))
-        prHeadMd="${prHeadMd}| $head | $o | $m | $c | $t |\n"
+        prHeadMd="${prHeadMd}| $head | $o | $m | $c | $t |"
       fi
     done < <(echo "$prByHead" | jq -r 'keys[]')
-    prHeadMd="${prHeadMd}| **TOTAL** | **$totalOpen** | **$totalMerged** | **$totalClosed** | **$totalPRs** |\n"
+    prHeadMd="${prHeadMd}| **TOTAL** | **$totalOpen** | **$totalMerged** | **$totalClosed** | **$totalPRs** |"
     echo -e "$prHeadMd" > "$auditDir/gh-pr-by-source-branch.md"
 
-    prBaseMd="| Target Branch (base) | Open | Merged | Closed | Total |\n|---|---|---|---|---|\n"
+    prBaseMd="| Target Branch (base) | Open | Merged | Closed | Total |\n|---|---|---|---|---|"
     prByBase=$(echo "$allPRs" | jq '
       reduce .[] as $pr ({}; 
         ($pr.base.ref) as $base |
@@ -623,12 +623,12 @@ else
         m=$(echo "$prByBase" | jq -r --arg b "$base" '.[$b].Merged // 0')
         c=$(echo "$prByBase" | jq -r --arg b "$base" '.[$b].Closed // 0')
         t=$((o + m + c))
-        prBaseMd="${prBaseMd}| $base | $o | $m | $c | $t |\n"
+        prBaseMd="${prBaseMd}| $base | $o | $m | $c | $t |"
       fi
     done < <(echo "$prByBase" | jq -r 'keys[]')
     echo -e "$prBaseMd" > "$auditDir/gh-pr-by-target-branch.md"
 
-    mdTable="| # | Branch | Status | Files | Latest Commit | Date |\n|---|---|---|---|---|---|\n"
+    mdTable="| # | Branch | Status | Files | Latest Commit | Date |\n|---|---|---|---|---|---|"
     mdTableRows=$(jq -rn --argjson refMeta "$refMeta" --argjson bNames "$ghBranchList" --argjson missing "$missingInGH" --arg bStatus "$branchStatus" --arg bFiles "$bFileCount" --arg db "$defaultBranch" '
       ( ($bNames | map({Branch: ., Status: $bStatus, Files: (if . == $db then $bFiles else "-" end)})) + ($missing | map({Branch: ., Status: "Missing", Files: "-"})) ) as $all |
       $all | sort_by(.Branch) | .[]
@@ -644,7 +644,7 @@ else
         mAuthor=$(echo "$refMeta" | jq -r --arg bn "$b" '.[$bn].Author // "-"')
         mDate=$(echo "$refMeta" | jq -r --arg bn "$b" '.[$bn].Date // "-"')
         mMsg=$(echo "$refMeta" | jq -r --arg bn "$b" '.[$bn].Msg // "Not found in GitHub"')
-        mdTable="${mdTable}| $idx | $b | $st | $fl | $mAuthor - $mMsg | $mDate |\n"
+        mdTable="${mdTable}| $idx | $b | $st | $fl | $mAuthor - $mMsg | $mDate |"
         idx=$((idx + 1))
       fi
     done <<< "$mdTableRows"
@@ -764,20 +764,20 @@ fi
 
 phaseHtml=""
 if [ "$migState" = "SKIPPED" ]; then
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x23ED;&#xFE0F;</td><td><strong>Migration</strong></td><td style='color:#f0ad4e;font-weight:600;'>Skipped</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x26A0;&#xFE0F;</td><td><strong>Result</strong></td><td style='color:#f0ad4e;font-weight:600;'>Repository Already Exists</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x23ED;&#xFE0F;</td><td><strong>Migration</strong></td><td style='color:#f0ad4e;font-weight:600;'>Skipped</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x26A0;&#xFE0F;</td><td><strong>Result</strong></td><td style='color:#f0ad4e;font-weight:600;'>Repository Already Exists</td></tr>"
 elif [ "$migState" = "COMPLETE" ]; then
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Migration</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Result</strong></td><td style='color:#28a745;font-weight:600;'>Migration Successful</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Migration</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Result</strong></td><td style='color:#28a745;font-weight:600;'>Migration Successful</td></tr>"
 else
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x274C;</td><td><strong>Migration</strong></td><td style='color:#dc3545;font-weight:600;'>Failed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>\n"
-  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x274C;</td><td><strong>Result</strong></td><td style='color:#dc3545;font-weight:600;'>Migration Failed</td></tr>\n"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Pre-Check</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x274C;</td><td><strong>Migration</strong></td><td style='color:#dc3545;font-weight:600;'>Failed</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x2705;</td><td><strong>Audit</strong></td><td style='color:#28a745;font-weight:600;'>Completed</td></tr>"
+  phaseHtml+="<tr><td style='font-size:20px;text-align:center;'>&#x274C;</td><td><strong>Result</strong></td><td style='color:#dc3545;font-weight:600;'>Migration Failed</td></tr>"
 fi
 
 topBranchHtml=""
@@ -798,7 +798,7 @@ if [ -f "$auditDir/gh-top-branches.csv" ]; then
     if [ "$IsDefault" = "Yes" ]; then
       defLabel=" <span style='background:#ddf4ff;color:#0969da;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;margin-left:6px;'>DEFAULT</span>"
     fi
-    topBranchHtml+="<tr><td style='text-align:center;color:#6f42c1;font-weight:700;'>$rank</td><td><code>$Branch</code>$defLabel</td><td style='text-align:right;font-weight:600;font-variant-numeric:tabular-nums;'>$Commits</td></tr>\n"
+    topBranchHtml+="<tr><td style='text-align:center;color:#6f42c1;font-weight:700;'>$rank</td><td><code>$Branch</code>$defLabel</td><td style='text-align:right;font-weight:600;font-variant-numeric:tabular-nums;'>$Commits</td></tr>"
     rank=$((rank + 1))
   done < "$auditDir/gh-top-branches.csv"
 fi
@@ -824,7 +824,7 @@ if [ -f "$branchCsvFile" ]; then
       "Already Existed") badge="<span style='background:#fff8c5;color:#9a6700;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x26A0;&#xFE0F; Already Existed</span>" ;;
       *) badge="<span style='background:#dafbe1;color:#1a7f37;padding:4px 12px;border-radius:12px;font-weight:600;font-size:13px;'>&#x2705; Migrated</span>" ;;
     esac
-    allBranchHtml+="<tr><td style='text-align:center;'>$idx</td><td><code>$Branch</code></td><td style='text-align:center;'>$badge</td></tr>\n"
+    allBranchHtml+="<tr><td style='text-align:center;'>$idx</td><td><code>$Branch</code></td><td style='text-align:center;'>$badge</td></tr>"
     idx=$((idx + 1))
   done < "$branchCsvFile"
 fi
@@ -984,18 +984,23 @@ else
   mdStatus="[FAIL] Failed - Migration Error"
 fi
 
-md="# [MIGRATION] ADO -> GitHub Migration Report\n\n"
-md+="> Status: $mdStatus\n\n"
-md+="| Metric | Value |\n|:---|:---|\n"
-md+="| Date | $migDate |\n"
-md+="| Source | \`$ADOOrg / $ADOProject / $ADORepo\` |\n"
-md+="| Target | \`$GHOrg / $GHRepo\` |\n"
-md+="| Branches | $branchCount |\n"
-md+="| Commits | $commitCount |\n"
-md+="| PRs | $prOpen Open / $prMerged Merged / $prClosed Closed |\n\n"
-md+="> Download the **MigrationDashboard** artifact for the full HTML report.\n"
+md="# [MIGRATION] ADO -> GitHub Migration Report
 
-echo -e "$md" > "$reportDir/migration-summary-$GHRepo.md"
+> Status: $mdStatus
+
+| Metric | Value |
+|:---|:---|
+| Date | $migDate |
+| Source | \`$ADOOrg / $ADOProject / $ADORepo\` |
+| Target | \`$GHOrg / $GHRepo\` |
+| Branches | $branchCount |
+| Commits | $commitCount |
+| PRs | $prOpen Open / $prMerged Merged / $prClosed Closed |
+
+> Download the **MigrationDashboard** artifact for the full HTML report.
+"
+
+echo "$md" > "$reportDir/migration-summary-$GHRepo.md"
 
 echo "============================================"
 echo "  MIGRATION COMPLETE: $GHRepo"
