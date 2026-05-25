@@ -1,0 +1,139 @@
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+parameters:
+  - name: stages
+    displayName: 'Stages to run (Discovery runs first, then Approval, then these stages)'
+    type: string
+    default: 'create-teams,sync-users,sync-repos'
+    values:
+      - 'create-teams,sync-users,sync-repos'
+      - 'sync-users,sync-repos'
+      - 'offboard,onboard'
+      - 'validate'
+  - name: removeFromOrg
+    displayName: 'Remove offboarded users from GitHub Org completely (if offboard stage is selected)?'
+    type: boolean
+    default: false
+
+variables:
+  - group: 'setup-github-org'  # Pulls ADO_Org, ADO_PAT, GH_Org, GH_PAT from Library
+
+# =================================================================
+# MULTI-STAGE PIPELINE WITH MANUAL APPROVAL
+# Stage 1: Discovery  → Exports ADO teams to JSON artifact (always runs unless validate)
+# Stage 2: Approval   → Manual validation gate (review the export)
+# Stage 3: Execute    → Runs the stages selected in parameters
+# =================================================================
+
+stages:
+
+# -----------------------------------------------------------------
+# STAGE 1: DISCOVERY — Export ADO Teams
+# -----------------------------------------------------------------
+- stage: Discovery
+  displayName: '1. Discovery — Export ADO Teams'
+  condition: ne('${{ parameters.stages }}', 'validate')
+  jobs:
+  - job: ExportTeams
+    displayName: 'Export ADO Teams to JSON'
+    steps:
+
+    - script: |
+        sudo apt-get update -qq && sudo apt-get install -y -qq jq > /dev/null 2>&1 || true
+      displayName: 'Install jq'
+
+    - script: |
+        chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
+        "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
+          --stages "discover" \
+          --ado-org "$(ADO_Org)" \
+          --ado-pat "$(ADO_PAT)" \
+          --gh-org "$(GH_Org)" \
+          --gh-pat "$(GH_PAT)" \
+          --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv" \
+          --output-dir "$(Build.ArtifactStagingDirectory)"
+      displayName: 'Export ADO Teams (Discovery)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Exported Teams JSON'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/team-mappings-template.json'
+        ArtifactName: 'team-mappings-template'
+        publishLocation: 'Container'
+
+# -----------------------------------------------------------------
+# STAGE 2: MANUAL APPROVAL — Review Before Execution
+# -----------------------------------------------------------------
+- stage: Approval
+  displayName: '2. Manual Approval — Review Export'
+  dependsOn: Discovery
+  condition: in(dependencies.Discovery.result, 'Succeeded', 'Skipped')
+  jobs:
+  - job: WaitForApproval
+    displayName: 'Wait for Manual Approval'
+    pool: server  # Agentless job — runs on Azure DevOps server
+    steps:
+
+    - task: ManualValidation@1
+      displayName: 'Review exported teams before sync'
+      timeoutInMinutes: 4320  # 3 days timeout
+      inputs:
+        notifyUsers: ''
+        instructions: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║   REVIEW REQUIRED BEFORE GITHUB EXECUTION                    ║
+          ╠══════════════════════════════════════════════════════════════╣
+          ║                                                            ║
+          ║  1. Download the 'team-mappings-template' artifact         ║
+          ║     from the Discovery stage above.                        ║
+          ║                                                            ║
+          ║  2. Review the exported teams, members, and repo           ║
+          ║     permissions. You can add/remove users or promote       ║
+          ║     users to maintainers.                                  ║
+          ║                                                            ║
+          ║  3. Update config/team-mappings.json in the repo           ║
+          ║     with ONLY the teams, users, and repos you want.        ║
+          ║     The script will apply EXACTLY what is in this file.    ║
+          ║                                                            ║
+          ║  4. Click 'Resume' to proceed with execution.              ║
+          ║     Click 'Reject' to cancel — no changes will be made.    ║
+          ║                                                            ║
+          ╚══════════════════════════════════════════════════════════════╝
+        onTimeout: 'reject'
+
+# -----------------------------------------------------------------
+# STAGE 3: EXECUTE — Run Selected Stages
+# -----------------------------------------------------------------
+- stage: Execute
+  displayName: '3. Execute — GitHub Org Setup'
+  dependsOn: Approval
+  condition: always()
+  jobs:
+  - job: ExecuteSetup
+    displayName: 'Execute Selected Stages'
+    steps:
+
+    - script: |
+        sudo apt-get update -qq && sudo apt-get install -y -qq jq > /dev/null 2>&1 || true
+      displayName: 'Install jq'
+
+    - script: |
+        EXTRA_FLAGS=""
+        if [ "${{ parameters.removeFromOrg }}" == "True" ]; then
+          EXTRA_FLAGS="--remove-from-org"
+        fi
+
+        chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
+        "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
+          --stages "${{ parameters.stages }}" \
+          --ado-org "$(ADO_Org)" \
+          --ado-pat "$(ADO_PAT)" \
+          --gh-org "$(GH_Org)" \
+          --gh-pat "$(GH_PAT)" \
+          --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
+          --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv" \
+          $EXTRA_FLAGS
+      displayName: 'Run GitHub Org Setup'
