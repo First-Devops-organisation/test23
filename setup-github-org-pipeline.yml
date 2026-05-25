@@ -1,8 +1,7 @@
 trigger: none
 
-pool:
-  vmImage: 'ubuntu-latest'
-
+pool: linux
+  
 parameters:
   - name: stages
     displayName: 'Stages to run (Discovery runs first, then Approval, then these stages)'
@@ -121,14 +120,63 @@ stages:
       displayName: 'Install jq'
 
     - script: |
+        chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
+        "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
+          --stages "validate" \
+          --ado-org "$(ADO_Org)" \
+          --ado-pat "$(ADO_PAT)" \
+          --gh-org "$(GH_Org)" \
+          --gh-pat "$(GH_PAT)"
+      displayName: 'Execute: Validate Org'
+      condition: contains('${{ parameters.stages }}', 'validate')
+
+    - script: |
+        chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
+        "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
+          --stages "create-teams" \
+          --ado-org "$(ADO_Org)" \
+          --ado-pat "$(ADO_PAT)" \
+          --gh-org "$(GH_Org)" \
+          --gh-pat "$(GH_PAT)" \
+          --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
+          --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv"
+      displayName: 'Execute: Create Teams'
+      condition: contains('${{ parameters.stages }}', 'create-teams')
+
+    - script: |
+        chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
+        "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
+          --stages "sync-users" \
+          --ado-org "$(ADO_Org)" \
+          --ado-pat "$(ADO_PAT)" \
+          --gh-org "$(GH_Org)" \
+          --gh-pat "$(GH_PAT)" \
+          --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
+          --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv"
+      displayName: 'Execute: Sync Users'
+      condition: contains('${{ parameters.stages }}', 'sync-users')
+
+    - script: |
+        chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
+        "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
+          --stages "sync-repos" \
+          --ado-org "$(ADO_Org)" \
+          --ado-pat "$(ADO_PAT)" \
+          --gh-org "$(GH_Org)" \
+          --gh-pat "$(GH_PAT)" \
+          --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
+          --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv"
+      displayName: 'Execute: Sync Repos'
+      condition: contains('${{ parameters.stages }}', 'sync-repos')
+
+    - script: |
         EXTRA_FLAGS=""
         if [ "${{ parameters.removeFromOrg }}" == "True" ]; then
           EXTRA_FLAGS="--remove-from-org"
         fi
-
         chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
         "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
-          --stages "${{ parameters.stages }}" \
+          --stages "offboard" \
           --ado-org "$(ADO_Org)" \
           --ado-pat "$(ADO_PAT)" \
           --gh-org "$(GH_Org)" \
@@ -136,4 +184,18 @@ stages:
           --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
           --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv" \
           $EXTRA_FLAGS
-      displayName: 'Run GitHub Org Setup'
+      displayName: 'Execute: Offboard Users'
+      condition: contains('${{ parameters.stages }}', 'offboard')
+
+    - script: |
+        chmod +x "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
+        "$(Build.SourcesDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
+          --stages "onboard" \
+          --ado-org "$(ADO_Org)" \
+          --ado-pat "$(ADO_PAT)" \
+          --gh-org "$(GH_Org)" \
+          --gh-pat "$(GH_PAT)" \
+          --team-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/team-mappings.json" \
+          --user-mapping "$(Build.SourcesDirectory)/migration-accelerator/config/user-mappings.csv"
+      displayName: 'Execute: Onboard Users'
+      condition: contains('${{ parameters.stages }}', 'onboard')
