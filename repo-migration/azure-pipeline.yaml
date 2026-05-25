@@ -47,12 +47,12 @@ parameters:
     default: true
 
 variables:
-  - group: repo-migration-discove  # ADO_ORG, ADO_PROJECT, ADO_PAT
-  - group: repo-migration-migrate    # GH_ORG, GH_PAT
+  - group: repo-migration-discover  # ADO_ORG, ADO_PROJECT, ADO_PAT
+  - group: repo-migration-migrate   # GH_ORG, GH_PAT
 
 stages:
   # ===========================================================================
-  # STAGE 1 – DISCOVER  (reuse existing scripts — already working)
+  # STAGE 1 – DISCOVER
   # ===========================================================================
   - stage: Discover
     displayName: "1. Discover & Analyse"
@@ -63,83 +63,63 @@ stages:
         steps:
 
           - task: Bash@3
-            displayName: "Ensure pwsh is installed"
-            inputs:
-              targetType: inline
-              script: |
-                if ! command -v pwsh &> /dev/null; then
-                    echo "pwsh not found. Attempting to install via snap..."
-                    sudo snap install powershell --classic || {
-                        echo "Snap failed. Attempting apt..."
-                        sudo apt-get update && sudo apt-get install -y powershell || {
-                            echo "Apt failed. Attempting binary download..."
-                            curl -L -o /tmp/powershell.tar.gz https://github.com/PowerShell/PowerShell/releases/download/v7.4.2/powershell-7.4.2-linux-x64.tar.gz
-                            sudo mkdir -p /opt/microsoft/powershell/7
-                            sudo tar zxf /tmp/powershell.tar.gz -C /opt/microsoft/powershell/7
-                            sudo chmod +x /opt/microsoft/powershell/7/pwsh
-                            sudo ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh
-                        }
-                    }
-                fi
-
-          - task: PowerShell@2
             displayName: "Install git-sizer"
             inputs:
               targetType: inline
               script: |
-                $zipUrl = "https://github.com/github/git-sizer/releases/download/v1.5.0/git-sizer-1.5.0-linux-amd64.zip"
-                $destDir = "$env:AGENT_TOOLSDIRECTORY/git-sizer"
-                Invoke-WebRequest -Uri $zipUrl -OutFile git-sizer.zip
-                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-                Expand-Archive -Path git-sizer.zip -DestinationPath $destDir -Force
-                chmod +x "$destDir/git-sizer"
-                Write-Host "##vso[task.prependpath]$destDir"
-              pwsh: true
+                ZIP_URL="https://github.com/github/git-sizer/releases/download/v1.5.0/git-sizer-1.5.0-linux-amd64.zip"
+                DEST_DIR="$AGENT_TOOLSDIRECTORY/git-sizer"
+                mkdir -p "$DEST_DIR"
+                curl -L -o git-sizer.zip "$ZIP_URL"
+                unzip -o git-sizer.zip -d "$DEST_DIR"
+                chmod +x "$DEST_DIR/git-sizer"
+                echo "##vso[task.prependpath]$DEST_DIR"
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Replace config tokens"
             inputs:
               targetType: inline
               script: |
-                $cfg = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
-                $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
-                $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
-                $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                Set-Content -Path $cfg -Value $c
-              pwsh: true
+                cfg="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                jq --arg ado_org "$ADO_ORG" \
+                   --arg ado_project "$ADO_PROJECT" \
+                   --arg ado_pat "$ADO_PAT" \
+                   --arg gh_org "$GH_ORG" \
+                   --arg gh_pat "$GH_PAT" \
+                   '.source.organization = $ado_org | .source.project = $ado_project | .source.pat = $ado_pat | .target.organization = $gh_org | .target.pat = $gh_pat' \
+                   "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
             env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PROJECT: $(ADO_PROJECT)
               ADO_PAT: $(ADO_PAT)
-              GH_PAT:  $(GH_PAT)
+              GH_ORG: $(GH_ORG)
+              GH_PAT: $(GH_PAT)
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Ensure output directories"
             inputs:
               targetType: inline
               script: |
-                "reports","logs","audit","dashboard","tmp/clones" | ForEach-Object {
-                    New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)/repo-migration/output/$_" -Force | Out-Null
-                }
-              pwsh: true
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/audit"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/dashboard"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/tmp/clones"
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "1.1 Discover Repos"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/discover-repos.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
-              pwsh: true
+              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/discover-repos.sh'
+              arguments: '"$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
               workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "1.2 Audit Repo Sizes"
             inputs:
-              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/audit-repo-sizes.ps1'
-              arguments: '-ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
-              pwsh: true
+              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/audit-repo-sizes.sh'
+              arguments: '"$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"'
               workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
@@ -184,56 +164,37 @@ stages:
         steps:
 
           - task: Bash@3
-            displayName: "Ensure pwsh is installed"
-            inputs:
-              targetType: inline
-              script: |
-                if ! command -v pwsh &> /dev/null; then
-                    echo "pwsh not found. Attempting to install via snap..."
-                    sudo snap install powershell --classic || {
-                        echo "Snap failed. Attempting apt..."
-                        sudo apt-get update && sudo apt-get install -y powershell || {
-                            echo "Apt failed. Attempting binary download..."
-                            curl -L -o /tmp/powershell.tar.gz https://github.com/PowerShell/PowerShell/releases/download/v7.4.2/powershell-7.4.2-linux-x64.tar.gz
-                            sudo mkdir -p /opt/microsoft/powershell/7
-                            sudo tar zxf /tmp/powershell.tar.gz -C /opt/microsoft/powershell/7
-                            sudo chmod +x /opt/microsoft/powershell/7/pwsh
-                            sudo ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh
-                        }
-                    }
-                fi
-
-          - task: PowerShell@2
             displayName: "Install gitleaks"
             inputs:
               targetType: inline
               script: |
-                $tarUrl = "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz"
-                $destDir = "$env:AGENT_TOOLSDIRECTORY/gitleaks"
-                Invoke-WebRequest -Uri $tarUrl -OutFile gitleaks.tar.gz
-                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-                tar -xzf gitleaks.tar.gz -C $destDir
-                chmod +x "$destDir/gitleaks"
-                Write-Host "##vso[task.prependpath]$destDir"
-              pwsh: true
+                TAR_URL="https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz"
+                DEST_DIR="$AGENT_TOOLSDIRECTORY/gitleaks"
+                mkdir -p "$DEST_DIR"
+                curl -L -o gitleaks.tar.gz "$TAR_URL"
+                tar -xzf gitleaks.tar.gz -C "$DEST_DIR"
+                chmod +x "$DEST_DIR/gitleaks"
+                echo "##vso[task.prependpath]$DEST_DIR"
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Replace config tokens"
             inputs:
               targetType: inline
               script: |
-                $cfg = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
-                $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
-                $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
-                $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                Set-Content -Path $cfg -Value $c
-              pwsh: true
+                cfg="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                jq --arg ado_org "$ADO_ORG" \
+                   --arg ado_project "$ADO_PROJECT" \
+                   --arg ado_pat "$ADO_PAT" \
+                   --arg gh_org "$GH_ORG" \
+                   --arg gh_pat "$GH_PAT" \
+                   '.source.organization = $ado_org | .source.project = $ado_project | .source.pat = $ado_pat | .target.organization = $gh_org | .target.pat = $gh_pat' \
+                   "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
             env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PROJECT: $(ADO_PROJECT)
               ADO_PAT: $(ADO_PAT)
-              GH_PAT:  $(GH_PAT)
+              GH_ORG: $(GH_ORG)
+              GH_PAT: $(GH_PAT)
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download Discovery Reports"
@@ -241,28 +202,24 @@ stages:
               artifact: "discovery-reports"
               path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Ensure output directories"
             inputs:
               targetType: inline
               script: |
-                "reports","logs" | ForEach-Object {
-                    New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)/repo-migration/output/$_" -Force | Out-Null
-                }
-              pwsh: true
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "1.3 Scan Secrets"
             condition: and(succeeded(), or(eq('${{ parameters.MigrationMode }}', 'Batch'), eq(variables['BATCH_INDEX'], '0')))
             inputs:
-              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.ps1'
+              filePath: '$(Build.SourcesDirectory)/repo-migration/01-discover/scan-secrets.sh'
               arguments: >-
                 -ConfigPath "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
                 -BatchIndex $(BATCH_INDEX) -BatchTotal $(BATCH_TOTAL)
                 -MigrationMode '${{ parameters.MigrationMode }}'
                 -SingleRepoName '${{ parameters.ADORepo }}'
-                
-              pwsh: true
               workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
@@ -285,9 +242,10 @@ stages:
               ${{ else }}:
                 reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/secret-scan-report-batch$(BATCH_INDEX).html'
               tabName: "Secret Scan Report"
-  # ===========================================================================
-  # STAGE 2 – REVIEW GATE  (human reviews discovery + scan before migrating)
-  # ===========================================================================
+
+# ===========================================================================
+# STAGE 2 – REVIEW GATE
+# ===========================================================================
   - stage: ReviewGate
     displayName: "2. Review Gate"
     dependsOn: Discover
@@ -317,16 +275,16 @@ stages:
                     → MANDATORY for regulated environment
                     → Critical/High findings must be remediated before migration
                     → if zero findings: safe to proceed
-                    → if findings exist: scrub history first (scrub-secrets.ps1)
+                    → if findings exist: scrub history first (scrub-secrets.sh)
 
                 Populate config/user-mappings.csv with ADO→GitHub username mappings.
 
                 Approve to proceed to migration, or Reject to abort.
               onTimeout: reject
 
-  # ===========================================================================
-  # STAGE 3A – SINGLE REPO MIGRATION
-  # ===========================================================================
+# ===========================================================================
+# STAGE 3A – SINGLE REPO MIGRATION
+# ===========================================================================
   - stage: MigrateSingle
     displayName: "3a. Migrate (Single Repo)"
     dependsOn: ReviewGate
@@ -338,104 +296,102 @@ stages:
         steps:
 
           - task: Bash@3
-            displayName: "Ensure pwsh is installed"
-            inputs:
-              targetType: inline
-              script: |
-                if ! command -v pwsh &> /dev/null; then
-                    echo "pwsh not found. Attempting to install via snap..."
-                    sudo snap install powershell --classic || {
-                        echo "Snap failed. Attempting apt..."
-                        sudo apt-get update && sudo apt-get install -y powershell || {
-                            echo "Apt failed. Attempting binary download..."
-                            curl -L -o /tmp/powershell.tar.gz https://github.com/PowerShell/PowerShell/releases/download/v7.4.2/powershell-7.4.2-linux-x64.tar.gz
-                            sudo mkdir -p /opt/microsoft/powershell/7
-                            sudo tar zxf /tmp/powershell.tar.gz -C /opt/microsoft/powershell/7
-                            sudo chmod +x /opt/microsoft/powershell/7/pwsh
-                            sudo ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh
-                        }
-                    }
-                fi
-
-          - task: PowerShell@2
             displayName: "Install GitHub CLI + ado2gh extension"
             inputs:
               targetType: inline
               script: |
-                # Install GitHub CLI from tar.gz — no elevation required on self-hosted agents
-                $ghDir = "$env:AGENT_TOOLSDIRECTORY/gh"
-                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-                    Write-Host "Installing GitHub CLI (Linux tar.gz)..."
-                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_linux_amd64.tar.gz" -OutFile gh.tar.gz
-                    New-Item -ItemType Directory -Path $ghDir -Force | Out-Null
-                    tar -xzf gh.tar.gz -C $ghDir
-                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter "gh" -File | Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1).DirectoryName
-                    if (-not $ghBin) {
-                        # Fallback: find the gh binary anywhere in the extracted directory
-                        $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter "gh" -File | Select-Object -First 1).DirectoryName
-                    }
-                    chmod +x "$ghBin/gh"
-                    Write-Host "##vso[task.prependpath]$ghBin"
-                    $env:PATH = "${ghBin}:$env:PATH"
-                }
+                GH_DIR="$AGENT_TOOLSDIRECTORY/gh"
+                if ! command -v gh &> /dev/null; then
+                    echo "Installing GitHub CLI (Linux tar.gz)..."
+                    mkdir -p "$GH_DIR"
+                    curl -L -o gh.tar.gz "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_linux_amd64.tar.gz"
+                    tar -xzf gh.tar.gz -C "$GH_DIR"
+                    GH_BIN=$(find "$GH_DIR" -type f -name gh -path '*/bin/*' | head -n 1)
+                    if [ -z "$GH_BIN" ]; then
+                        GH_BIN=$(find "$GH_DIR" -type f -name gh | head -n 1)
+                    fi
+                    GH_BIN_DIR=$(dirname "$GH_BIN")
+                    chmod +x "$GH_BIN"
+                    echo "##vso[task.prependpath]$GH_BIN_DIR"
+                    export PATH="${GH_BIN_DIR}:$PATH"
+                fi
                 gh --version
 
                 # Authenticate gh CLI before installing extensions
-                $env:GH_TOKEN = "$(GH_PAT)"
-                echo $env:GH_TOKEN | gh auth login --with-token
-               
+                export GH_TOKEN="$GH_PAT"
+                echo "$GH_PAT" | gh auth login --with-token
                 gh auth status
 
-                gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
-                gh extension upgrade ado2gh
+                if ! gh extension list | grep -q 'ado2gh'; then
+                    gh extension install github/gh-ado2gh
+                else
+                    gh extension upgrade ado2gh
+                fi
                 gh extension list
-              pwsh: true
             env:
-              GH_TOKEN: $(GH_PAT)
+              GH_PAT: $(GH_PAT)
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Ensure output directories"
             inputs:
               targetType: inline
               script: |
-                "reports","logs","audit","dashboard","tmp" | ForEach-Object {
-                    New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)/repo-migration/output/$_" -Force | Out-Null
-                }
-              pwsh: true
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/audit"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/dashboard"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/tmp"
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Migrate Single Repo"
             inputs:
               targetType: inline
               script: |
-                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
-                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
-                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+                adoRepo=$(echo "${{ parameters.ADORepo }}" | xargs)
+                ghRepo=$(echo "${{ parameters.GHRepo }}" | xargs)
+                cfgPath="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                if [ -z "$ghRepo" ] && [ -z "$adoRepo" ]; then
+                    if [ -f "$cfgPath" ]; then
+                        cfg_single=$(jq -r '.migration.singleRepo // empty' "$cfgPath" | tr -d '\r')
+                        if [ -n "$cfg_single" ]; then
+                            ghRepo="$cfg_single"
+                            adoRepo="$cfg_single"
+                            echo "No explicit repo parameters passed. Using singleRepo from config: $ghRepo"
+                        fi
+                    fi
+                fi
+                if [ -z "$ghRepo" ]; then
+                    ghRepo="$adoRepo"
+                fi
 
                 # Read target visibility from config
-                $cfgPath = '$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json'
-                $visibility = 'private'
-                if (Test-Path $cfgPath) {
-                    $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
-                    if ($cfg.migration.targetRepoVisibility) {
-                        $visibility = $cfg.migration.targetRepoVisibility
-                    }
-                }
+                visibility="private"
+                if [ -f "$cfgPath" ]; then
+                    cfg_vis=$(jq -r '.migration.targetRepoVisibility // empty' "$cfgPath" | tr -d '\r')
+                    if [ -n "$cfg_vis" ]; then
+                        visibility="$cfg_vis"
+                    fi
+                fi
 
-                $params = @{
-                    ADOOrg     = '$(ADO_ORG)'.Trim()
-                    ADOProject = '$(ADO_PROJECT)'.Trim()
-                    ADORepo    = $adoRepo
-                    GHOrg      = '$(GH_ORG)'.Trim()
-                    GHRepo     = $ghRepo
-                    OutputDir  = '$(Build.SourcesDirectory)/repo-migration/output'
-                    TargetRepoVisibility = $visibility
-                }
-                if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
-                if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
-                & '$(Build.SourcesDirectory)/repo-migration/03-migrate/migrate-single.ps1' @params
-                Write-Host "##vso[task.setvariable variable=RESOLVED_REPO]$ghRepo"
-              pwsh: true
+                migParams=(
+                    --ado-org "$(ADO_ORG)"
+                    --ado-project "$(ADO_PROJECT)"
+                    --ado-repo "$adoRepo"
+                    --github-org "$(GH_ORG)"
+                    --github-repo "$ghRepo"
+                    --output-dir "$(Build.SourcesDirectory)/repo-migration/output"
+                    --target-repo-visibility "$visibility"
+                )
+                if [ "${{ parameters.SkipAudit }}" = "True" ] || [ "${{ parameters.SkipAudit }}" = "true" ]; then
+                    migParams+=(--skip-audit)
+                fi
+                if [ "${{ parameters.DryRun }}" = "True" ] || [ "${{ parameters.DryRun }}" = "true" ]; then
+                    migParams+=(--dry-run)
+                fi
+
+                chmod +x "$(Build.SourcesDirectory)/repo-migration/03-migrate/migrate-single.sh"
+                "$(Build.SourcesDirectory)/repo-migration/03-migrate/migrate-single.sh" "${migParams[@]}"
+                echo "##vso[task.setvariable variable=RESOLVED_REPO]$ghRepo"
               workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT:   $(ADO_PAT)
@@ -466,16 +422,9 @@ stages:
               artifact: "MigrationDashboard-Single"
               publishLocation: pipeline
 
-          # - task: PublishHtmlReport@1
-          #   displayName: "Show HTML on Pipeline Tab"
-          #   condition: always()
-          #   inputs:
-          #     reportDir: '$(Build.SourcesDirectory)/repo-migration/output/dashboard/$(RESOLVED_REPO)'
-          #     tabName: "Migration Report"
-
-  # ===========================================================================
-  # STAGE 3B – BATCH REPO MIGRATION
-  # ===========================================================================
+# ===========================================================================
+# STAGE 3B – BATCH REPO MIGRATION
+# ===========================================================================
   - stage: MigrateBatch
     displayName: "3b. Migrate (Batch)"
     dependsOn: ReviewGate
@@ -487,104 +436,95 @@ stages:
         steps:
 
           - task: Bash@3
-            displayName: "Ensure pwsh is installed"
-            inputs:
-              targetType: inline
-              script: |
-                if ! command -v pwsh &> /dev/null; then
-                    echo "pwsh not found. Attempting to install via snap..."
-                    sudo snap install powershell --classic || {
-                        echo "Snap failed. Attempting apt..."
-                        sudo apt-get update && sudo apt-get install -y powershell || {
-                            echo "Apt failed. Attempting binary download..."
-                            curl -L -o /tmp/powershell.tar.gz https://github.com/PowerShell/PowerShell/releases/download/v7.4.2/powershell-7.4.2-linux-x64.tar.gz
-                            sudo mkdir -p /opt/microsoft/powershell/7
-                            sudo tar zxf /tmp/powershell.tar.gz -C /opt/microsoft/powershell/7
-                            sudo chmod +x /opt/microsoft/powershell/7/pwsh
-                            sudo ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh
-                        }
-                    }
-                fi
-
-          - task: PowerShell@2
             displayName: "Install GitHub CLI + ado2gh extension"
             inputs:
               targetType: inline
               script: |
-                # Install GitHub CLI from tar.gz — no elevation required on self-hosted agents
-                $ghDir = "$env:AGENT_TOOLSDIRECTORY/gh"
-                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-                    Write-Host "Installing GitHub CLI (Linux tar.gz)..."
-                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_linux_amd64.tar.gz" -OutFile gh.tar.gz
-                    New-Item -ItemType Directory -Path $ghDir -Force | Out-Null
-                    tar -xzf gh.tar.gz -C $ghDir
-                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter "gh" -File | Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1).DirectoryName
-                    if (-not $ghBin) {
-                        $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter "gh" -File | Select-Object -First 1).DirectoryName
-                    }
-                    chmod +x "$ghBin/gh"
-                    Write-Host "##vso[task.prependpath]$ghBin"
-                    $env:PATH = "${ghBin}:$env:PATH"
-                }
+                GH_DIR="$AGENT_TOOLSDIRECTORY/gh"
+                if ! command -v gh &> /dev/null; then
+                    echo "Installing GitHub CLI (Linux tar.gz)..."
+                    mkdir -p "$GH_DIR"
+                    curl -L -o gh.tar.gz "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_linux_amd64.tar.gz"
+                    tar -xzf gh.tar.gz -C "$GH_DIR"
+                    GH_BIN=$(find "$GH_DIR" -type f -name gh -path '*/bin/*' | head -n 1)
+                    if [ -z "$GH_BIN" ]; then
+                        GH_BIN=$(find "$GH_DIR" -type f -name gh | head -n 1)
+                    fi
+                    GH_BIN_DIR=$(dirname "$GH_BIN")
+                    chmod +x "$GH_BIN"
+                    echo "##vso[task.prependpath]$GH_BIN_DIR"
+                    export PATH="${GH_BIN_DIR}:$PATH"
+                fi
                 gh --version
 
                 # Authenticate gh CLI before installing extensions
-                $env:GH_TOKEN = "$(GH_PAT)"
-                "$(GH_PAT)" | gh auth login --with-token
+                export GH_TOKEN="$GH_PAT"
+                echo "$GH_PAT" | gh auth login --with-token
                 gh auth status
 
-                gh extension install github/gh-ado2gh 2>&1 | Where-Object { $_ -notmatch 'already installed' }
+                if ! gh extension list | grep -q 'ado2gh'; then
+                    gh extension install github/gh-ado2gh
+                else
+                    gh extension upgrade ado2gh
+                fi
                 gh extension list
-              pwsh: true
             env:
-              GH_TOKEN: $(GH_PAT)
+              GH_PAT: $(GH_PAT)
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Replace config tokens"
             inputs:
               targetType: inline
               script: |
-                $cfg = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
-                $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
-                $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
-                $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                Set-Content -Path $cfg -Value $c
-              pwsh: true
+                cfg="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                jq --arg ado_org "$ADO_ORG" \
+                   --arg ado_project "$ADO_PROJECT" \
+                   --arg ado_pat "$ADO_PAT" \
+                   --arg gh_org "$GH_ORG" \
+                   --arg gh_pat "$GH_PAT" \
+                   '.source.organization = $ado_org | .source.project = $ado_project | .source.pat = $ado_pat | .target.organization = $gh_org | .target.pat = $gh_pat' \
+                   "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
             env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PROJECT: $(ADO_PROJECT)
               ADO_PAT: $(ADO_PAT)
-              GH_PAT:  $(GH_PAT)
+              GH_ORG: $(GH_ORG)
+              GH_PAT: $(GH_PAT)
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Ensure output directories"
             inputs:
               targetType: inline
               script: |
-                "reports","logs","audit","dashboard","tmp" | ForEach-Object {
-                    New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)/repo-migration/output/$_" -Force | Out-Null
-                }
-              pwsh: true
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/logs"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/audit"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/dashboard"
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/tmp"
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Migrate Batch Repos"
             inputs:
               targetType: inline
               script: |
-                $params = @{
-                    ADOOrg      = '$(ADO_ORG)'
-                    ADOProject  = '$(ADO_PROJECT)'
-                    GHOrg       = '$(GH_ORG)'
-                    ConfigPath  = '$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json'
-                    BatchName   = '${{ parameters.BatchName }}'
-                    OutputDir   = '$(Build.SourcesDirectory)/repo-migration/output'
-                    MaxParallel = 3
-                }
-                if ('${{ parameters.SkipAudit }}' -eq 'True') { $params['SkipAudit'] = $true }
-                if ('${{ parameters.DryRun }}'    -eq 'True') { $params['DryRun']    = $true }
-                & '$(Build.SourcesDirectory)/repo-migration/03-migrate/migrate-batch.ps1' @params
-              pwsh: true
+                migParams=(
+                    --ado-org "$(ADO_ORG)"
+                    --ado-project "$(ADO_PROJECT)"
+                    --github-org "$(GH_ORG)"
+                    --config-path "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                    --batch-name "${{ parameters.BatchName }}"
+                    --output-dir "$(Build.SourcesDirectory)/repo-migration/output"
+                    --max-parallel 3
+                )
+                if [ "${{ parameters.SkipAudit }}" = "True" ] || [ "${{ parameters.SkipAudit }}" = "true" ]; then
+                    migParams+=(--skip-audit)
+                fi
+                if [ "${{ parameters.DryRun }}" = "True" ] || [ "${{ parameters.DryRun }}" = "true" ]; then
+                    migParams+=(--dry-run)
+                fi
+
+                chmod +x "$(Build.SourcesDirectory)/repo-migration/03-migrate/migrate-batch.sh"
+                "$(Build.SourcesDirectory)/repo-migration/03-migrate/migrate-batch.sh" "${migParams[@]}"
               workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT:  $(ADO_PAT)
@@ -623,9 +563,9 @@ stages:
               artifact: "BatchMigrationReports"
               publishLocation: pipeline
 
-  # ===========================================================================
-  # STAGE 4 – VALIDATE
-  # ===========================================================================
+# ===========================================================================
+# STAGE 4 – VALIDATE
+# ===========================================================================
   - stage: Validate
     displayName: "4. Validate Migration"
     dependsOn:
@@ -648,80 +588,60 @@ stages:
         steps:
 
           - task: Bash@3
-            displayName: "Ensure pwsh is installed"
-            inputs:
-              targetType: inline
-              script: |
-                if ! command -v pwsh &> /dev/null; then
-                    echo "pwsh not found. Attempting to install via snap..."
-                    sudo snap install powershell --classic || {
-                        echo "Snap failed. Attempting apt..."
-                        sudo apt-get update && sudo apt-get install -y powershell || {
-                            echo "Apt failed. Attempting binary download..."
-                            curl -L -o /tmp/powershell.tar.gz https://github.com/PowerShell/PowerShell/releases/download/v7.4.2/powershell-7.4.2-linux-x64.tar.gz
-                            sudo mkdir -p /opt/microsoft/powershell/7
-                            sudo tar zxf /tmp/powershell.tar.gz -C /opt/microsoft/powershell/7
-                            sudo chmod +x /opt/microsoft/powershell/7/pwsh
-                            sudo ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh
-                        }
-                    }
-                fi
-          - task: PowerShell@2
             displayName: "Install GitHub CLI"
             inputs:
               targetType: inline
               script: |
-                # Install GitHub CLI from tar.gz — no elevation required on self-hosted agents
-                $ghDir = "$env:AGENT_TOOLSDIRECTORY/gh"
-                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-                    Write-Host "Installing GitHub CLI (Linux tar.gz)..."
-                    Invoke-WebRequest -Uri "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_linux_amd64.tar.gz" -OutFile gh.tar.gz
-                    New-Item -ItemType Directory -Path $ghDir -Force | Out-Null
-                    tar -xzf gh.tar.gz -C $ghDir
-                    $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter "gh" -File | Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1).DirectoryName
-                    if (-not $ghBin) {
-                        $ghBin = (Get-ChildItem -Path $ghDir -Recurse -Filter "gh" -File | Select-Object -First 1).DirectoryName
-                    }
-                    chmod +x "$ghBin/gh"
-                    Write-Host "##vso[task.prependpath]$ghBin"
-                    $env:PATH = "${ghBin}:$env:PATH"
-                }
+                GH_DIR="$AGENT_TOOLSDIRECTORY/gh"
+                if ! command -v gh &> /dev/null; then
+                    echo "Installing GitHub CLI (Linux tar.gz)..."
+                    mkdir -p "$GH_DIR"
+                    curl -L -o gh.tar.gz "https://github.com/cli/cli/releases/download/v2.52.0/gh_2.52.0_linux_amd64.tar.gz"
+                    tar -xzf gh.tar.gz -C "$GH_DIR"
+                    GH_BIN=$(find "$GH_DIR" -type f -name gh -path '*/bin/*' | head -n 1)
+                    if [ -z "$GH_BIN" ]; then
+                        GH_BIN=$(find "$GH_DIR" -type f -name gh | head -n 1)
+                    fi
+                    GH_BIN_DIR=$(dirname "$GH_BIN")
+                    chmod +x "$GH_BIN"
+                    echo "##vso[task.prependpath]$GH_BIN_DIR"
+                    export PATH="${GH_BIN_DIR}:$PATH"
+                fi
                 gh --version
 
-                # Authenticate gh CLI
-                $env:GH_TOKEN = "$(GH_PAT)"
-                "$(GH_PAT)" | gh auth login --with-token
+                export GH_TOKEN="$GH_PAT"
+                echo "$GH_PAT" | gh auth login --with-token
                 gh auth status
-              pwsh: true
             env:
               GH_TOKEN: $(GH_PAT)
+              GH_PAT: $(GH_PAT)
 
-
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Replace config tokens"
             inputs:
               targetType: inline
               script: |
-                $cfg = "$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
-                $c   = Get-Content $cfg -Raw
-                $c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
-                $c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
-                $c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
-                $c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
-                $c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
-                Set-Content -Path $cfg -Value $c
-              pwsh: true
+                cfg="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                jq --arg ado_org "$ADO_ORG" \
+                   --arg ado_project "$ADO_PROJECT" \
+                   --arg ado_pat "$ADO_PAT" \
+                   --arg gh_org "$GH_ORG" \
+                   --arg gh_pat "$GH_PAT" \
+                   '.source.organization = $ado_org | .source.project = $ado_project | .source.pat = $ado_pat | .target.organization = $gh_org | .target.pat = $gh_pat' \
+                   "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
             env:
+              ADO_ORG: $(ADO_ORG)
+              ADO_PROJECT: $(ADO_PROJECT)
               ADO_PAT: $(ADO_PAT)
-              GH_PAT:  $(GH_PAT)
+              GH_ORG: $(GH_ORG)
+              GH_PAT: $(GH_PAT)
 
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Ensure output directories"
             inputs:
               targetType: inline
               script: |
-                New-Item -ItemType Directory -Path "$(Build.SourcesDirectory)/repo-migration/output/reports" -Force | Out-Null
-              pwsh: true
+                mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/reports"
 
           # Download migration artifacts to get audit data + batch summary
           - task: DownloadPipelineArtifact@2
@@ -786,43 +706,55 @@ stages:
               path: '$(Build.SourcesDirectory)/repo-migration/output/dashboard'
 
           # Single mode — validate one repo
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "4.1 Validate Single Repo"
             condition: eq('${{ parameters.MigrationMode }}', 'Single')
             continueOnError: true
             inputs:
               targetType: inline
               script: |
-                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
-                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
-                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
+                adoRepo=$(echo "${{ parameters.ADORepo }}" | xargs)
+                ghRepo=$(echo "${{ parameters.GHRepo }}" | xargs)
+                cfgPath="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                if [ -z "$ghRepo" ] && [ -z "$adoRepo" ]; then
+                    if [ -f "$cfgPath" ]; then
+                        cfg_single=$(jq -r '.migration.singleRepo // empty' "$cfgPath" | tr -d '\r')
+                        if [ -n "$cfg_single" ]; then
+                            ghRepo="$cfg_single"
+                            adoRepo="$cfg_single"
+                            echo "No explicit repo parameters passed. Using singleRepo from config: $ghRepo"
+                        fi
+                    fi
+                fi
+                if [ -z "$ghRepo" ]; then
+                    ghRepo="$adoRepo"
+                fi
 
                 # Read target visibility from config
-                $cfgPath = '$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json'
-                $visibility = 'private'
-                if (Test-Path $cfgPath) {
-                    $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
-                    if ($cfg.migration.targetRepoVisibility) {
-                        $visibility = $cfg.migration.targetRepoVisibility
-                    }
-                }
+                visibility="private"
+                if [ -f "$cfgPath" ]; then
+                    cfg_vis=$(jq -r '.migration.targetRepoVisibility // empty' "$cfgPath" | tr -d '\r')
+                    if [ -n "$cfg_vis" ]; then
+                        visibility="$cfg_vis"
+                    fi
+                fi
 
-                & '$(Build.SourcesDirectory)/repo-migration/04-validate/validate-migration.ps1' `
-                    -ADOOrg     '$(ADO_ORG)' `
-                    -ADOProject '$(ADO_PROJECT)' `
-                    -GHOrg      '$(GH_ORG)' `
-                    -GHRepo     $ghRepo `
-                    -ADORepo    $adoRepo `
-                    -OutputDir  '$(Build.SourcesDirectory)/repo-migration/output' `
-                    -ExpectedVisibility $visibility
-              pwsh: true
+                chmod +x "$(Build.SourcesDirectory)/repo-migration/04-validate/validate-migration.sh"
+                "$(Build.SourcesDirectory)/repo-migration/04-validate/validate-migration.sh" \
+                    --ado-org "$(ADO_ORG)" \
+                    --ado-project "$(ADO_PROJECT)" \
+                    --github-org "$(GH_ORG)" \
+                    --github-repo "$ghRepo" \
+                    --ado-repo "$adoRepo" \
+                    --output-dir "$(Build.SourcesDirectory)/repo-migration/output" \
+                    --expected-visibility "$visibility"
               workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
               GH_PAT:  $(GH_PAT)
 
           # Batch mode — validate all repos from batch summary
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "4.1 Validate Batch Repos"
             condition: eq('${{ parameters.MigrationMode }}', 'Batch')
             continueOnError: true
@@ -830,22 +762,22 @@ stages:
               targetType: inline
               script: |
                 # Read target visibility from config
-                $cfgPath = '$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json'
-                $visibility = 'private'
-                if (Test-Path $cfgPath) {
-                    $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
-                    if ($cfg.migration.targetRepoVisibility) {
-                        $visibility = $cfg.migration.targetRepoVisibility
-                    }
-                }
+                cfgPath="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                visibility="private"
+                if [ -f "$cfgPath" ]; then
+                    cfg_vis=$(jq -r '.migration.targetRepoVisibility // empty' "$cfgPath" | tr -d '\r')
+                    if [ -n "$cfg_vis" ]; then
+                        visibility="$cfg_vis"
+                    fi
+                fi
 
-                & '$(Build.SourcesDirectory)/repo-migration/04-validate/validate-migration.ps1' `
-                    -ADOOrg     '$(ADO_ORG)' `
-                    -ADOProject '$(ADO_PROJECT)' `
-                    -GHOrg      '$(GH_ORG)' `
-                    -OutputDir  '$(Build.SourcesDirectory)/repo-migration/output' `
-                    -ExpectedVisibility $visibility
-              pwsh: true
+                chmod +x "$(Build.SourcesDirectory)/repo-migration/04-validate/validate-migration.sh"
+                "$(Build.SourcesDirectory)/repo-migration/04-validate/validate-migration.sh" \
+                    --ado-org "$(ADO_ORG)" \
+                    --ado-project "$(ADO_PROJECT)" \
+                    --github-org "$(GH_ORG)" \
+                    --output-dir "$(Build.SourcesDirectory)/repo-migration/output" \
+                    --expected-visibility "$visibility"
               workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
@@ -866,67 +798,15 @@ stages:
               reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/validation-report.html'
               tabName: "Validation Report"
 
-          - task: PowerShell@2
-            displayName: "Prepare Migration Report for HTML Tab"
-            condition: always()
-            inputs:
-              targetType: inline
-              script: |
-                $src = "$(Build.SourcesDirectory)/repo-migration/output/dashboard"
-
-                # For Single mode: use pipeline parameters
-                $adoRepo = '${{ parameters.ADORepo }}'.Trim()
-                $ghRepo  = '${{ parameters.GHRepo }}'.Trim()
-                if ([string]::IsNullOrWhiteSpace($ghRepo)) { $ghRepo = $adoRepo }
-                $singleFile = "$src/$ghRepo/migration-report-$ghRepo.html"
-
-                if (Test-Path $singleFile) {
-                    Write-Host "Single mode — using: $singleFile"
-                    Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
-                }
-                else {
-                    # Batch mode or Single file not found — find all HTML files
-                    $htmlFiles = @(Get-ChildItem -Path $src -Recurse -Filter "*.html" -ErrorAction SilentlyContinue)
-                    Write-Host "Found $($htmlFiles.Count) HTML file(s) in dashboard"
-                    if ($htmlFiles.Count -eq 1) {
-                        Write-Host "Using: $($htmlFiles[0].FullName)"
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$($htmlFiles[0].FullName)"
-                    }
-                    elseif ($htmlFiles.Count -gt 1) {
-                        $dst = "$src/combined-migration-report.html"
-                        $combined = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>"
-                        foreach ($f in $htmlFiles) {
-                            $content = Get-Content $f.FullName -Raw -Encoding utf8
-                            $content = $content -replace '<!DOCTYPE[^>]*>', '' -replace '</?html[^>]*>', '' -replace '<head>.*?</head>', '' -replace '</?body[^>]*>', ''
-                            $combined += "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>"
-                            Write-Host "  Merged: $($f.Name)"
-                        }
-                        $combined += "</body></html>"
-                        $combined | Out-File $dst -Encoding utf8
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$dst"
-                    }
-                    else {
-                        Write-Warning "No migration HTML files found"
-                        Write-Host "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]"
-                    }
-                }
-              pwsh: true
-
-          - task: PublishHtmlReport@1
-            displayName: "Show Migration Report on Pipeline Tab"
-            condition: always()
-            inputs:
-              reportDir: '$(MIGRATION_REPORT_PATH)'
-              tabName: "Migration Report"
-
-          - task: PowerShell@2
+          - task: Bash@3
             displayName: "Publish Validation Summary to ADO Tab"
             condition: always()
             inputs:
               targetType: inline
               script: |
-                $valSummary = "$(Build.SourcesDirectory)/repo-migration/output/reports/validation-summary.md"
-                if (Test-Path $valSummary) {
-                    Write-Host "##vso[task.uploadsummary]$valSummary"
-                } else { Write-Warning "Validation summary not found: $valSummary" }
-              pwsh: true
+                valSummary="$(Build.SourcesDirectory)/repo-migration/output/reports/validation-summary.md"
+                if [ -f "$valSummary" ]; then
+                    echo "##vso[task.uploadsummary]$valSummary"
+                else
+                    echo "##vso[task.logissue type=warning]Validation summary not found: $valSummary"
+                fi
