@@ -1,3 +1,8 @@
+parameters:
+  - name: ProjectName
+    type: string
+    displayName: 'Azure DevOps Project Name'
+
 trigger: none
 
 pool:
@@ -16,22 +21,22 @@ stages:
         steps:
 
           - script: |
-              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/inventory"
+              mkdir -p "$(Build.SourcesDirectory)/output/inventory"
             displayName: 'Ensure output directory'
 
           - task: Bash@3
             displayName: '0.1 Inventory All Assets'
             inputs:
-              filePath: '$(Build.SourcesDirectory)/repo-migration/linux/inventory-assets.sh'
-              arguments: '--org-url "$(ADO_ORG)" --pat "$(ADO_PAT)" --output-dir "$(Build.SourcesDirectory)/repo-migration/output/inventory"'
-              workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
+              filePath: '$(Build.SourcesDirectory)/inventory-assets.sh'
+              arguments: '--org-url "$(ADO_ORG)" --project-name "${{ parameters.ProjectName }}" --pat "$(ADO_PAT)" --output-dir "$(Build.SourcesDirectory)/output/inventory"'
+              workingDirectory: '$(Build.SourcesDirectory)'
             env:
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Inventory Reports'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/inventory'
+              targetPath: '$(Build.SourcesDirectory)/output/inventory'
               artifact: 'inventory-reports'
               publishLocation: 'pipeline'
             condition: always()
@@ -39,6 +44,6 @@ stages:
           - task: PublishHtmlReport@1
             displayName: 'Publish Inventory Dashboard'
             inputs:
-              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/inventory/inventory-dashboard.html'
+              reportDir: '$(Build.SourcesDirectory)/output/inventory/inventory-dashboard.html'
               tabName: 'ADO Inventory'
             condition: always()
