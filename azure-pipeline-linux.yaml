@@ -349,12 +349,22 @@ stages:
               script: |
                 adoRepo=$(echo "${{ parameters.ADORepo }}" | xargs)
                 ghRepo=$(echo "${{ parameters.GHRepo }}" | xargs)
+                cfgPath="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                if [ -z "$ghRepo" ] && [ -z "$adoRepo" ]; then
+                    if [ -f "$cfgPath" ]; then
+                        cfg_single=$(jq -r '.migration.singleRepo // empty' "$cfgPath" | tr -d '\r')
+                        if [ -n "$cfg_single" ]; then
+                            ghRepo="$cfg_single"
+                            adoRepo="$cfg_single"
+                            echo "No explicit repo parameters passed. Using singleRepo from config: $ghRepo"
+                        fi
+                    fi
+                fi
                 if [ -z "$ghRepo" ]; then
                     ghRepo="$adoRepo"
                 fi
 
                 # Read target visibility from config
-                cfgPath="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
                 visibility="private"
                 if [ -f "$cfgPath" ]; then
                     cfg_vis=$(jq -r '.migration.targetRepoVisibility // empty' "$cfgPath" | tr -d '\r')
@@ -705,12 +715,22 @@ stages:
               script: |
                 adoRepo=$(echo "${{ parameters.ADORepo }}" | xargs)
                 ghRepo=$(echo "${{ parameters.GHRepo }}" | xargs)
+                cfgPath="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                if [ -z "$ghRepo" ] && [ -z "$adoRepo" ]; then
+                    if [ -f "$cfgPath" ]; then
+                        cfg_single=$(jq -r '.migration.singleRepo // empty' "$cfgPath" | tr -d '\r')
+                        if [ -n "$cfg_single" ]; then
+                            ghRepo="$cfg_single"
+                            adoRepo="$cfg_single"
+                            echo "No explicit repo parameters passed. Using singleRepo from config: $ghRepo"
+                        fi
+                    fi
+                fi
                 if [ -z "$ghRepo" ]; then
                     ghRepo="$adoRepo"
                 fi
 
                 # Read target visibility from config
-                cfgPath="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
                 visibility="private"
                 if [ -f "$cfgPath" ]; then
                     cfg_vis=$(jq -r '.migration.targetRepoVisibility // empty' "$cfgPath" | tr -d '\r')
@@ -777,6 +797,80 @@ stages:
             inputs:
               reportDir: '$(Build.SourcesDirectory)/repo-migration/output/reports/validation-report.html'
               tabName: "Validation Report"
+
+          - task: Bash@3
+            displayName: "Prepare Migration Report for HTML Tab"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                src="$(Build.SourcesDirectory)/repo-migration/output/dashboard"
+
+                adoRepo=$(echo "${{ parameters.ADORepo }}" | xargs)
+                ghRepo=$(echo "${{ parameters.GHRepo }}" | xargs)
+                cfgPath="$(Build.SourcesDirectory)/repo-migration/config/repo-migration-config.json"
+                if [ -z "$ghRepo" ] && [ -z "$adoRepo" ]; then
+                    if [ -f "$cfgPath" ]; then
+                        cfg_single=$(jq -r '.migration.singleRepo // empty' "$cfgPath" | tr -d '\r')
+                        if [ -n "$cfg_single" ]; then
+                            ghRepo="$cfg_single"
+                            adoRepo="$cfg_single"
+                        fi
+                    fi
+                fi
+                if [ -z "$ghRepo" ]; then
+                    ghRepo="$adoRepo"
+                fi
+
+                singleFile="$src/$ghRepo/migration-report-$ghRepo.html"
+
+                if [ -f "$singleFile" ]; then
+                    echo "Single mode — using: $singleFile"
+                    echo "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
+                else
+                    htmlFiles=()
+                    while IFS= read -r -d '' file; do
+                        htmlFiles+=("$file")
+                    done < <(find "$src" -type f -name "*.html" ! -name "combined-migration-report.html" -print0 2>/dev/null)
+
+                    fileCount=${#htmlFiles[@]}
+                    echo "Found $fileCount HTML file(s) in dashboard"
+                    if [ "$fileCount" -eq 1 ]; then
+                        echo "Using: ${htmlFiles[0]}"
+                        echo "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]${htmlFiles[0]}"
+                    elif [ "$fileCount" -gt 1 ]; then
+                        dst="$src/combined-migration-report.html"
+                        echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>" > "$dst"
+                        for f in "${htmlFiles[@]}"; do
+                            echo "  Merged: $(basename "$f")"
+                            content=$(python3 -c "
+import sys, re
+try:
+    content = open(sys.argv[1], 'r', encoding='utf-8', errors='ignore').read()
+    content = re.sub(r'(?i)<!DOCTYPE[^>]*>', '', content)
+    content = re.sub(r'(?i)</?html[^>]*>', '', content)
+    content = re.sub(r'(?i)<head>.*?</head>', '', content, flags=re.DOTALL)
+    content = re.sub(r'(?i)</?body[^>]*>', '', content)
+    print(content)
+except Exception as e:
+    print(f'<p>Error merging file: {e}</p>')
+" "$f")
+                            echo "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>" >> "$dst"
+                        done
+                        echo "</body></html>" >> "$dst"
+                        echo "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$dst"
+                    else
+                        echo "##vso[task.logissue type=warning]No migration HTML files found"
+                        echo "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]"
+                    fi
+                fi
+
+          - task: PublishHtmlReport@1
+            displayName: "Show Migration Report on Pipeline Tab"
+            condition: always()
+            inputs:
+              reportDir: '$(MIGRATION_REPORT_PATH)'
+              tabName: "Migration Report"
 
           - task: Bash@3
             displayName: "Publish Validation Summary to ADO Tab"
