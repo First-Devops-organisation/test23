@@ -1,12 +1,7 @@
-parameters:
-  - name: ProjectName
-    type: string
-    displayName: 'Azure DevOps Project Name'
-
 trigger: none
 
 pool:
-  name: linux  # Set to your Linux self-hosted pool name (or use vmImage: 'ubuntu-latest')
+  vmImage: 'ubuntu-latest'
 
 variables:
   - group: repo-migration-discover
@@ -28,7 +23,7 @@ stages:
             displayName: '0.1 Inventory All Assets'
             inputs:
               filePath: '$(Build.SourcesDirectory)/inventory-assets.sh'
-              arguments: '--org-url "$(ADO_ORG)" --project-name "${{ parameters.ProjectName }}" --pat "$(ADO_PAT)" --output-dir "$(Build.SourcesDirectory)/output/inventory"'
+              arguments: '--org-url "$(ADO_ORG)" --project-name "$(System.TeamProject)" --pat "$(ADO_PAT)" --output-dir "$(Build.SourcesDirectory)/output/inventory"'
               workingDirectory: '$(Build.SourcesDirectory)'
             env:
               ADO_PAT: $(ADO_PAT)
