@@ -19,7 +19,7 @@ stages:
         steps:
 
           - script: |
-              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/inventory"
+              mkdir -p "$(Build.SourcesDirectory)/output/inventory"
             displayName: 'Ensure output directory'
 
           - script: |
@@ -27,21 +27,21 @@ stages:
             displayName: 'Install jq'
 
           - script: |
-              chmod +x "$(Build.SourcesDirectory)/repo-migration/inventory-assets.sh"
-              "$(Build.SourcesDirectory)/repo-migration/inventory-assets.sh" \
+              chmod +x "$(Build.SourcesDirectory)/inventory-assets.sh"
+              "$(Build.SourcesDirectory)/inventory-assets.sh" \
                 -o "$(ADO_ORG)" \
                 -t "$(ADO_PAT)" \
                 -p "$(ADO_PROJECT)" \
-                -d "$(Build.SourcesDirectory)/repo-migration/output/inventory"
+                -d "$(Build.SourcesDirectory)/output/inventory"
             displayName: '0.1 Inventory Project Assets'
-            workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
+            workingDirectory: '$(Build.SourcesDirectory)'
             env:
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Inventory Reports'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/inventory'
+              targetPath: '$(Build.SourcesDirectory)/output/inventory'
               artifact: 'inventory-reports'
               publishLocation: 'pipeline'
             condition: always()
@@ -49,6 +49,6 @@ stages:
           - task: PublishHtmlReport@1
             displayName: 'Publish Inventory Dashboard'
             inputs:
-              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/inventory/inventory-dashboard.html'
+              reportDir: '$(Build.SourcesDirectory)/output/inventory/inventory-dashboard.html'
               tabName: 'ADO Inventory'
             condition: always()
