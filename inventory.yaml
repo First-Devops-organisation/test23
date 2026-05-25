@@ -1,7 +1,7 @@
 trigger: none
 
 pool:
-  name: windows-latest  # Set to your Windows self-hosted pool name (or use vmImage: 'windows-latest')
+  vmImage: 'windows-latest'  # Set to your Windows self-hosted pool name (or use vmImage: 'windows-latest')
 
 variables:
   - group: repo-migration-discover
