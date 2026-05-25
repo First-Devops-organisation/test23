@@ -1,37 +1,47 @@
 trigger: none
 
-pool:
-  vmImage: 'ubuntu-latest'
+pool: linux
+ 
 
 variables:
   - group: repo-migration-discover
 
 stages:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # PHASE 0: INVENTORY (temporary — remove after collecting data)
+  # ═══════════════════════════════════════════════════════════════════════════
   - stage: Inventory
-    displayName: '0. Inventory All ADO Assets (Linux)'
+    displayName: '0. Inventory Project Assets'
     jobs:
       - job: InventoryAssets
-        displayName: 'Inventory Projects, Repos, Pipelines, Teams, etc.'
+        displayName: 'Inventory Repos, Pipelines, Teams, etc. for $(ADO_PROJECT)'
         timeoutInMinutes: 60
         steps:
 
           - script: |
-              mkdir -p "$(Build.SourcesDirectory)/output/inventory"
+              mkdir -p "$(Build.SourcesDirectory)/repo-migration/output/inventory"
             displayName: 'Ensure output directory'
 
-          - task: Bash@3
-            displayName: '0.1 Inventory All Assets'
-            inputs:
-              filePath: '$(Build.SourcesDirectory)/inventory-assets.sh'
-              arguments: '--org-url "$(ADO_ORG)" --project-name "$(System.TeamProject)" --pat "$(ADO_PAT)" --output-dir "$(Build.SourcesDirectory)/output/inventory"'
-              workingDirectory: '$(Build.SourcesDirectory)'
+          - script: |
+              sudo apt-get update -qq && sudo apt-get install -y -qq jq > /dev/null 2>&1 || true
+            displayName: 'Install jq'
+
+          - script: |
+              chmod +x "$(Build.SourcesDirectory)/repo-migration/inventory-assets.sh"
+              "$(Build.SourcesDirectory)/repo-migration/inventory-assets.sh" \
+                -o "$(ADO_ORG)" \
+                -t "$(ADO_PAT)" \
+                -p "$(ADO_PROJECT)" \
+                -d "$(Build.SourcesDirectory)/repo-migration/output/inventory"
+            displayName: '0.1 Inventory Project Assets'
+            workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
             env:
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Inventory Reports'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/output/inventory'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/inventory'
               artifact: 'inventory-reports'
               publishLocation: 'pipeline'
             condition: always()
@@ -39,6 +49,6 @@ stages:
           - task: PublishHtmlReport@1
             displayName: 'Publish Inventory Dashboard'
             inputs:
-              reportDir: '$(Build.SourcesDirectory)/output/inventory/inventory-dashboard.html'
+              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/inventory/inventory-dashboard.html'
               tabName: 'ADO Inventory'
             condition: always()
