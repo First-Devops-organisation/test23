@@ -844,24 +844,42 @@ stages:
                         echo "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]${htmlFiles[0]}"
                     elif [ "$fileCount" -gt 1 ]; then
                         dst="$src/combined-migration-report.html"
-                        echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Migration Reports</title></head><body>" > "$dst"
-                        for f in "${htmlFiles[@]}"; do
-                            echo "  Merged: $(basename "$f")"
-                            content=$(python3 -c "
-                            import sys, re
-                            try:
-                                content = open(sys.argv[1], 'r', encoding='utf-8', errors='ignore').read()
-                                content = re.sub(r'(?i)<!DOCTYPE[^>]*>', '', content)
-                                content = re.sub(r'(?i)</?html[^>]*>', '', content)
-                                content = re.sub(r'(?i)<head>.*?</head>', '', content, flags=re.DOTALL)
-                                content = re.sub(r'(?i)</?body[^>]*>', '', content)
-                                print(content)
-                            except Exception as e:
-                                print(f'<p>Error merging file: {e}</p>')
-                            " "$f")
-                            echo "<div style='border-bottom:4px solid #0d1117;margin-bottom:40px;padding-bottom:40px;'>$content</div>" >> "$dst"
-                        done
-                        echo "</body></html>" >> "$dst"
+                        python3 -c "
+import sys, re
+html_files = sys.argv[1:]
+if not html_files:
+    sys.exit(0)
+
+combined_html = '<!DOCTYPE html>\n<html>\n'
+head_content = '<head><meta charset=\"UTF-8\"><title>Migration Reports</title></head>'
+
+# Extract head from first file
+first_file = open(html_files[0], 'r', encoding='utf-8', errors='ignore').read()
+head_match = re.search(r'(?i)<head>(.*?)</head>', first_file, re.DOTALL)
+if head_match:
+    head_content = f'<head>{head_match.group(1)}</head>'
+
+combined_html += head_content + '\n<body>\n'
+
+for f in html_files:
+    print(f'  Merged: {f}')
+    try:
+        content = open(f, 'r', encoding='utf-8', errors='ignore').read()
+        body_match = re.search(r'(?i)<body[^>]*>(.*?)</body>', content, re.DOTALL)
+        body_content = body_match.group(1) if body_match else content
+        # Strip html/head if somehow body tag was missing
+        if not body_match:
+            body_content = re.sub(r'(?i)<!DOCTYPE[^>]*>', '', body_content)
+            body_content = re.sub(r'(?i)</?html[^>]*>', '', body_content)
+            body_content = re.sub(r'(?i)<head>.*?</head>', '', body_content, flags=re.DOTALL)
+        
+        combined_html += f'<div style=\"margin-bottom: 50px; padding-bottom: 20px; border-bottom: 2px dashed #ccc;\">\n{body_content}\n</div>\n'
+    except Exception as e:
+        combined_html += f'<p>Error merging {f}: {e}</p>\n'
+
+combined_html += '</body>\n</html>'
+open('$dst', 'w', encoding='utf-8').write(combined_html)
+" "${htmlFiles[@]}"
                         echo "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$dst"
                     else
                         echo "##vso[task.logissue type=warning]No migration HTML files found"
