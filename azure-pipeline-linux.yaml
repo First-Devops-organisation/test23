@@ -824,9 +824,13 @@ stages:
 
                 singleFile="$src/$ghRepo/migration-report-$ghRepo.html"
 
-                if [ -f "$singleFile" ]; then
-                    echo "Single mode — using: $singleFile"
-                    echo "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
+                if [ "${{ parameters.MigrationMode }}" == "Single" ]; then
+                    if [ -f "$singleFile" ]; then
+                        echo "Single mode — using: $singleFile"
+                        echo "##vso[task.setvariable variable=MIGRATION_REPORT_PATH]$singleFile"
+                    else
+                        echo "##vso[task.logissue type=warning]Single report not found: $singleFile"
+                    fi
                 else
                     htmlFiles=()
                     while IFS= read -r -d '' file; do
