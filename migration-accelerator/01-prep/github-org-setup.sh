@@ -1,60 +1,52 @@
-#!/usr/bin/env bash
-###############################################################################
-# github-org-setup.sh
-# Unified script to manage ADO to GitHub Organization setup, team syncing,
-# and user lifecycle (onboarding/offboarding).
-###############################################################################
+#!/bin/bash
 set -eo pipefail
 
-# ── Defaults ─────────────────────────────────────────────────────────────────
-STAGES=""
-ADO_ORG_URL=""
+STAGE=""
+ADO_ORG=""
 ADO_PAT=""
 GH_ORG=""
 GH_PAT=""
-TEAM_MAPPING_FILE="./config/team-mappings.json"
-USER_MAPPING_FILE="./config/user-mappings.csv"
-OUTPUT_DIR="./output"
-REMOVE_FROM_ORG=false
+USER_MAP_FILE="config/user-mappings.csv"
+OUTPUT_DIR="."
 
-# ── Parse arguments ──────────────────────────────────────────────────────────
 while [[ "$#" -gt 0 ]]; do
   case $1 in
-    --stages) STAGES="$2"; shift ;;
-    --ado-org) ADO_ORG_URL="$2"; shift ;;
+    --stages) STAGE="$2"; shift ;;
+    --ado-org) ADO_ORG="$2"; shift ;;
     --ado-pat) ADO_PAT="$2"; shift ;;
     --gh-org) GH_ORG="$2"; shift ;;
     --gh-pat) GH_PAT="$2"; shift ;;
-    --team-mapping) TEAM_MAPPING_FILE="$2"; shift ;;
-    --user-mapping) USER_MAPPING_FILE="$2"; shift ;;
+    --user-mapping) USER_MAP_FILE="$2"; shift ;;
     --output-dir) OUTPUT_DIR="$2"; shift ;;
-    --remove-from-org) REMOVE_FROM_ORG=true ;;
-    *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    *) echo "Unknown parameter: $1"; exit 1 ;;
   esac
   shift
 done
 
-# Expand 'full-sync' macro
-STAGES="${STAGES//full-sync/create-teams,sync-users,sync-repos}"
-
-# ── Auth & Headers ───────────────────────────────────────────────────────────
-ADO_AUTH_HEADER=""
+# --- Auth Headers ---
+ADO_AUTH=""
 if [[ -n "$ADO_PAT" ]]; then
-  ADO_AUTH_HEADER="Authorization: Basic $(printf ":%s" "$ADO_PAT" | base64 -w0 2>/dev/null || printf ":%s" "$ADO_PAT" | base64)"
+  ADO_AUTH="Authorization: Basic $(printf ":%s" "$ADO_PAT" | base64 -w0 2>/dev/null || printf ":%s" "$ADO_PAT" | base64)"
 fi
 
-GH_AUTH_HEADER=""
+GH_AUTH=""
 if [[ -n "$GH_PAT" ]]; then
-  GH_AUTH_HEADER="Authorization: Bearer $GH_PAT"
+  GH_AUTH="Authorization: Bearer $GH_PAT"
 fi
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# --- Helper Functions ---
 ado_api() {
   local uri="$1"
-  local api_version="${2:-7.1}"
-  if [[ "$uri" == *"?"* ]]; then uri="${uri}&api-version=${api_version}"
-  else uri="${uri}?api-version=${api_version}"; fi
-  curl -sS --fail-with-body -H "$ADO_AUTH_HEADER" -H "Content-Type: application/json" "$uri" 2>/dev/null || echo ""
+  local res
+  res=$(curl -sS -f -H "$ADO_AUTH" -H "Content-Type: application/json" "$uri") || {
+    echo -e "\e[31mADO API Error on $uri\e[0m" >&2
+    return 1
+  }
+  if ! echo "$res" | jq -e . >/dev/null 2>&1; then
+    echo -e "\e[31mADO API Error: Response was not valid JSON! Your PAT may be expired or invalid.\e[0m" >&2
+    return 1
+  }
+  echo "$res"
 }
 
 gh_api() {
@@ -62,384 +54,165 @@ gh_api() {
   local method="${2:-GET}"
   local body="$3"
   
-  if [[ "$uri" != *"http"* ]]; then
-    uri="https://api.github.com${uri}"
-  fi
-
-  local cmd=(curl -sS --fail-with-body -X "$method" -H "$GH_AUTH_HEADER" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
-  if [[ -n "$body" ]]; then
-    cmd+=(-H "Content-Type: application/json" -d "$body")
-  fi
+  if [[ "$uri" != *"http"* ]]; then uri="https://api.github.com${uri}"; fi
+  local cmd=(curl -sS -f -X "$method" -H "$GH_AUTH" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+  if [[ -n "$body" ]]; then cmd+=(-H "Content-Type: application/json" -d "$body"); fi
   
-  "${cmd[@]}" "$uri" 2>/dev/null || echo ""
-}
-
-gh_api_fail_fast() {
   local res
-  res=$(gh_api "$@")
-  if [[ -z "$res" || "$res" == *"\"message\""* && "$res" != *"\"id\""* ]]; then
-    # We might want to be more careful parsing errors, but for now simple check
-    echo "$res"
-    return 1
-  fi
+  res=$("${cmd[@]}" "$uri") || { echo -e "\e[31mGH API Error on $uri\e[0m" >&2; return 1; }
   echo "$res"
 }
 
-jq_val() {
-  local json="$1" path="$2" fallback="${3:-}"
-  local val
-  val=$(echo "$json" | jq -r "$path" 2>/dev/null) || val=""
-  [[ -z "$val" || "$val" == "null" ]] && val="$fallback"
-  printf '%s' "$val"
-}
+declare -A user_map
 
-# ── Stages ───────────────────────────────────────────────────────────────────
-
-# 1. Validate Org
-run_validate() {
-  echo -e "\e[36m=== GitHub Org Setup Validation: $GH_ORG ===\e[0m"
+# --- Discovery Stage ---
+if [[ "$STAGE" == *"discover"* ]]; then
+  echo -e "\e[36m--- Starting Discovery Stage ---\e[0m"
   
-  echo -e "\n\e[33m1. Verifying organization...\e[0m"
-  local org_res
-  org_res=$(gh_api "/orgs/$GH_ORG")
-  if [[ -z "$org_res" || $(jq_val "$org_res" '.message') == "Not Found" ]]; then
-    echo -e "\e[31mCannot access org '$GH_ORG'. Verify the org exists and your PAT has admin:org scope.\e[0m"
+  # Load CSV
+  if [[ -f "$USER_MAP_FILE" ]]; then
+    echo "Loading user mappings from $USER_MAP_FILE..."
+    while IFS=, read -r email ghuser || [ -n "$email" ]; do
+      email=$(echo "$email" | tr '[:upper:]' '[:lower:]' | xargs)
+      ghuser=$(echo "$ghuser" | xargs)
+      if [[ -n "$email" && "$email" != "adoemail" && -n "$ghuser" ]]; then
+        user_map["$email"]="$ghuser"
+      fi
+    done < "$USER_MAP_FILE"
+    echo "Loaded ${#user_map[@]} mappings."
+  else
+    echo -e "\e[33mWarning: User mapping file not found at $USER_MAP_FILE\e[0m"
+  fi
+
+  echo "Fetching projects from $ADO_ORG..."
+  projects_res=$(ado_api "$ADO_ORG/_apis/projects?api-version=7.1") || exit 1
+  project_count=$(echo "$projects_res" | jq -r '.count // 0')
+  echo -e "\e[32mFound $project_count projects.\e[0m"
+
+  mappings_json="[]"
+
+  while read -r p_id p_name; do
+    echo -e "\e[33mProject: $p_name\e[0m"
+    teams_res=$(ado_api "$ADO_ORG/_apis/projects/$p_id/teams?api-version=7.1") || continue
+    
+    while read -r t_id t_name t_desc; do
+      echo -e "\e[37m  Team: $t_name\e[0m"
+      gh_team_name=$(echo "$t_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/-\{2,\}/-/g')
+      
+      members_res=$(ado_api "$ADO_ORG/_apis/projects/$p_id/teams/$t_id/members?api-version=7.1") || continue
+      
+      resolved_members="[]"
+      resolved_maintainers="[]"
+      team_unmapped="[]"
+      
+      while read -r m_email m_isadmin m_display; do
+        [[ -z "$m_email" ]] && continue
+        m_email=$(echo "$m_email" | tr '[:upper:]' '[:lower:]' | xargs)
+        
+        gh_user="${user_map[$m_email]}"
+        if [[ -n "$gh_user" ]]; then
+          if [[ "$m_isadmin" == "true" ]]; then
+            resolved_maintainers=$(echo "$resolved_maintainers" | jq --arg u "$gh_user" '. + [$u]')
+            echo -e "\e[36m    [ADMIN] $m_display -> $gh_user [maintainer]\e[0m"
+          else
+            resolved_members=$(echo "$resolved_members" | jq --arg u "$gh_user" '. + [$u]')
+            echo -e "\e[32m    [MAPPED] $m_display -> $gh_user [member]\e[0m"
+          fi
+        else
+          team_unmapped=$(echo "$team_unmapped" | jq --arg e "$m_email" '. + [$e]')
+          echo -e "\e[33m    [UNMAPPED] $m_display ($m_email) - no GitHub username\e[0m"
+        fi
+      done < <(echo "$members_res" | jq -r '.value[]? | "\(.identity.uniqueName)\t\(.isTeamAdmin)\t\(.identity.displayName)"')
+      
+      team_entry=$(jq -n \
+        --arg ap "$p_name" \
+        --arg at "$t_name" \
+        --arg gt "$gh_team_name" \
+        --arg gd "$t_desc" \
+        --argjson rm "$resolved_members" \
+        --argjson rt "$resolved_maintainers" \
+        --argjson tu "$team_unmapped" \
+        '{adoProject: $ap, adoTeam: $at, githubTeam: $gt, githubTeamDescription: $gd, parentTeam: null, privacy: "closed", maintainers: $rt, members: $rm, unmappedAdoUsers: $tu}')
+      
+      mappings_json=$(echo "$mappings_json" | jq --argjson te "$team_entry" '. + [$te]')
+    done < <(echo "$teams_res" | jq -r '.value[]? | "\(.id)\t\(.name)\t\(.description // "")"')
+  done < <(echo "$projects_res" | jq -r '.value[]? | "\(.id)\t\(.name)"')
+
+  mkdir -p "$OUTPUT_DIR"
+  out_file="$OUTPUT_DIR/team-mappings-template.json"
+  jq -n --arg org "$ADO_ORG" --argjson maps "$mappings_json" '{generatedAt: (now | todate), adoOrgUrl: $org, totalTeams: ($maps|length), mappings: $maps}' > "$out_file"
+  echo -e "\e[36mExport Complete. Saved to $out_file\e[0m"
+fi
+
+# --- Sync Stage ---
+if [[ "$STAGE" == *"sync"* ]]; then
+  echo -e "\e[36m--- Starting Sync Stage ---\e[0m"
+  MAPPING_FILE="config/team-mappings.json"
+  if [[ ! -f "$MAPPING_FILE" ]]; then
+    echo -e "\e[31mMapping file not found: $MAPPING_FILE\e[0m"
     exit 1
   fi
-  echo -e "\e[32m   Org: $(jq_val "$org_res" '.login') — Plan: $(jq_val "$org_res" '.plan.name')\e[0m"
   
-  echo -e "\n\e[33m2. Checking PAT scopes...\e[0m"
-  local scopes
-  scopes=$(curl -sI -H "$GH_AUTH_HEADER" "https://api.github.com/user" | grep -i "x-oauth-scopes:" | sed 's/.*: //')
-  echo -e "\e[90m   PAT scopes: $scopes\e[0m"
-  
-  for s in "repo" "admin:org" "workflow"; do
-    if [[ "$scopes" == *"$s"* ]]; then
-      echo -e "\e[32m   [OK] $s\e[0m"
+  # Remove comments from JSON and parse
+  clean_json=$(grep -v '^\s*//' "$MAPPING_FILE" || true)
+  mappings=$(echo "$clean_json" | jq -c '.mappings[]?')
+
+  while IFS= read -r map; do
+    [[ -z "$map" ]] && continue
+    gh_team=$(echo "$map" | jq -r '.githubTeam')
+    ado_team=$(echo "$map" | jq -r '.adoTeam')
+    parent_team=$(echo "$map" | jq -r '.parentTeam // empty')
+    
+    echo -e "\e[33mProcessing: $ado_team -> $gh_team\e[0m"
+    
+    # 1. Create/Ensure Team
+    if gh_api "/orgs/$GH_ORG/teams/$gh_team" >/dev/null 2>&1; then
+      echo -e "\e[32m  [OK] Team $gh_team exists.\e[0m"
     else
-      echo -e "\e[31m   [MISSING] $s — required for migration\e[0m"
+      echo -e "\e[36m  [NEW] Creating team $gh_team...\e[0m"
+      body=$(jq -n --arg n "$gh_team" --arg d "$(echo "$map" | jq -r '.githubTeamDescription // ""')" --arg p "$(echo "$map" | jq -r '.privacy // "closed"')" '{name: $n, description: $d, privacy: $p}')
+      if [[ -n "$parent_team" && "$parent_team" != "null" ]]; then
+        parent_id=$(gh_api "/orgs/$GH_ORG/teams/$parent_team" | jq -r '.id' 2>/dev/null || echo "")
+        if [[ -n "$parent_id" ]]; then
+          body=$(echo "$body" | jq --arg pid "$parent_id" '. + {parent_team_id: ($pid|tonumber)}')
+        fi
+      fi
+      gh_api "/orgs/$GH_ORG/teams" "POST" "$body" >/dev/null || echo -e "\e[31m  [FAILED] to create team.\e[0m"
     fi
-  done
-  
-  echo -e "\n\e[36mOrg setup validation complete.\e[0m"
-}
-
-# 2. Discover ADO Teams
-run_discover() {
-  echo -e "\e[36m=== Discovery: Exporting ADO Teams ===\e[0m"
-  mkdir -p "$OUTPUT_DIR"
-  local template_out="${OUTPUT_DIR}/team-mappings-template.json"
-  
-  # Load User Mappings
-  declare -A USER_MAP
-  if [[ -f "$USER_MAPPING_FILE" ]]; then
-    echo -e "\e[36mLoading user mappings from $USER_MAPPING_FILE...\e[0m"
-    # Skip header, read CSV mapping adoEmail -> ghUser
-    while IFS=, read -r adoEmail adoName adoUser ghUser ghEmail notes; do
-      [[ "$adoEmail" == "ADOEmail" ]] && continue
-      [[ -z "$adoEmail" || -z "$ghUser" ]] && continue
-      # Trim and lowercase email
-      adoEmail=$(echo "$adoEmail" | tr '[:upper:]' '[:lower:]' | xargs)
-      ghUser=$(echo "$ghUser" | xargs)
-      USER_MAP["$adoEmail"]="$ghUser"
-    done < "$USER_MAPPING_FILE"
-    echo -e "\e[32mLoaded ${#USER_MAP[@]} user mappings.\e[0m"
-  else
-    echo -e "\e[33mUser mapping file not found at $USER_MAPPING_FILE. Members won't be resolved.\e[0m"
-  fi
-
-  echo -e "\n\e[36mFetching projects from $ADO_ORG_URL...\e[0m"
-  local projects_res
-  projects_res=$(ado_api "$ADO_ORG_URL/_apis/projects")
-  local proj_count
-  proj_count=$(jq_val "$projects_res" '.count' 0)
-  echo -e "\e[32mFound $proj_count projects.\e[0m"
-  
-  local MAPPINGS_JSON="[]"
-  
-  for proj_id in $(echo "$projects_res" | jq -r '.value[]?.id'); do
-    local proj_name
-    proj_name=$(echo "$projects_res" | jq -r ".value[] | select(.id==\"$proj_id\") | .name")
-    echo -e "\n\e[33mProject: $proj_name\e[0m"
     
-    local teams_res
-    teams_res=$(ado_api "$ADO_ORG_URL/_apis/projects/$proj_id/teams")
-    for team_id in $(echo "$teams_res" | jq -r '.value[]?.id'); do
-      local team_name
-      team_name=$(echo "$teams_res" | jq -r ".value[] | select(.id==\"$team_id\") | .name")
-      local team_desc
-      team_desc=$(echo "$teams_res" | jq -r ".value[] | select(.id==\"$team_id\") | (.description // \"\")")
-      echo -e "\e[90m  Team: $team_name\e[0m"
-      
-      local gh_team_name
-      gh_team_name=$(echo "$team_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/-\{2,\}/-/g')
-      
-      local members_res
-      members_res=$(ado_api "$ADO_ORG_URL/_apis/projects/$proj_id/teams/$team_id/members")
-      
-      local maintainers_json="[]"
-      local members_json="[]"
-      
-      for member_id in $(echo "$members_res" | jq -r '.value[]?.identity.id'); do
-        local member_obj
-        member_obj=$(echo "$members_res" | jq -c ".value[] | select(.identity.id==\"$member_id\")")
-        local ado_email
-        ado_email=$(jq_val "$member_obj" '.identity.uniqueName' | tr '[:upper:]' '[:lower:]' | xargs)
-        local is_admin
-        is_admin=$(jq_val "$member_obj" '.isTeamAdmin')
-        
-        local gh_user="${USER_MAP[$ado_email]:-}"
-        if [[ -n "$gh_user" ]]; then
-          if [[ "$is_admin" == "true" ]]; then
-            maintainers_json=$(echo "$maintainers_json" | jq ". + [\"$gh_user\"]")
-          else
-            members_json=$(echo "$members_json" | jq ". + [\"$gh_user\"]")
-          fi
-        fi
-      done
-      
-      local mapping_obj
-      mapping_obj=$(jq -n \
-        --arg adoProj "$proj_name" \
-        --arg adoTeam "$team_name" \
-        --arg ghTeam "$gh_team_name" \
-        --arg ghDesc "$team_desc" \
-        --argjson maintainers "$maintainers_json" \
-        --argjson members "$members_json" \
-        '{
-          adoProject: $adoProj,
-          adoTeam: $adoTeam,
-          githubTeam: $ghTeam,
-          githubTeamDescription: $ghDesc,
-          parentTeam: null,
-          privacy: "closed",
-          maintainers: $maintainers,
-          members: $members,
-          repositories: []
-        }')
-      
-      MAPPINGS_JSON=$(echo "$MAPPINGS_JSON" | jq ". + [$mapping_obj]")
-    done
-  done
-  
-  jq -n --argjson m "$MAPPINGS_JSON" '{ mappings: $m, defaultVisibility: "closed" }' > "$template_out"
-  echo -e "\n\e[36mExport Complete. Saved to $template_out\e[0m"
-}
-
-# 3. Create Teams
-run_create_teams() {
-  echo -e "\e[36m=== Creating GitHub Teams ===\e[0m"
-  if [[ ! -f "$TEAM_MAPPING_FILE" ]]; then echo "Config $TEAM_MAPPING_FILE not found!"; exit 1; fi
-  
-  # Strip comments from JSON
-  local clean_json
-  clean_json=$(sed -e 's/^\s*\/\/.*//' "$TEAM_MAPPING_FILE")
-  
-  local mappings
-  mappings=$(echo "$clean_json" | jq -c '.mappings[]')
-  
-  while read -r map; do
-    local gh_team
-    gh_team=$(jq_val "$map" '.githubTeam')
-    local gh_desc
-    gh_desc=$(jq_val "$map" '.githubTeamDescription')
-    local privacy
-    privacy=$(jq_val "$map" '.privacy' 'closed')
-    local parent
-    parent=$(jq_val "$map" '.parentTeam')
-    
-    echo -e "\e[33mProcessing: $gh_team\e[0m"
-    
-    local team_res
-    team_res=$(gh_api "/orgs/$GH_ORG/teams/$gh_team")
-    if [[ -n "$team_res" && $(jq_val "$team_res" '.name') != "" ]]; then
-      echo -e "\e[32m  [OK] Team exists.\e[0m"
-      
-      # Check parent
-      if [[ -n "$parent" && "$parent" != "null" ]]; then
-        local parent_res
-        parent_res=$(gh_api "/orgs/$GH_ORG/teams/$parent")
-        if [[ -z "$parent_res" || $(jq_val "$parent_res" '.id') == "" ]]; then
-          echo -e "\e[33m    Creating missing parent '$parent'...\e[0m"
-          parent_res=$(gh_api "/orgs/$GH_ORG/teams" "POST" "{\"name\":\"$parent\",\"privacy\":\"closed\"}")
-        fi
-        local parent_id
-        parent_id=$(jq_val "$parent_res" '.id')
-        gh_api "/orgs/$GH_ORG/teams/$gh_team" "PATCH" "{\"parent_team_id\":$parent_id}" >/dev/null
-        echo -e "\e[32m  [UPDATED] Linked to parent '$parent'\e[0m"
-      fi
-    else
-      echo -e "\e[36m  [NEW] Creating team...\e[0m"
-      local create_body="{\"name\":\"$gh_team\",\"description\":\"$gh_desc\",\"privacy\":\"$privacy\"}"
-      
-      if [[ -n "$parent" && "$parent" != "null" ]]; then
-        local parent_res
-        parent_res=$(gh_api "/orgs/$GH_ORG/teams/$parent")
-        if [[ -z "$parent_res" || $(jq_val "$parent_res" '.id') == "" ]]; then
-          parent_res=$(gh_api "/orgs/$GH_ORG/teams" "POST" "{\"name\":\"$parent\",\"privacy\":\"closed\"}")
-        fi
-        local parent_id
-        parent_id=$(jq_val "$parent_res" '.id')
-        create_body=$(echo "$create_body" | jq ". + {\"parent_team_id\":$parent_id}")
-      fi
-      
-      gh_api "/orgs/$GH_ORG/teams" "POST" "$create_body" >/dev/null
-      echo -e "\e[32m  [CREATED] Team '$gh_team'\e[0m"
-    fi
-  done <<< "$mappings"
-}
-
-# 4. Sync Users
-run_sync_users() {
-  echo -e "\e[36m=== Syncing Users to Teams ===\e[0m"
-  if [[ ! -f "$TEAM_MAPPING_FILE" ]]; then echo "Config $TEAM_MAPPING_FILE not found!"; exit 1; fi
-  
-  local clean_json
-  clean_json=$(sed -e 's/^\s*\/\/.*//' "$TEAM_MAPPING_FILE")
-  
-  # Build whitelist
-  local whitelist
-  whitelist=$(echo "$clean_json" | jq -r '.mappings[] | (.maintainers[]?, .members[]?)' | grep -v '^$' | sort -u)
-  echo -e "\e[36mConfig Whitelist contains $(echo "$whitelist" | wc -w) users.\e[0m"
-  
-  local mappings
-  mappings=$(echo "$clean_json" | jq -c '.mappings[]')
-  
-  while read -r map; do
-    local gh_team
-    gh_team=$(jq_val "$map" '.githubTeam')
-    echo -e "\e[33mProcessing: $gh_team\e[0m"
-    
-    # Add Maintainers
-    for user in $(echo "$map" | jq -r '.maintainers[]?' | grep -v '^$'); do
-      if echo "$whitelist" | grep -qix "$user"; then
-        gh_api "/orgs/$GH_ORG/teams/$gh_team/memberships/$user" "PUT" '{"role":"maintainer"}' >/dev/null
-        echo -e "\e[32m  [MAINTAINER] $user\e[0m"
+    # 2. Add Maintainers
+    maintainers=$(echo "$map" | jq -r '.maintainers[]?')
+    for u in $maintainers; do
+      if gh_api "/orgs/$GH_ORG/teams/$gh_team/memberships/$u" "PUT" '{"role":"maintainer"}' >/dev/null 2>&1; then
+        echo -e "\e[32m    [MAINTAINER] $u added.\e[0m"
       else
-        echo -e "\e[31m  [BLOCKED] $user not in whitelist\e[0m"
+        echo -e "\e[31m    [FAILED] Maintainer: $u\e[0m"
       fi
     done
     
-    # Add Members
-    for user in $(echo "$map" | jq -r '.members[]?' | grep -v '^$'); do
-      if echo "$whitelist" | grep -qix "$user"; then
-        gh_api "/orgs/$GH_ORG/teams/$gh_team/memberships/$user" "PUT" '{"role":"member"}' >/dev/null
-        echo -e "\e[32m  [MEMBER] $user\e[0m"
+    # 3. Add Members
+    members=$(echo "$map" | jq -r '.members[]?')
+    for u in $members; do
+      if gh_api "/orgs/$GH_ORG/teams/$gh_team/memberships/$u" "PUT" '{"role":"member"}' >/dev/null 2>&1; then
+        echo -e "\e[32m    [MEMBER] $u added.\e[0m"
       else
-        echo -e "\e[31m  [BLOCKED] $user not in whitelist\e[0m"
+        echo -e "\e[31m    [FAILED] Member: $u\e[0m"
       fi
     done
-  done <<< "$mappings"
-}
-
-# 5. Sync Repos
-run_sync_repos() {
-  echo -e "\e[36m=== Syncing Repo Permissions ===\e[0m"
-  if [[ ! -f "$TEAM_MAPPING_FILE" ]]; then echo "Config $TEAM_MAPPING_FILE not found!"; exit 1; fi
-  
-  local clean_json
-  clean_json=$(sed -e 's/^\s*\/\/.*//' "$TEAM_MAPPING_FILE")
-  
-  local mappings
-  mappings=$(echo "$clean_json" | jq -c '.mappings[]')
-  
-  while read -r map; do
-    local gh_team
-    gh_team=$(jq_val "$map" '.githubTeam')
-    echo -e "\e[33mProcessing: $gh_team\e[0m"
     
-    local repos
-    repos=$(echo "$map" | jq -c '.repositories[]?')
-    while read -r repo; do
-      [[ -z "$repo" || "$repo" == "null" ]] && continue
-      local r_name
-      r_name=$(jq_val "$repo" '.name')
-      local r_perm
-      r_perm=$(jq_val "$repo" '.permission')
-      
-      gh_api "/orgs/$GH_ORG/teams/$gh_team/repos/$GH_ORG/$r_name" "PUT" "{\"permission\":\"$r_perm\"}" >/dev/null
-      echo -e "\e[32m  [REPO] $r_name -> $r_perm\e[0m"
-    done <<< "$repos"
-  done <<< "$mappings"
-}
-
-# 6. Offboard Users (Reconcile removals)
-run_offboard() {
-  echo -e "\e[36m=== Offboarding Users ===\e[0m"
-  if [[ ! -f "$TEAM_MAPPING_FILE" ]]; then echo "Config $TEAM_MAPPING_FILE not found!"; exit 1; fi
-  
-  local clean_json
-  clean_json=$(sed -e 's/^\s*\/\/.*//' "$TEAM_MAPPING_FILE")
-  
-  local mappings
-  mappings=$(echo "$clean_json" | jq -c '.mappings[]')
-  
-  local to_remove_from_org=()
-  
-  while read -r map; do
-    local gh_team
-    gh_team=$(jq_val "$map" '.githubTeam')
-    echo -e "\n\e[33mReconciling Team: $gh_team\e[0m"
-    
-    local config_users
-    config_users=$(echo "$map" | jq -r '(.maintainers[]?, .members[]?)' | tr '[:upper:]' '[:lower:]' | sort -u)
-    
-    local current_members_res
-    current_members_res=$(gh_api "/orgs/$GH_ORG/teams/$gh_team/members")
-    local current_users
-    current_users=$(echo "$current_members_res" | jq -r '.[].login' 2>/dev/null | tr '[:upper:]' '[:lower:]' | sort -u)
-    
-    for u in $current_users; do
-      if ! echo "$config_users" | grep -qix "$u"; then
-        echo -e "\e[31m  [REMOVING] $u from team $gh_team (Not in config)\e[0m"
-        gh_api "/orgs/$GH_ORG/teams/$gh_team/memberships/$u" "DELETE" >/dev/null
-        to_remove_from_org+=("$u")
+    # 4. Repo Permissions
+    repos=$(echo "$map" | jq -c '.repositories[]?' 2>/dev/null || echo "")
+    for r in $repos; do
+      [[ -z "$r" ]] && continue
+      r_name=$(echo "$r" | jq -r '.name')
+      r_perm=$(echo "$r" | jq -r '.permission')
+      if gh_api "/orgs/$GH_ORG/teams/$gh_team/repos/$GH_ORG/$r_name" "PUT" "{\"permission\":\"$r_perm\"}" >/dev/null 2>&1; then
+        echo -e "\e[32m    [REPO] $r_name -> $r_perm\e[0m"
       else
-        echo -e "\e[90m  [KEEPING] $u\e[0m"
+        echo -e "\e[31m    [FAILED] Repo: $r_name\e[0m"
       fi
     done
   done <<< "$mappings"
   
-  if [[ "$REMOVE_FROM_ORG" == "true" && ${#to_remove_from_org[@]} -gt 0 ]]; then
-    echo -e "\n\e[36mRemoving unmapped users from entire Organization...\e[0m"
-    # Deduplicate
-    mapfile -t to_remove_from_org < <(printf "%s\n" "${to_remove_from_org[@]}" | sort -u)
-    
-    # We should only remove them from the org if they aren't in ANY team's config!
-    local all_config_users
-    all_config_users=$(echo "$clean_json" | jq -r '.mappings[] | (.maintainers[]?, .members[]?)' | tr '[:upper:]' '[:lower:]' | sort -u)
-    
-    for u in "${to_remove_from_org[@]}"; do
-      if ! echo "$all_config_users" | grep -qix "$u"; then
-        echo -e "\e[31m  [REMOVING ORG-WIDE] $u\e[0m"
-        gh_api "/orgs/$GH_ORG/members/$u" "DELETE" >/dev/null
-      else
-        echo -e "\e[90m  [SKIP ORG REMOVAL] $u is still in other teams' configs.\e[0m"
-      fi
-    done
-  fi
-}
-
-# 7. Onboard Users (Ensure config users exist in teams)
-run_onboard() {
-  echo -e "\e[36m=== Onboarding Users ===\e[0m"
-  # onboarding is functionally very similar to sync-users, as PUT /memberships is idempotent.
-  # We just call run_sync_users.
-  run_sync_users
-}
-
-# ── Main ─────────────────────────────────────────────────────────────────────
-IFS=',' read -ra STAGE_ARRAY <<< "$STAGES"
-for stage in "${STAGE_ARRAY[@]}"; do
-  stage=$(echo "$stage" | xargs)
-  case $stage in
-    validate) run_validate ;;
-    discover) run_discover ;;
-    create-teams) run_create_teams ;;
-    sync-users) run_sync_users ;;
-    sync-repos) run_sync_repos ;;
-    offboard) run_offboard ;;
-    onboard) run_onboard ;;
-    *) echo -e "\e[33mSkipping unknown stage: $stage\e[0m" ;;
-  esac
-done
+  echo -e "\e[36mSync Complete.\e[0m"
+fi
