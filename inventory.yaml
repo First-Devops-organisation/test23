@@ -16,7 +16,7 @@ stages:
         steps:
 
           - powershell: |
-              $dir = "$(Build.SourcesDirectory)/repo-migration/output/inventory"
+              $dir = "$(Build.SourcesDirectory)/output/inventory"
               if (-not (Test-Path $dir)) {
                   New-Item -ItemType Directory -Path $dir -Force | Out-Null
               }
@@ -25,17 +25,17 @@ stages:
           - task: PowerShell@2
             displayName: '0.1 Inventory All Assets'
             inputs:
-              filePath: '$(Build.SourcesDirectory)/repo-migration/windows/inventory-assets.ps1'
-              arguments: '-OrgUrl "$(ADO_ORG)" -Pat "$(ADO_PAT)" -OutputDir "$(Build.SourcesDirectory)/repo-migration/output/inventory"'
+              filePath: '$(Build.SourcesDirectory)/inventory-assets.ps1'
+              arguments: '-OrgUrl "$(ADO_ORG)" -ProjectName "$(System.TeamProject)" -Pat "$(ADO_PAT)" -OutputDir "$(Build.SourcesDirectory)/output/inventory"'
               pwsh: false  # Runs under Windows PowerShell
-              workingDirectory: '$(Build.SourcesDirectory)/repo-migration'
+              workingDirectory: '$(Build.SourcesDirectory)'
             env:
               ADO_PAT: $(ADO_PAT)
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Inventory Reports'
             inputs:
-              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/inventory'
+              targetPath: '$(Build.SourcesDirectory)/output/inventory'
               artifact: 'inventory-reports'
               publishLocation: 'pipeline'
             condition: always()
@@ -43,6 +43,6 @@ stages:
           - task: PublishHtmlReport@1
             displayName: 'Publish Inventory Dashboard'
             inputs:
-              reportDir: '$(Build.SourcesDirectory)/repo-migration/output/inventory/inventory-dashboard.html'
+              reportDir: '$(Build.SourcesDirectory)/output/inventory/inventory-dashboard.html'
               tabName: 'ADO Inventory'
             condition: always()
