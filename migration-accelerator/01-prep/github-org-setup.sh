@@ -17,6 +17,7 @@ while [[ "$#" -gt 0 ]]; do
     --gh-org) GH_ORG="$2"; shift ;;
     --gh-pat) GH_PAT="$2"; shift ;;
     --user-mapping) USER_MAP_FILE="$2"; shift ;;
+    --team-mapping) TEAM_MAP_FILE="$2"; shift ;; 
     --output-dir) OUTPUT_DIR="$2"; shift ;;
     *) echo "Unknown parameter: $1"; exit 1 ;;
   esac
