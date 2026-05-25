@@ -163,5 +163,6 @@ stages:
         "$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
           --stages "sync" \
           --gh-org "$(GH_Org)" \
-          --gh-pat "$(GH_PAT)"
+          --gh-pat "$(GH_PAT)" \
+          --team-mapping "$(System.DefaultWorkingDirectory)/migration-accelerator/config/team-mappings.json"
       displayName: 'Create & Sync GitHub Teams'
