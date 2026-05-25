@@ -75,10 +75,11 @@ stages:
     displayName: 'Export ADO Teams to JSON'
     steps:
     - script: |
-        sudo apt-get update -qq && sudo apt-get install -y -qq jq > /dev/null 2>&1 || true
-      displayName: 'Install jq'
+        sudo apt-get update -qq && sudo apt-get install -y -qq jq dos2unix > /dev/null 2>&1 || true
+      displayName: 'Install dependencies (jq, dos2unix)'
 
     - script: |
+        dos2unix "$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
         chmod +x "$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
         "$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
           --stages "discover" \
@@ -153,10 +154,11 @@ stages:
     displayName: 'Create & Sync GitHub Teams from Config'
     steps:
     - script: |
-        sudo apt-get update -qq && sudo apt-get install -y -qq jq > /dev/null 2>&1 || true
-      displayName: 'Install jq'
+        sudo apt-get update -qq && sudo apt-get install -y -qq jq dos2unix > /dev/null 2>&1 || true
+      displayName: 'Install dependencies (jq, dos2unix)'
 
     - script: |
+        dos2unix "$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
         chmod +x "$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/github-org-setup.sh"
         "$(System.DefaultWorkingDirectory)/migration-accelerator/01-prep/github-org-setup.sh" \
           --stages "sync" \
