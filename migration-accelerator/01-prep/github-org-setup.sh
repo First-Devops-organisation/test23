@@ -45,7 +45,7 @@ ado_api() {
   if ! echo "$res" | jq -e . >/dev/null 2>&1; then
     echo -e "\e[31mADO API Error: Response was not valid JSON! Your PAT may be expired or invalid.\e[0m" >&2
     return 1
-  }
+  fi
   echo "$res"
 }
 
