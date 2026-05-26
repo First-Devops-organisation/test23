@@ -377,6 +377,13 @@ generate_dashboard() {
     
     local scanDate=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
     
+    local central_repo_name=""
+    if [ -n "$ConfigFilePath" ] && [ -f "$ConfigFilePath" ]; then
+        central_repo_name=$(grep -m 1 "target_url:" "$ConfigFilePath" | awk '{print $2}' | sed 's|https://github.com/||' | xargs || echo "")
+    elif [ -f "./output/pipelines/config.yml" ]; then
+        central_repo_name=$(grep -m 1 "target_url:" "./output/pipelines/config.yml" | awk '{print $2}' | sed 's|https://github.com/||' | xargs || echo "")
+    fi
+    
     local totalCount=$(jq 'length' "$results_json")
     local successCount=$(jq '[.[] | select(.Status == "SUCCESS" or .Status == "SKIPPED")] | length' "$results_json")
     local partialCount=$(jq '[.[] | select(.Status == "PARTIAL")] | length' "$results_json")
@@ -408,7 +415,7 @@ generate_dashboard() {
         local statusBadge=""
         case "$status" in
             "SUCCESS")   statusBadge="<span class='badge-ok'>&#9989; Success</span>" ;;
-            "SKIPPED")   statusBadge="<span class='badge-ok'>&#9989; Skipped (Reusable)</span>" ;;
+            "SKIPPED")   statusBadge="<span class='badge-ok'>&#9196; Skipped (Reusable)</span>" ;;
             "PARTIAL")   statusBadge="<span class='badge-warn'>&#9888;&#65039; Partial</span>" ;;
             "NO_OUTPUT") statusBadge="<span class='badge-warn'>&#128196; No Output</span>" ;;
             "FAILED")    statusBadge="<span class='badge-fail'>&#10060; Failed</span>" ;;
@@ -416,8 +423,17 @@ generate_dashboard() {
             *)           statusBadge="<span class='badge-fail'>$status</span>" ;;
         esac
         
-        local ghRepoUrl="https://github.com/$gh_org/$targetRepo"
-        pipelineTableRows+="    <tr><td>$pipeId</td><td>$pipeName</td><td><a href='$ghRepoUrl' target='_blank'>$targetRepo</a></td><td class='center'>$mode</td><td class='center'>$statusBadge</td></tr>
+        local targetRepoCell=""
+        if [ "$status" = "SKIPPED" ] && [ -n "$central_repo_name" ]; then
+            local consumerUrl="https://github.com/$gh_org/$targetRepo"
+            local centralUrl="https://github.com/$central_repo_name"
+            targetRepoCell="<a href='$consumerUrl' target='_blank'>$targetRepo</a> (workflow)<br/><a href='$centralUrl' target='_blank'>$(basename "$central_repo_name")</a> (templates)"
+        else
+            local ghRepoUrl="https://github.com/$gh_org/$targetRepo"
+            targetRepoCell="<a href='$ghRepoUrl' target='_blank'>$targetRepo</a>"
+        fi
+
+        pipelineTableRows+="    <tr><td>$pipeId</td><td>$pipeName</td><td>$targetRepoCell</td><td class='center'>$mode</td><td class='center'>$statusBadge</td></tr>
 "
     done
     
