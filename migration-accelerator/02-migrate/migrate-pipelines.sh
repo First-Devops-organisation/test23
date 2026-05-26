@@ -155,8 +155,9 @@ CONF_PIPELINE_IDS="$pipeline_ids"
 CONF_PIPELINE_TYPE=$(get_val "PIPELINE_TYPE" "build" "PIPELINE_TYPE")
 CONF_MIGRATE_MODE=$(get_val "MIGRATE_MODE" "dry-run" "MIGRATE_MODE" "MODE")
 
-# Handle PIPELINE_REPO_MAP
+# Handle PIPELINE_REPO_MAP — config.json takes absolute priority over env/variable-group
 repo_map_str=""
+repo_map_source="(none)"
 if [ -f "$ConfigFile" ]; then
     repo_map_str=$(jq -r '
         if .PIPELINE_REPO_MAP == null then "" 
@@ -167,11 +168,22 @@ if [ -f "$ConfigFile" ]; then
         else 
             .PIPELINE_REPO_MAP | tostring 
         end' "$ConfigFile" 2>/dev/null || echo "")
+    if [ -n "$repo_map_str" ] && [[ "$repo_map_str" != \$* ]]; then
+        repo_map_source="config.json"
+    else
+        repo_map_str=""
+    fi
 fi
-if [ -z "$repo_map_str" ] || [[ "$repo_map_str" == \$* ]]; then
+if [ -z "$repo_map_str" ]; then
     repo_map_str="${PIPELINE_REPO_MAP:-}"
+    if [ -n "$repo_map_str" ] && [[ "$repo_map_str" != \$* ]]; then
+        repo_map_source="env/variable-group"
+    else
+        repo_map_str=""
+    fi
 fi
 CONF_PIPELINE_REPO_MAP="$repo_map_str"
+echo -e "${GRAY}  PIPELINE_REPO_MAP source: $repo_map_source => $CONF_PIPELINE_REPO_MAP${NC}"
 
 # Handle REUSABLE_PIPELINE_IDS
 reusable_ids=""
@@ -183,7 +195,27 @@ if [ -z "$reusable_ids" ] || [[ "$reusable_ids" == \$* ]]; then
 fi
 CONF_REUSABLE_PIPELINE_IDS="$reusable_ids"
 
-CONF_GH_REPO=$(get_val "GH_REPO" "" "GH_REPO" "GHRepo")
+# Handle GH_REPO — config.json takes absolute priority over env/variable-group
+# Only fall back to env var if config.json does NOT define the key at all
+gh_repo_str=""
+gh_repo_source="(none)"
+if [ -f "$ConfigFile" ]; then
+    config_has_gh_repo=$(jq 'has("GH_REPO")' "$ConfigFile" 2>/dev/null || echo "false")
+    if [ "$config_has_gh_repo" = "true" ]; then
+        gh_repo_str=$(jq -r '.GH_REPO // empty' "$ConfigFile" 2>/dev/null || echo "")
+        gh_repo_source="config.json"
+    fi
+fi
+if [ "$gh_repo_source" = "(none)" ]; then
+    gh_repo_str="${GH_REPO:-${GHRepo:-}}"
+    if [ -n "$gh_repo_str" ] && [[ "$gh_repo_str" != \$* ]]; then
+        gh_repo_source="env/variable-group"
+    else
+        gh_repo_str=""
+    fi
+fi
+CONF_GH_REPO="$gh_repo_str"
+echo -e "${GRAY}  GH_REPO source: $gh_repo_source => $CONF_GH_REPO${NC}"
 
 # Parameter precedence
 if [ -n "$AdoProject" ]; then CONF_ADO_PROJECT="$AdoProject"; fi
@@ -228,6 +260,7 @@ if [ -n "$CONF_PIPELINE_REPO_MAP" ]; then
         IFS='=' read -ra PARTS <<< "$entry"
         if [ ${#PARTS[@]} -eq 2 ]; then
             repo_map_dict["${PARTS[0]}"]="${PARTS[1]}"
+            echo -e "${GRAY}    repo_map: pipeline ${PARTS[0]} -> ${PARTS[1]}${NC}"
         fi
     done
 fi
@@ -900,9 +933,17 @@ if [ "$CONF_MIGRATE_MODE" = "migrate-reusables" ]; then
             continue
         fi
 
-        consumerRepo="${repo_map_dict[$pid]:-$CONF_GH_REPO}"
+        consumerRepo="${repo_map_dict[$pid]:-}"
+        if [ -n "$consumerRepo" ]; then
+            echo -e "${GRAY}  Pipeline $pid -> repo '$consumerRepo' (from PIPELINE_REPO_MAP)${NC}"
+        else
+            consumerRepo="$CONF_GH_REPO"
+            if [ -n "$consumerRepo" ]; then
+                echo -e "${YELLOW}  Pipeline $pid -> repo '$consumerRepo' (fallback from GH_REPO)${NC}"
+            fi
+        fi
         if [ -z "$consumerRepo" ]; then
-            echo -e "${RED}  ERROR: No consumer repo mapped for pipeline $pid. Set PIPELINE_REPO_MAP or GH_REPO.${NC}"
+            echo -e "${RED}  ERROR: No consumer repo mapped for pipeline $pid. Set PIPELINE_REPO_MAP in config.json or GH_REPO.${NC}"
             anyFailure=true
             continue
         fi
@@ -1001,18 +1042,21 @@ for ((i=0; i<len_selected; i++)); do
         continue
     fi
 
-    targetRepo="${repo_map_dict[$pipeline_id]}"
-    if [ -z "$targetRepo" ]; then
+    targetRepo="${repo_map_dict[$pipeline_id]:-}"
+    if [ -n "$targetRepo" ]; then
+        echo -e "${GRAY}    Target repo: $CONF_GH_ORG/$targetRepo (from PIPELINE_REPO_MAP in config.json)${NC}"
+    else
         if [ -n "$CONF_GH_REPO" ]; then
             targetRepo="$CONF_GH_REPO"
+            echo -e "${YELLOW}    Target repo: $CONF_GH_ORG/$targetRepo (fallback from GH_REPO)${NC}"
         elif [ -n "$pipeline_repo" ]; then
             targetRepo=$(echo "$pipeline_repo" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+            echo -e "${YELLOW}    Target repo: $CONF_GH_ORG/$targetRepo (fallback from ADO repo name)${NC}"
         else
             targetRepo=$(echo "$CONF_ADO_PROJECT" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+            echo -e "${YELLOW}    Target repo: $CONF_GH_ORG/$targetRepo (fallback from ADO project name)${NC}"
         fi
     fi
-
-    echo -e "    Target repo: $CONF_GH_ORG/$targetRepo"
 
     outputSubDir="$OutputDir/$CONF_MIGRATE_MODE/$pipeline_name"
     mkdir -p "$outputSubDir"
