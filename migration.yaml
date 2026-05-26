@@ -650,7 +650,6 @@ stages:
           - MigrateReusables
         condition: |
           and(
-            not(canceled()),
             in(dependencies.DryRun.result, 'Succeeded', 'SucceededWithIssues'),
             in(dependencies.MigrateReusables.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'),
             eq(stageDependencies.Discover.AuditPipelines.outputs['checkConfig.RESOLVED_MODE'], 'migrate')
