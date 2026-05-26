@@ -416,7 +416,8 @@ generate_dashboard() {
         esac
         
         local ghRepoUrl="https://github.com/$gh_org/$targetRepo"
-        pipelineTableRows+="    <tr><td>$pipeId</td><td>$pipeName</td><td><a href='$ghRepoUrl' target='_blank'>$targetRepo</a></td><td class='center'>$mode</td><td class='center'>$statusBadge</td></tr>\n"
+        pipelineTableRows+="    <tr><td>$pipeId</td><td>$pipeName</td><td><a href='$ghRepoUrl' target='_blank'>$targetRepo</a></td><td class='center'>$mode</td><td class='center'>$statusBadge</td></tr>
+"
     done
     
     local workflowRows=""
@@ -434,20 +435,18 @@ generate_dashboard() {
         local sizeKb=$(( sizeBytes * 10 / 1024 ))
         local sizeKbStr="$(( sizeKb / 10 )).$(( sizeKb % 10 )) KB"
         
-        workflowRows+="    <tr><td>$dir</td><td>$name</td><td class='num'>$sizeKbStr</td></tr>\n"
+        workflowRows+="    <tr><td>$dir</td><td>$name</td><td class='num'>$sizeKbStr</td></tr>
+"
     done
     
     local workflowSection=""
     if [ -n "$workflowRows" ]; then
-        workflowSection=$(cat <<EOF
-      <table>
+        workflowSection="      <table>
         <thead><tr><th>Directory</th><th>Workflow</th><th>Size</th></tr></thead>
         <tbody>
-$(echo -e "$workflowRows")
+$workflowRows
         </tbody>
-      </table>
-EOF
-)
+      </table>"
     else
         workflowSection="      <p class='empty-state'><span class='empty-icon'>&#128194;</span>No workflow YAML files generated.</p>"
     fi
