@@ -41,8 +41,8 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [1156],
-  "PIPELINE_REPO_MAP": {"1156": "sample2"},
+  "PIPELINE_IDS": [1156,1189,1187,1175,1158],
+  "PIPELINE_REPO_MAP": {"1156": "sample2","1189": "test1","1187": "test2","1175": "sample1","1158": "sample2"},
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "",
