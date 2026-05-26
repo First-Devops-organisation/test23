@@ -679,6 +679,152 @@ if [ "$CONF_MIGRATE_MODE" = "list" ]; then
     echo -e "\n${GREEN}To migrate a build pipeline:   --pipeline-id <ID> --pipeline-type build --mode migrate${NC}"
     echo -e "${GREEN}To migrate a release pipeline: --pipeline-id <ID> --pipeline-type release --mode migrate${NC}"
 
+    # --- Show audit status per pipeline if audit_summary.md exists ---
+    auditFile="$OutputDir/audit_summary.md"
+    if [ ! -f "$auditFile" ]; then
+        auditFile="./output/pipeline-audit/audit_summary.md"
+    fi
+
+    if [ -f "$auditFile" ]; then
+        echo -e "\n${CYAN}=== Audit Results (from $(basename "$auditFile")) ===${NC}"
+
+        # Combine builds and releases into a single lookup JSON
+        jq -n \
+          --slurpfile builds "$OutputDir/tmp_build_pipelines.json" \
+          --slurpfile releases "$OutputDir/tmp_release_pipelines.json" \
+          '
+          [
+            (($builds[0].value // [])[] | {
+              id: .id,
+              name: .name,
+              type: (if .process.type == 2 then "YAML" else "Classic Build" end),
+              slug: (.name | ascii_downcase | gsub("[^a-z0-9-]"; "-") | gsub("-+"; "-") | sub("^-"; "") | sub("-$"; ""))
+            }),
+            (($releases[0].value // [])[] | {
+              id: .id,
+              name: .name,
+              type: "Release",
+              slug: (.name | ascii_downcase | gsub("[^a-z0-9-]"; "-") | gsub("-+"; "-") | sub("^-"; "") | sub("-$"; ""))
+            })
+          ]
+          ' > "$OutputDir/pipeline_lookups.json"
+
+        # Function to extract pipelines from a section in audit_summary.md
+        get_section_pipelines() {
+            local header="$1"
+            local file="$2"
+            awk -v hdr="$header" '
+                BEGIN {
+                    hdr_lower = tolower(hdr)
+                    in_sec = 0
+                }
+                /^### / {
+                    line_hdr = substr($0, 5)
+                    gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "", line_hdr)
+                    if (index(tolower(line_hdr), hdr_lower) == 1) {
+                        in_sec = 1
+                    } else {
+                        in_sec = 0
+                    }
+                    next
+                }
+                /^#### / {
+                    if (in_sec) {
+                        val = substr($0, 6)
+                        gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "", val)
+                        print val
+                    }
+                }
+            ' "$file"
+        }
+
+        # Define the sections to display
+        # Format: SectionHeader|ColorCode|SearchTerm
+        sections=(
+            "Successful|${GREEN}|Successful"
+            "Partially Successful|${YELLOW}|Partially successful"
+            "Unsupported|${RED}|Unsupported"
+            "Failed|${RED}|Failed"
+        )
+
+        for sec_info in "${sections[@]}"; do
+            IFS='|' read -r sec_header sec_color sec_term <<< "$sec_info"
+            
+            # Get pipeline names in this section
+            readarray -t audit_pipelines < <(get_section_pipelines "$sec_term" "$auditFile")
+            
+            # Filter out empty entries
+            filtered_pipelines=()
+            for pipe in "${audit_pipelines[@]}"; do
+                if [ -n "$pipe" ]; then
+                    filtered_pipelines+=("$pipe")
+                fi
+            done
+
+            if [ ${#filtered_pipelines[@]} -gt 0 ]; then
+                echo -e "\n${sec_color}--- ${sec_header} Pipelines (${#filtered_pipelines[@]}) ---${NC}"
+                printf "%-8s %-45s %-15s %s\n" "ID" "Name" "Type" "Migrate With"
+                printf "%.0s-" {1..90}; echo
+
+                for fullPath in "${filtered_pipelines[@]}"; do
+                    # Resolve details via jq
+                    resolved=$(jq -r \
+                      --arg fullPath "$fullPath" \
+                      '
+                      ($fullPath | split("/") | last) as $pipeName |
+                      
+                      def slugify:
+                        ascii_downcase | gsub("[^a-z0-9-]"; "-") | gsub("-+"; "-") | sub("^-"; "") | sub("-$"; "");
+                      
+                      def clean_slug:
+                        sub("-+[0-9]+$"; "");
+                        
+                      (map(select(.name == $pipeName)) | first) // 
+                      (map(select((.name | ascii_downcase) == ($pipeName | ascii_downcase))) | first) //
+                      (
+                        $pipeName | 
+                        (capture("_\\((?<id>[0-9]+)\\)$") // capture("_(?<id>[0-9]+)$") // empty) | .id | tostring as $extId |
+                        (map(select((.id | tostring) == $extId)) | first)
+                      ) //
+                      (
+                        ($pipeName | slugify) as $auditSlug |
+                        ($auditSlug | clean_slug) as $auditSlugClean |
+                        (map(select(.slug == $auditSlug)) | first) // 
+                        (map(select(.slug == $auditSlugClean)) | first)
+                      ) //
+                      {
+                        id: null,
+                        name: $pipeName,
+                        type: "Unknown"
+                      }
+                      ' "$OutputDir/pipeline_lookups.json")
+
+                    id=$(echo "$resolved" | jq -r '.id // empty')
+                    name=$(echo "$resolved" | jq -r '.name')
+                    p_type=$(echo "$resolved" | jq -r '.type')
+                    short_name="${name:0:44}"
+
+                    if [ -z "$id" ] || [ "$id" = "null" ]; then
+                        id="?"
+                        migrateWith=""
+                    else
+                        if [ "$p_type" = "Release" ]; then
+                            migrateWith="--pipeline-type release"
+                        else
+                            migrateWith="--pipeline-type build"
+                        fi
+                    fi
+
+                    line=$(printf "%-8s %-45s %-15s %s" "$id" "$short_name" "$p_type" "$migrateWith")
+                    echo -e "${sec_color}${line}${NC}"
+                done
+            fi
+        done
+
+        # Cleanup lookup database
+        rm -f "$OutputDir/pipeline_lookups.json"
+    fi
+
     rm -f "$OutputDir/tmp_build_pipelines.json" "$OutputDir/tmp_release_pipelines.json"
     exit 0
 fi
