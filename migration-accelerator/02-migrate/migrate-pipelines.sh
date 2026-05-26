@@ -378,7 +378,7 @@ generate_dashboard() {
     local scanDate=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
     
     local totalCount=$(jq 'length' "$results_json")
-    local successCount=$(jq '[.[] | select(.Status == "SUCCESS")] | length' "$results_json")
+    local successCount=$(jq '[.[] | select(.Status == "SUCCESS" or .Status == "SKIPPED")] | length' "$results_json")
     local partialCount=$(jq '[.[] | select(.Status == "PARTIAL")] | length' "$results_json")
     local failedCount=$(jq '[.[] | select(.Status == "FAILED" or .Status == "ERROR")] | length' "$results_json")
     local noOutputCount=$(jq '[.[] | select(.Status == "NO_OUTPUT")] | length' "$results_json")
@@ -408,6 +408,7 @@ generate_dashboard() {
         local statusBadge=""
         case "$status" in
             "SUCCESS")   statusBadge="<span class='badge-ok'>&#9989; Success</span>" ;;
+            "SKIPPED")   statusBadge="<span class='badge-ok'>&#9989; Skipped (Reusable)</span>" ;;
             "PARTIAL")   statusBadge="<span class='badge-warn'>&#9888;&#65039; Partial</span>" ;;
             "NO_OUTPUT") statusBadge="<span class='badge-warn'>&#128196; No Output</span>" ;;
             "FAILED")    statusBadge="<span class='badge-fail'>&#10060; Failed</span>" ;;
