@@ -1,8 +1,8 @@
 {
-  "targetGitHubOrg": "Second-Devops-organisation",
+  "targetGitHubOrg": "Second-Devops-organisation1",
   "variableGroups": [
     {
-      "adoGroupName": "repo-migration-discove-release",
+      "adoGroupName": "repo-migration-discove -release",
       "action": "migrate",
       "targetScope": "repository",
       "targetRepo": "Demoapp-Application-API",
@@ -11,7 +11,7 @@
       "keyVaultName": ""
     },
     {
-      "adoGroupName": "repo-migration-discove-uat_i",
+      "adoGroupName": "repo-migration-discove -uat_i",
       "action": "migrate",
       "targetScope": "repository",
       "targetRepo": "Demoapp-Application-API",
