@@ -1,14 +1,28 @@
 {
-  "targetGitHubOrg": "Second-Devops-organisation",
+  "targetGitHubOrg": "Second-Devops-organisation1",
   "variableGroups": [
     {
-      "adoGroupName": "ankit-endtoend",
+  "targetGitHubOrg": "Second-Devops-organisation1",
+  "variableGroups": [
+    {
+      "adoGroupName": "repo-migration-discove-release",
       "action": "migrate",
       "targetScope": "repository",
-      "targetRepo": "NodeJS",
-      "targetEnvironment": "",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "release",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "repo-migration-discove-uat_i",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "Demoapp-Application-API",
+      "targetEnvironment": "uat_i",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
     }
+  ]
+}
   ]
 }
