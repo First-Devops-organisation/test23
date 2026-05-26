@@ -243,6 +243,24 @@ donutSeg1=$pctSuccess
 donutSeg2=$((pctSuccess + pctPartial))
 donutSeg3=$((pctSuccess + pctPartial + pctUnsupported))
 
+# Build breakdownRows
+breakdownRows="        <tr><td><span class='dot' style='background:#10b981'></span> Fully Convertible</td>
+            <td class='num'>$successCount</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctSuccess}%;background:#10b981'></div></div></td>
+            <td class='num'>${pctSuccess}%</td></tr>
+        <tr><td><span class='dot' style='background:#f59e0b'></span> Partially Convertible</td>
+            <td class='num'>$partialCount</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctPartial}%;background:#f59e0b'></div></div></td>
+            <td class='num'>${pctPartial}%</td></tr>
+        <tr><td><span class='dot' style='background:#ef4444'></span> Unsupported</td>
+            <td class='num'>$unsupportedCount</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctUnsupported}%;background:#ef4444'></div></div></td>
+            <td class='num'>${pctUnsupported}%</td></tr>
+        <tr><td><span class='dot' style='background:#6b7280'></span> Failed</td>
+            <td class='num'>$failedCount</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctFailed}%;background:#6b7280'></div></div></td>
+            <td class='num'>${pctFailed}%</td></tr>"
+
 # Build converted files table rows
 pipelineRows=""
 while read -r yf; do
