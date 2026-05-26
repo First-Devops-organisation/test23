@@ -86,9 +86,21 @@ else
         current_user=$(whoami)
         run_sudo usermod -aG docker "$current_user" || true
         echo -e "${GREEN}[OK] Docker installed successfully.${NC}"
-        echo -e "${YELLOW}  Note: You may need to restart the agent or log out/in for docker group membership to take effect.${NC}"
     else
         echo -e "${RED}  Manual installation required: https://www.docker.com${NC}"
+    fi
+fi
+
+# Ensure docker daemon is started and user has access to the socket
+if command -v docker >/dev/null 2>&1; then
+    echo -e "${YELLOW}Starting Docker daemon and configuring socket permissions...${NC}"
+    run_sudo systemctl start docker || run_sudo service docker start || true
+    run_sudo systemctl enable docker || true
+    if [ -S /var/run/docker.sock ]; then
+        run_sudo chmod 666 /var/run/docker.sock || true
+        echo -e "${GREEN}[OK] Docker socket permissions configured.${NC}"
+    else
+        echo -e "${RED}[WARN] Docker socket /var/run/docker.sock not found. Ensure Docker daemon is running.${NC}"
     fi
 fi
 
