@@ -289,7 +289,8 @@ while read -r yf; do
         dir=$(dirname "$relPath")
         sizeBytes=$(stat -c%s "$yf" 2>/dev/null || stat -f%z "$yf" 2>/dev/null || echo "0")
         sizeKb=$((sizeBytes / 1024))
-        pipelineRows+="    <tr><td>$dir</td><td>$name</td><td class='num'>${sizeKb} KB</td><td class='center'>&#9989; Converted</td></tr>\n"
+        pipelineRows+="    <tr><td>$dir</td><td>$name</td><td class='num'>${sizeKb} KB</td><td class='center'>&#9989; Converted</td></tr>
+"
     fi
 done < <(find "$OutputDir" -name "*.yml" -o -name "*.yaml" | grep -v "dashboard" || echo "")
 
@@ -310,11 +311,14 @@ manualSection=""
 if [ -f "$OutputDir/manual-tasks-summary.md" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
         if [[ "$line" =~ ^#+\ (.*) ]]; then
-            manualSection+="<h4>${BASH_REMATCH[1]}</h4>\n"
+            manualSection+="<h4>${BASH_REMATCH[1]}</h4>
+"
         elif [[ "$line" =~ ^-\ \[\ \]\ (.*) ]]; then
-            manualSection+="<label class='checklist-item'><input type='checkbox'/><span>${BASH_REMATCH[1]}</span></label>\n"
+            manualSection+="<label class='checklist-item'><input type='checkbox'/><span>${BASH_REMATCH[1]}</span></label>
+"
         elif [[ "$line" =~ ^-\ (.*) ]]; then
-            manualSection+="<div class='task-note'>&#8226; ${BASH_REMATCH[1]}</div>\n"
+            manualSection+="<div class='task-note'>&#8226; ${BASH_REMATCH[1]}</div>
+"
         fi
     done < "$OutputDir/manual-tasks-summary.md"
 else
