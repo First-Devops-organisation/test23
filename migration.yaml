@@ -361,7 +361,7 @@
 trigger: none
 
 pool: linux
-  
+
 
 
 variables:
@@ -457,15 +457,15 @@ stages:
                     type=$(jq -r '.PIPELINE_TYPE // empty' "$configPath" 2>/dev/null || echo "")
                 fi
                 
-                macroIds="$(PIPELINE_IDS)"
-                macroReusableIds="$(REUSABLE_PIPELINE_IDS)"
-                macroMode="$(MIGRATE_MODE)"
-                macroType="$(PIPELINE_TYPE)"
+                macroIds='$(PIPELINE_IDS)'
+                macroReusableIds='$(REUSABLE_PIPELINE_IDS)'
+                macroMode='$(MIGRATE_MODE)'
+                macroType='$(PIPELINE_TYPE)'
                 
-                if [ -z "$ids" ] && [ "$macroIds" != "\$(PIPELINE_IDS)" ]; then ids="$macroIds"; fi
-                if [ -z "$reusableIds" ] && [ "$macroReusableIds" != "\$(REUSABLE_PIPELINE_IDS)" ]; then reusableIds="$macroReusableIds"; fi
-                if [ -z "$mode" ] && [ "$macroMode" != "\$(MIGRATE_MODE)" ]; then mode="$macroMode"; fi
-                if [ -z "$type" ] && [ "$macroType" != "\$(PIPELINE_TYPE)" ]; then type="$macroType"; fi
+                if [ -z "$ids" ] && [ "$macroIds" != '$(PIPELINE_IDS)' ]; then ids="$macroIds"; fi
+                if [ -z "$reusableIds" ] && [ "$macroReusableIds" != '$(REUSABLE_PIPELINE_IDS)' ]; then reusableIds="$macroReusableIds"; fi
+                if [ -z "$mode" ] && [ "$macroMode" != '$(MIGRATE_MODE)' ]; then mode="$macroMode"; fi
+                if [ -z "$type" ] && [ "$macroType" != '$(PIPELINE_TYPE)' ]; then type="$macroType"; fi
                 if [ -z "$mode" ]; then mode="dry-run"; fi
                 if [ -z "$type" ]; then type="build"; fi
                 
