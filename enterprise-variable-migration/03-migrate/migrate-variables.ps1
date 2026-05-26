@@ -48,31 +48,55 @@ $ghOrg = $config.targetGitHubOrg
 $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$AdoPat"))
 $headers = @{Authorization=("Basic {0}" -f $base64AuthInfo)}
 $varGroupsUrl = "https://dev.azure.com/$Organization/$Project/_apis/distributedtask/variablegroups?api-version=7.1-preview.2"
+Write-Host "Fetching variable groups from ADO: $varGroupsUrl"
 $response = Invoke-RestMethod -Uri $varGroupsUrl -Method Get -Headers $headers
 $allAdoGroups = $response.value
+Write-Host "Successfully fetched $($allAdoGroups.Count) variable groups from Azure DevOps."
 
 $summaryReport = @()
 $migratedVariableTracker = @{} 
 $secretsByGroup = @{}
 
+if (-not $config.variableGroups) {
+    Write-Warning "No 'variableGroups' array found in the configuration JSON!"
+} else {
+    Write-Host "Loaded $($config.variableGroups.Count) mappings from config."
+}
+
+$migrateCount = 0
 foreach ($mapping in $config.variableGroups) {
-    if ($mapping.action -ne "migrate") { continue }
+    if ($mapping.action -ne "migrate") {
+        Write-Host "Skipping mapping for group '$($mapping.adoGroupName)' because action is '$($mapping.action)'"
+        continue
+    }
+    $migrateCount++
+    Write-Host "Processing migration for group: $($mapping.adoGroupName)"
 
     $adoGroup = $allAdoGroups | Where-Object { $_.name -eq $mapping.adoGroupName }
-    if (-not $adoGroup) { continue }
+    if (-not $adoGroup) {
+        Write-Warning "Variable group '$($mapping.adoGroupName)' not found in Azure DevOps!"
+        $summaryReport += [PSCustomObject]@{
+            AdoGroup    = $mapping.adoGroupName
+            Variable    = "ALL VARIABLES"
+            Type        = "N/A"
+            Scope       = $mapping.targetScope
+            Destination = $mapping.targetRepo
+            Status      = "Group Not Found in ADO"
+        }
+        continue
+    }
 
     # AUTO-DETECT: Key Vault-linked groups cannot be read via API — skip automatically
     if ($adoGroup.type -eq "AzureKeyVault") {
         $kvName = $adoGroup.providerData.vault
         Write-Warning "SKIPPED (Key Vault Linked): '$($mapping.adoGroupName)' is linked to vault '$kvName'. Migration ON HOLD — resolve vault access first."
         $summaryReport += [PSCustomObject]@{
-            Group       = $mapping.adoGroupName
+            AdoGroup    = $mapping.adoGroupName
             Variable    = "ALL VARIABLES"
+            Type        = "N/A"
             Scope       = $mapping.targetScope
-            Target      = $mapping.targetRepo
-            Environment = $mapping.targetEnvironment
+            Destination = $mapping.targetRepo
             Status      = "SKIPPED — Key Vault Linked (Vault: $kvName)"
-            Notes       = "KV-linked groups cannot be read via API. Resolve vault access before migrating."
         }
         continue
     }
