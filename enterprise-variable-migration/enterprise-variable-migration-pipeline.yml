@@ -59,7 +59,8 @@ stages:
 # PHASE 2: MIGRATION
 # ==============================================================================
 - stage: Migration
-  condition: eq('${{ parameters.RunMigration }}', true)
+  dependsOn: Discovery
+  condition: and(always(), eq('${{ parameters.RunMigration }}', true))
   displayName: 'Phase 2: Migrate Variables'
   jobs:
   - job: MigrateVariables
@@ -103,7 +104,8 @@ stages:
 # that job fails gracefully without blocking the rest of the stage.
 # ==============================================================================
 - stage: Secrets
-  condition: eq('${{ parameters.RunSecrets }}', true)
+  dependsOn: Migration
+  condition: and(always(), eq('${{ parameters.RunSecrets }}', true))
   displayName: 'Phase 3: Migrate Secrets & Key Vault Groups'
   jobs:
 
