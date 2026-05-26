@@ -392,7 +392,7 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           - task: Bash@3
-            displayName: "Run audit-pipelines.sh"
+            displayName: "Run audit-pipelines"
             inputs:
               targetType: 'filePath'
               filePath: '$(Build.SourcesDirectory)/migration-accelerator/00-discovery/audit-pipelines.sh'
