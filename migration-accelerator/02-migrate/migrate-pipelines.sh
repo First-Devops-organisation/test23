@@ -789,6 +789,7 @@ if [ "$CONF_MIGRATE_MODE" = "list" ]; then
                     resolved=$(jq -r \
                       --arg fullPath "$fullPath" \
                       '
+                      . as $root |
                       ($fullPath | split("/") | last) as $pipeName |
                       
                       def slugify:
@@ -797,18 +798,18 @@ if [ "$CONF_MIGRATE_MODE" = "list" ]; then
                       def clean_slug:
                         sub("-+[0-9]+$"; "");
                         
-                      (map(select(.name == $pipeName)) | first) // 
-                      (map(select((.name | ascii_downcase) == ($pipeName | ascii_downcase))) | first) //
+                      ($root | map(select(.name == $pipeName)) | first) // 
+                      ($root | map(select((.name | ascii_downcase) == ($pipeName | ascii_downcase))) | first) //
                       (
                         $pipeName | 
                         (capture("_\\((?<id>[0-9]+)\\)$") // capture("_(?<id>[0-9]+)$") // empty) | .id | tostring as $extId |
-                        (map(select((.id | tostring) == $extId)) | first)
+                        ($root | map(select((.id | tostring) == $extId)) | first)
                       ) //
                       (
                         ($pipeName | slugify) as $auditSlug |
                         ($auditSlug | clean_slug) as $auditSlugClean |
-                        (map(select(.slug == $auditSlug)) | first) // 
-                        (map(select(.slug == $auditSlugClean)) | first)
+                        ($root | map(select(.slug == $auditSlug)) | first) // 
+                        ($root | map(select(.slug == $auditSlugClean)) | first)
                       ) //
                       {
                         id: null,
