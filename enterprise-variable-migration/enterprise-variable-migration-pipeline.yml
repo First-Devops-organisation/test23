@@ -20,7 +20,7 @@ parameters:
   default: false
 
 variables:
-- group: DevOpsConfig # Contains Pat, Git_pat, Organization, Project
+- group: DevOpsConfigtest # Contains Pat, Git_pat, Organization, Project
 
 stages:
 
