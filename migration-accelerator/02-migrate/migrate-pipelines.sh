@@ -105,7 +105,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Strip any surrounding quotes from ConfigFile
+ConfigFile=$(echo "$ConfigFile" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+
 echo -e "${GRAY}Resolving configuration...${NC}"
+echo -e "${GRAY}  ConfigFile path: $ConfigFile${NC}"
+if [ -n "$ConfigFile" ]; then
+    if [ -f "$ConfigFile" ]; then
+        echo -e "${GRAY}  ConfigFile status: Found${NC}"
+    else
+        echo -e "${RED}  WARNING: ConfigFile not found at '$ConfigFile'${NC}"
+    fi
+fi
 
 get_val() {
     local key="$1"
@@ -259,8 +270,10 @@ if [ -n "$CONF_PIPELINE_REPO_MAP" ]; then
     for entry in "${ADDR[@]}"; do
         IFS='=' read -ra PARTS <<< "$entry"
         if [ ${#PARTS[@]} -eq 2 ]; then
-            repo_map_dict["${PARTS[0]}"]="${PARTS[1]}"
-            echo -e "${GRAY}    repo_map: pipeline ${PARTS[0]} -> ${PARTS[1]}${NC}"
+            key=$(echo "${PARTS[0]}" | xargs)
+            val=$(echo "${PARTS[1]}" | xargs)
+            repo_map_dict["$key"]="$val"
+            echo -e "${GRAY}    repo_map: pipeline $key -> $val${NC}"
         fi
     done
 fi
@@ -270,7 +283,10 @@ declare -A reusable_ids_dict
 if [ -n "$CONF_REUSABLE_PIPELINE_IDS" ]; then
     IFS=',' read -ra ADDR <<< "$CONF_REUSABLE_PIPELINE_IDS"
     for rid in "${ADDR[@]}"; do
-        reusable_ids_dict["$rid"]=1
+        rid_trimmed=$(echo "$rid" | xargs)
+        if [ -n "$rid_trimmed" ]; then
+            reusable_ids_dict["$rid_trimmed"]=1
+        fi
     done
 fi
 
@@ -928,6 +944,10 @@ if [ "$CONF_MIGRATE_MODE" = "migrate-reusables" ]; then
     anyFailure=false
 
     for pid in "${PIDS[@]}"; do
+        pid=$(echo "$pid" | xargs)
+        if [ -z "$pid" ]; then
+            continue
+        fi
         if [ -n "$CONF_REUSABLE_PIPELINE_IDS" ] && [ -z "${reusable_ids_dict[$pid]}" ]; then
             echo -e "${YELLOW}  Pipeline $pid not in REUSABLE_PIPELINE_IDS -- SKIPPING.${NC}"
             continue
