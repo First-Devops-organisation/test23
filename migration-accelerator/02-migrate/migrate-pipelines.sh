@@ -215,16 +215,27 @@ if [ "$CONF_MIGRATE_MODE" = "list" ]; then
 
     # Fetch build definitions
     buildUrl="$adoOrgUrl/$CONF_ADO_PROJECT/_apis/build/definitions?api-version=7.1&includeAllProperties=true"
-    buildPipelines=$(curl -s -k -H "Authorization: Basic $base64Auth" "$buildUrl" || echo '{"value":[]}')
+    curl -s -k -H "Authorization: Basic $base64Auth" "$buildUrl" > "$OutputDir/tmp_build_pipelines.json" || echo '{"value":[]}' > "$OutputDir/tmp_build_pipelines.json"
 
     # Fetch release definitions
     releaseUrl="https://vsrm.dev.azure.com/$CONF_ADO_ORG/$CONF_ADO_PROJECT/_apis/release/definitions?api-version=7.1"
-    releasePipelines=$(curl -s -k -H "Authorization: Basic $base64Auth" "$releaseUrl" || echo '{"value":[]}')
+    curl -s -k -H "Authorization: Basic $base64Auth" "$releaseUrl" > "$OutputDir/tmp_release_pipelines.json" || echo '{"value":[]}' > "$OutputDir/tmp_release_pipelines.json"
 
     python3 -c "
 import json, os, re
-build_data = json.loads('''$buildPipelines''')
-release_data = json.loads('''$releasePipelines''')
+try:
+    with open('$OutputDir/tmp_build_pipelines.json', 'r', encoding='utf-8') as f:
+        build_data = json.load(f)
+except Exception as e:
+    build_data = {'value':[]}
+    print('Error loading build definitions:', e)
+
+try:
+    with open('$OutputDir/tmp_release_pipelines.json', 'r', encoding='utf-8') as f:
+        release_data = json.load(f)
+except Exception as e:
+    release_data = {'value':[]}
+    print('Error loading release definitions:', e)
 
 print('\n=== Available Pipelines ===')
 print(f'%-8s %-45s %-12s %s' % ('ID', 'Name', 'Type', 'Path'))
@@ -239,6 +250,7 @@ release_list = sorted(release_data.get('value', []), key=lambda x: x.get('id', 0
 for r in release_list:
     print(f'%-8s %-45s %-12s %s' % (r.get('id'), r.get('name')[:44], 'Release', r.get('path')))
 "
+    rm -f "$OutputDir/tmp_build_pipelines.json" "$OutputDir/tmp_release_pipelines.json"
     exit 0
 fi
 
@@ -344,12 +356,23 @@ else
 fi
 
 echo -e "${YELLOW}Fetching pipeline configurations from ADO...${NC}"
-pipelinesJson=$(curl -s -k -H "Authorization: Basic $base64Auth" "$pipelinesUrl" || echo '{"value":[]}')
+curl -s -k -H "Authorization: Basic $base64Auth" "$pipelinesUrl" > "$OutputDir/tmp_pipelines.json" || echo '{"value":[]}' > "$OutputDir/tmp_pipelines.json"
 
-# Filter list by ID in Python
-python_filter_script="
-import json
-data = json.loads('''$pipelinesJson''')
+# Process definitions and filter in Python, writing results directly toresults_list.json
+resultsFile="$OutputDir/results.json"
+echo "[]" > "$resultsFile"
+
+results_list_file="$OutputDir/results_list.json"
+
+python3 -c "
+import json, os
+try:
+    with open('$OutputDir/tmp_pipelines.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+except Exception as e:
+    data = {'value':[]}
+    print('Error loading configurations:', e)
+
 pids = [int(x) for x in '$CONF_PIPELINE_IDS'.split(',')] if '$CONF_PIPELINE_IDS' else []
 
 filtered = []
@@ -360,37 +383,17 @@ for p in data.get('value', []):
             'name': p.get('name'),
             'repo': p.get('repository', {}).get('name') if p.get('repository') else ''
         })
-print(json.dumps(filtered))
+
+with open('$results_list_file', 'w', encoding='utf-8') as f:
+    json.dump(filtered, f)
+
+print(f'Found {len(filtered)} pipeline(s) to process')
 "
 
-selectedPipelines=$(python3 -c "$python_filter_script")
-
-# Process definitions
-resultsFile="$OutputDir/results.json"
-echo "[]" > "$resultsFile"
-
-python3 -c "
-import json
-selected = json.loads('''$selectedPipelines''')
-print(f'Found {len(selected)} pipeline(s) to process')
-"
-
-# We will build results array
-results_list_file="$OutputDir/results_list.json"
-echo "[]" > "$results_list_file"
-
-# Loop pipelines
-python3 -c "
-import json, sys
-selected = json.loads('''$selectedPipelines''')
-with open('$results_list_file', 'w') as f:
-    json.dump(selected, f)
-"
+rm -f "$OutputDir/tmp_pipelines.json"
 
 # Read selected from json list
 len_selected=$(python3 -c "import json; print(len(json.load(open('$results_list_file'))))")
-
-results_accumulator="[]"
 
 for ((i=0; i<len_selected; i++)); do
     pipeline_id=$(python3 -c "import json; print(json.load(open('$results_list_file'))[$i]['id'])")
@@ -404,9 +407,13 @@ for ((i=0; i<len_selected; i++)); do
         echo -e "${YELLOW}    Pipeline $pipeline_id is in REUSABLE_PIPELINE_IDS -- already handled by MigrateReusables job. Skipping.${NC}"
         
         # Append skip result
-        results_accumulator=$(python3 -c "
+        python3 -c "
 import json
-res = json.loads('''$results_accumulator''')
+try:
+    with open('$resultsFile', 'r', encoding='utf-8') as f:
+        res = json.load(f)
+except Exception:
+    res = []
 res.append({
     'Pipeline': '$pipeline_name',
     'Id': $pipeline_id,
@@ -415,8 +422,9 @@ res.append({
     'Status': 'SKIPPED',
     'OutputDir': ''
 })
-print(json.dumps(res))
-")
+with open('$resultsFile', 'w', encoding='utf-8') as f:
+    json.dump(res, f)
+"
         continue
     fi
 
@@ -494,9 +502,13 @@ print(json.dumps(res))
     if [ "$status" = "PARTIAL" ] || [ "$status" = "NO_OUTPUT" ]; then color="${YELLOW}"; fi
     echo -e "    ${color}$status${NC}"
 
-    results_accumulator=$(python3 -c "
+    python3 -c "
 import json
-res = json.loads('''$results_accumulator''')
+try:
+    with open('$resultsFile', 'r', encoding='utf-8') as f:
+        res = json.load(f)
+except Exception:
+    res = []
 res.append({
     'Pipeline': '$pipeline_name',
     'Id': $pipeline_id,
@@ -505,12 +517,10 @@ res.append({
     'Status': '$status',
     'OutputDir': '$outputSubDir'
 })
-print(json.dumps(res))
-")
+with open('$resultsFile', 'w', encoding='utf-8') as f:
+    json.dump(res, f)
+"
 done
-
-# Save results json
-echo "$results_accumulator" > "$resultsFile"
 
 # Cleanup temp files
 rm -f "$results_list_file"
