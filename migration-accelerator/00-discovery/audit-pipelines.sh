@@ -15,6 +15,25 @@ RED='\e[31m'
 GRAY='\e[90m'
 NC='\e[0m' # No Color
 
+# Function to fix file ownership of docker-generated files on exit
+fix_permissions() {
+    if [ -x "$(command -v docker)" ]; then
+        local target_dir=""
+        if [ -n "$OutputDir" ] && [ -d "$OutputDir" ]; then
+            target_dir="$OutputDir"
+        elif [ -d "output" ]; then
+            target_dir="output"
+        fi
+        
+        if [ -n "$target_dir" ]; then
+            echo -e "${YELLOW}Fixing ownership of generated files in $target_dir...${NC}"
+            local abs_target=$(realpath "$target_dir")
+            docker run --rm -v "$abs_target":/data alpine chown -R "$(id -u):$(id -g)" /data 2>/dev/null || true
+        fi
+    fi
+}
+trap fix_permissions EXIT
+
 # Default values
 AdoOrg=""
 AdoProject=""
