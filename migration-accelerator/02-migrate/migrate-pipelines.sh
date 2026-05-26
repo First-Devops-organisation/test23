@@ -696,7 +696,7 @@ $workflowRows
     color: #6b7280;
     text-align: center;
   }
-</div>
+</style>
 
 </body>
 </html>
