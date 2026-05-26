@@ -86,82 +86,85 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Run Python script block to parse config and output environment setup
 echo -e "${GRAY}Resolving configuration...${NC}"
-config_exports=$(python3 -c "
-import json, os, sys
-config_file = '$ConfigFile'
-config = {}
-if config_file and os.path.exists(config_file):
-    try:
-        with open(config_file, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-    except Exception as e:
-        print(f'# Error reading config: {e}', file=sys.stderr)
 
-def get_val(key, env_keys, default=''):
-    val = config
-    for k in key.split('.'):
-        if isinstance(val, dict):
-            val = val.get(k)
-        else:
-            val = None
-            break
-    if val is None or (isinstance(val, str) and val.startswith('\$(')):
-        val = None
-        for ek in env_keys:
-            if os.environ.get(ek):
-                val = os.environ.get(ek)
+get_val() {
+    local key="$1"
+    local default="$2"
+    shift 2
+    local env_keys=("$@")
+    
+    local val=""
+    if [ -f "$ConfigFile" ]; then
+        val=$(jq -r ".${key} // empty" "$ConfigFile" 2>/dev/null || echo "")
+    fi
+    
+    if [ -z "$val" ] || [[ "$val" == \$* ]]; then
+        val=""
+        for ek in "${env_keys[@]}"; do
+            local eval_val="${!ek}"
+            if [ -n "$eval_val" ]; then
+                val="$eval_val"
                 break
-    return val if val is not None else default
+            fi
+        done
+    fi
+    
+    if [ -z "$val" ]; then
+        echo "$default"
+    else
+        echo "$val"
+    fi
+}
 
-ado_org = get_val('source.organization', ['ADO_ORG', 'ADO_Org', 'ADOORG'])
-gh_org = get_val('target.organization', ['GH_ORG', 'GH_Org', 'GHORG'])
-ado_pat = get_val('source.pat', ['ADO_PAT', 'AZDO_PAT'])
-gh_pat = get_val('target.pat', ['GH_PAT', 'GITHUB_PAT'])
-ado_project = get_val('source.project', ['ADO_PROJECT', 'ADO_Project'])
+CONF_ADO_ORG=$(get_val "source.organization" "" "ADO_ORG" "ADO_Org" "ADOORG")
+CONF_GH_ORG=$(get_val "target.organization" "" "GH_ORG" "GH_Org" "GHORG")
+CONF_ADO_PAT=$(get_val "source.pat" "" "ADO_PAT" "AZDO_PAT")
+CONF_GH_PAT=$(get_val "target.pat" "" "GH_PAT" "GITHUB_PAT")
+CONF_ADO_PROJECT=$(get_val "source.project" "" "ADO_PROJECT" "ADO_Project")
 
-pipeline_ids = config.get('PIPELINE_IDS')
-if not pipeline_ids or (isinstance(pipeline_ids, str) and pipeline_ids.startswith('\$(')):
-    pipeline_ids = os.environ.get('PIPELINE_IDS', '')
-if isinstance(pipeline_ids, list):
-    pipeline_ids = ','.join(map(str, pipeline_ids))
+# Handle PIPELINE_IDS from config
+pipeline_ids=""
+if [ -f "$ConfigFile" ]; then
+    pipeline_ids=$(jq -r 'if .PIPELINE_IDS == null then "" elif .PIPELINE_IDS | type == "array" then .PIPELINE_IDS | join(",") else .PIPELINE_IDS | tostring end' "$ConfigFile" 2>/dev/null || echo "")
+fi
+if [ -z "$pipeline_ids" ] || [[ "$pipeline_ids" == \$* ]]; then
+    pipeline_ids="${PIPELINE_IDS:-}"
+fi
+CONF_PIPELINE_IDS="$pipeline_ids"
 
-pipeline_type = get_val('PIPELINE_TYPE', ['PIPELINE_TYPE'], 'build')
-migrate_mode = get_val('MIGRATE_MODE', ['MIGRATE_MODE', 'MODE'], 'dry-run')
+CONF_PIPELINE_TYPE=$(get_val "PIPELINE_TYPE" "build" "PIPELINE_TYPE")
+CONF_MIGRATE_MODE=$(get_val "MIGRATE_MODE" "dry-run" "MIGRATE_MODE" "MODE")
 
-repo_map = config.get('PIPELINE_REPO_MAP')
-if not repo_map or (isinstance(repo_map, str) and repo_map.startswith('\$(')):
-    repo_map = os.environ.get('PIPELINE_REPO_MAP', '')
-if isinstance(repo_map, dict):
-    repo_map_str = ','.join(f'{k}={v}' for k, v in repo_map.items())
-elif isinstance(repo_map, list):
-    repo_map_str = ','.join(repo_map)
-else:
-    repo_map_str = str(repo_map)
+# Handle PIPELINE_REPO_MAP
+repo_map_str=""
+if [ -f "$ConfigFile" ]; then
+    repo_map_str=$(jq -r '
+        if .PIPELINE_REPO_MAP == null then "" 
+        elif .PIPELINE_REPO_MAP | type == "object" then 
+            [to_entries[] | "\(.key)=\(.value)"] | join(",") 
+        elif .PIPELINE_REPO_MAP | type == "array" then 
+            .PIPELINE_REPO_MAP | join(",") 
+        else 
+            .PIPELINE_REPO_MAP | tostring 
+        end' "$ConfigFile" 2>/dev/null || echo "")
+fi
+if [ -z "$repo_map_str" ] || [[ "$repo_map_str" == \$* ]]; then
+    repo_map_str="${PIPELINE_REPO_MAP:-}"
+fi
+CONF_PIPELINE_REPO_MAP="$repo_map_str"
 
-reusable_ids = config.get('REUSABLE_PIPELINE_IDS')
-if not reusable_ids or (isinstance(reusable_ids, str) and reusable_ids.startswith('\$(')):
-    reusable_ids = os.environ.get('REUSABLE_PIPELINE_IDS', '')
-if isinstance(reusable_ids, list):
-    reusable_ids = ','.join(map(str, reusable_ids))
+# Handle REUSABLE_PIPELINE_IDS
+reusable_ids=""
+if [ -f "$ConfigFile" ]; then
+    reusable_ids=$(jq -r 'if .REUSABLE_PIPELINE_IDS == null then "" elif .REUSABLE_PIPELINE_IDS | type == "array" then .REUSABLE_PIPELINE_IDS | join(",") else .REUSABLE_PIPELINE_IDS | tostring end' "$ConfigFile" 2>/dev/null || echo "")
+fi
+if [ -z "$reusable_ids" ] || [[ "$reusable_ids" == \$* ]]; then
+    reusable_ids="${REUSABLE_PIPELINE_IDS:-}"
+fi
+CONF_REUSABLE_PIPELINE_IDS="$reusable_ids"
 
-gh_repo = get_val('GH_REPO', ['GH_REPO', 'GHRepo'])
-
-print(f'export CONF_ADO_ORG=\"{ado_org}\"')
-print(f'export CONF_GH_ORG=\"{gh_org}\"')
-print(f'export CONF_ADO_PAT=\"{ado_pat}\"')
-print(f'export CONF_GH_PAT=\"{gh_pat}\"')
-print(f'export CONF_ADO_PROJECT=\"{ado_project}\"')
-print(f'export CONF_PIPELINE_IDS=\"{pipeline_ids}\"')
-print(f'export CONF_PIPELINE_TYPE=\"{pipeline_type}\"')
-print(f'export CONF_MIGRATE_MODE=\"{migrate_mode}\"')
-print(f'export CONF_PIPELINE_REPO_MAP=\"{repo_map_str}\"')
-print(f'export CONF_REUSABLE_PIPELINE_IDS=\"{reusable_ids}\"')
-print(f'export CONF_GH_REPO=\"{gh_repo}\"')
-")
-
-eval "$config_exports"
+CONF_GH_REPO=$(get_val "GH_REPO" "" "GH_REPO" "GHRepo")
 
 # Parameter precedence
 if [ -n "$AdoProject" ]; then CONF_ADO_PROJECT="$AdoProject"; fi
@@ -203,6 +206,396 @@ if [ -n "$CONF_REUSABLE_PIPELINE_IDS" ]; then
     done
 fi
 
+# Function to rewrite config.yml for reusable templates
+rewrite_config() {
+    local config_path="$1"
+    local central_url="$2"
+    local ref="$3"
+    
+    if [ ! -f "$config_path" ]; then
+        echo -e "${RED}Error: Config file not found at $config_path${NC}"
+        return 1
+    fi
+    
+    if [[ ! "$central_url" == http://* ]] && [[ ! "$central_url" == https://* ]]; then
+        if [[ "$central_url" == */* ]]; then
+            central_url="https://github.com/$central_url"
+        else
+            echo -e "${RED}Error: Invalid central repo format: $central_url${NC}"
+            return 1
+        fi
+    fi
+    
+    echo -e "${YELLOW}Rewriting $config_path to centralize reusables at $central_url (ref: $ref)...${NC}"
+    
+    local backup_path="${config_path}.bak"
+    cp "$config_path" "$backup_path"
+    echo -e "  Backup saved: $backup_path"
+    
+    local temp_out="${config_path}.tmp"
+    rm -f "$temp_out"
+    
+    local skip=false
+    
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^([[:space:]]*)-[[:space:]]+name:[[:space:]]+([^[:space:]]+) ]]; then
+            indent="${BASH_REMATCH[1]}"
+            raw_name="${BASH_REMATCH[2]}"
+            prop_indent="${indent}  "
+            
+            folderName=$(echo "$raw_name" | sed -E 's/\.ya?ml$//I' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]/_/g')
+            
+            echo "$line" >> "$temp_out"
+            echo "${prop_indent}target_url: $central_url" >> "$temp_out"
+            echo "${prop_indent}ref: $ref" >> "$temp_out"
+            echo "${prop_indent}path: .github/actions/$folderName" >> "$temp_out"
+            
+            skip=true
+            continue
+        fi
+        
+        if [ "$skip" = "true" ]; then
+            if [[ "$line" =~ ^[[:space:]]+target_url:[[:space:]]* ]] || \
+               [[ "$line" =~ ^[[:space:]]+ref:[[:space:]]* ]] || \
+               [[ "$line" =~ ^[[:space:]]+path:[[:space:]]* ]]; then
+                continue
+            else
+                skip=false
+            fi
+        fi
+        
+        echo "$line" >> "$temp_out"
+    done < "$config_path"
+    
+    mv "$temp_out" "$config_path"
+    local count=$(grep -c '^[[:space:]]*-[[:space:]]\+name:' "$config_path" || echo "0")
+    echo -e "${GREEN}  Normalized $count reusable entries (target_url + ref) -> central repo.${NC}"
+}
+
+# Function to generate migration dashboard
+generate_dashboard() {
+    local output_dir="$1"
+    local ado_org="$2"
+    local ado_project="$3"
+    local gh_org="$4"
+    local results_json="$5"
+    
+    local dashboardDir="$output_dir/dashboard"
+    mkdir -p "$dashboardDir"
+    
+    local scanDate=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+    
+    local totalCount=$(jq 'length' "$results_json")
+    local successCount=$(jq '[.[] | select(.Status == "SUCCESS")] | length' "$results_json")
+    local partialCount=$(jq '[.[] | select(.Status == "PARTIAL")] | length' "$results_json")
+    local failedCount=$(jq '[.[] | select(.Status == "FAILED" or .Status == "ERROR")] | length' "$results_json")
+    local noOutputCount=$(jq '[.[] | select(.Status == "NO_OUTPUT")] | length' "$results_json")
+    
+    local safeDivisor=$totalCount
+    if [ "$safeDivisor" -lt 1 ]; then safeDivisor=1; fi
+    
+    local pctSuccess=$(( successCount * 100 / safeDivisor ))
+    local pctPartial=$(( partialCount * 100 / safeDivisor ))
+    local pctFailed=$(( failedCount * 100 / safeDivisor ))
+    local pctNoOutput=$(( noOutputCount * 100 / safeDivisor ))
+    local pctMigrated=$(( pctSuccess + pctPartial ))
+    
+    local seg1=$pctSuccess
+    local seg2=$(( seg1 + pctPartial ))
+    local seg3=$(( seg2 + pctFailed ))
+    
+    local pipelineTableRows=""
+    readarray -t results_array < <(jq -c '. | sort_by(.Status, .Pipeline)[]' "$results_json" 2>/dev/null || true)
+    for r_str in "${results_array[@]}"; do
+        local pipeName=$(echo "$r_str" | jq -r '.Pipeline')
+        local pipeId=$(echo "$r_str" | jq -r '.Id')
+        local targetRepo=$(echo "$r_str" | jq -r '.TargetRepo // ""')
+        local mode=$(echo "$r_str" | jq -r '.Mode')
+        local status=$(echo "$r_str" | jq -r '.Status')
+        
+        local statusBadge=""
+        case "$status" in
+            "SUCCESS")   statusBadge="<span class='badge-ok'>&#9989; Success</span>" ;;
+            "PARTIAL")   statusBadge="<span class='badge-warn'>&#9888;&#65039; Partial</span>" ;;
+            "NO_OUTPUT") statusBadge="<span class='badge-warn'>&#128196; No Output</span>" ;;
+            "FAILED")    statusBadge="<span class='badge-fail'>&#10060; Failed</span>" ;;
+            "ERROR")     statusBadge="<span class='badge-fail'>&#128683; Error</span>" ;;
+            *)           statusBadge="<span class='badge-fail'>$status</span>" ;;
+        esac
+        
+        local ghRepoUrl="https://github.com/$gh_org/$targetRepo"
+        pipelineTableRows+="    <tr><td>$pipeId</td><td>$pipeName</td><td><a href='$ghRepoUrl' target='_blank'>$targetRepo</a></td><td class='center'>$mode</td><td class='center'>$statusBadge</td></tr>\n"
+    done
+    
+    local workflowRows=""
+    local yamlFiles=()
+    while IFS= read -r -d '' yf; do
+        yamlFiles+=("$yf")
+    done < <(find "$output_dir" -type f \( -name "*.yml" -o -name "*.yaml" \) -print0 2>/dev/null)
+    
+    for yf in "${yamlFiles[@]}"; do
+        local relPath="${yf#$output_dir/}"
+        local name=$(basename "$yf" | sed -E 's/\.ya?ml$//I')
+        local dir=$(dirname "$relPath")
+        
+        local sizeBytes=$(wc -c < "$yf" | tr -d ' ')
+        local sizeKb=$(( sizeBytes * 10 / 1024 ))
+        local sizeKbStr="$(( sizeKb / 10 )).$(( sizeKb % 10 )) KB"
+        
+        workflowRows+="    <tr><td>$dir</td><td>$name</td><td class='num'>$sizeKbStr</td></tr>\n"
+    done
+    
+    local workflowSection=""
+    if [ -n "$workflowRows" ]; then
+        workflowSection=$(cat <<EOF
+      <table>
+        <thead><tr><th>Directory</th><th>Workflow</th><th>Size</th></tr></thead>
+        <tbody>
+$(echo -e "$workflowRows")
+        </tbody>
+      </table>
+EOF
+)
+    else
+        workflowSection="      <p class='empty-state'><span class='empty-icon'>&#128194;</span>No workflow YAML files generated.</p>"
+    fi
+    
+    local htmlOut="$dashboardDir/index.html"
+    cat <<EOF > "$htmlOut"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pipeline Migration Dashboard</title>
+<style>
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+    margin: 0;
+    padding: 24px;
+  }
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 32px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+  }
+  h1 {
+    margin-top: 0;
+    color: #111827;
+    font-size: 28px;
+    border-bottom: 2px solid #e5e7eb;
+    padding-bottom: 16px;
+    display: flex;
+    align-items: center;
+  }
+  h2 {
+    color: #374151;
+    font-size: 20px;
+    margin-top: 32px;
+    border-bottom: 1px solid #f3f4f6;
+    padding-bottom: 8px;
+  }
+  .title-icon { margin-right: 12px; font-size: 32px; }
+  .sec-icon { margin-right: 8px; }
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .meta-card {
+    background: #f9fafb;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+  }
+  .meta-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #6b7280;
+    font-weight: 600;
+  }
+  .meta-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #111827;
+    margin-top: 4px;
+    word-break: break-all;
+  }
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 32px;
+  }
+  @media (max-width: 768px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+  }
+  th, td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 14px;
+  }
+  th {
+    background: #f9fafb;
+    color: #4b5563;
+    font-weight: 600;
+  }
+  tr:hover { background: #f9fafb; }
+  .center { text-align: center; }
+  .num { text-align: right; font-family: monospace; }
+  .badge-ok {
+    background: #def7ec;
+    color: #03543f;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .badge-warn {
+    background: #fef3c7;
+    color: #92400e;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .badge-fail {
+    background: #fde8e8;
+    color: #9b1c1c;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  /* Donut Chart */
+  .chart-box {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+  }
+  .donut-svg {
+    transform: rotate(-90deg);
+    margin-bottom: 16px;
+  }
+  .donut-hole { fill: #f9fafb; }
+  .donut-ring { fill: none; stroke: #e5e7eb; stroke-width: 3; }
+  .donut-segment-1 {
+    fill: none;
+    stroke: #10b981;
+    stroke-width: 4;
+    stroke-dasharray: ${seg1} 100;
+  }
+  .donut-segment-2 {
+    fill: none;
+    stroke: #f59e0b;
+    stroke-width: 4;
+    stroke-dashoffset: -${seg1};
+    stroke-dasharray: ${pctPartial} 100;
+  }
+  .donut-segment-3 {
+    fill: none;
+    stroke: #ef4444;
+    stroke-width: 4;
+    stroke-dashoffset: -${seg2};
+    stroke-dasharray: ${pctFailed} 100;
+  }
+  .donut-segment-4 {
+    fill: none;
+    stroke: #6b7280;
+    stroke-width: 4;
+    stroke-dashoffset: -${seg3};
+    stroke-dasharray: ${pctNoOutput} 100;
+  }
+  .donut-text {
+    font-family: monospace;
+    fill: #111827;
+  }
+  .donut-label {
+    font-size: 4px;
+    font-weight: bold;
+    text-anchor: middle;
+  }
+  .donut-percent {
+    font-size: 7px;
+    font-weight: bold;
+    text-anchor: middle;
+  }
+  .breakdown-table td {
+    padding: 6px 8px;
+    border: none;
+    font-size: 13px;
+  }
+  .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  .mini-bar {
+    width: 60px;
+    background: #e5e7eb;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .mini-fill {
+    height: 100%;
+  }
+  .checklist {
+    background: #fff8e1;
+    border: 1px solid #ffe082;
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 32px;
+  }
+  .checklist-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 12px;
+    font-size: 14px;
+  }
+  .checklist-item input {
+    margin-right: 10px;
+    margin-top: 3px;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #6b7280;
+    background: #f9fafb;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+  }
+  .empty-icon { font-size: 48px; display: block; margin-bottom: 12px; }
+  .footer {
+    margin-top: 48px;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 16px;
+    font-size: 12px;
+    color: #6b7280;
+    text-align: center;
+  }
+</div>
+
+</body>
+</html>
+EOF
+    echo -e "${GREEN}Migration dashboard generated: $htmlOut${NC}"
+}
+
 # Ensure actions-importer is up to date
 echo -e "${YELLOW}Ensuring actions-importer image is up to date...${NC}"
 gh actions-importer update 2>&1 || true
@@ -221,35 +614,38 @@ if [ "$CONF_MIGRATE_MODE" = "list" ]; then
     releaseUrl="https://vsrm.dev.azure.com/$CONF_ADO_ORG/$CONF_ADO_PROJECT/_apis/release/definitions?api-version=7.1"
     curl -s -k -H "Authorization: Basic $base64Auth" "$releaseUrl" > "$OutputDir/tmp_release_pipelines.json" || echo '{"value":[]}' > "$OutputDir/tmp_release_pipelines.json"
 
-    python3 -c "
-import json, os, re
-try:
-    with open('$OutputDir/tmp_build_pipelines.json', 'r', encoding='utf-8') as f:
-        build_data = json.load(f)
-except Exception as e:
-    build_data = {'value':[]}
-    print('Error loading build definitions:', e)
+    echo -e "\n=== Available Pipelines ==="
+    printf "%-8s %-45s %-12s %s\n" "ID" "Name" "Type" "Path"
+    printf "%.0s-" {1..90}; echo
 
-try:
-    with open('$OutputDir/tmp_release_pipelines.json', 'r', encoding='utf-8') as f:
-        release_data = json.load(f)
-except Exception as e:
-    release_data = {'value':[]}
-    print('Error loading release definitions:', e)
+    if [ -f "$OutputDir/tmp_build_pipelines.json" ]; then
+        readarray -t build_entries < <(jq -c '.value | sort_by(.id)[]' "$OutputDir/tmp_build_pipelines.json" 2>/dev/null || true)
+        for entry in "${build_entries[@]}"; do
+            id=$(echo "$entry" | jq -r '.id')
+            name=$(echo "$entry" | jq -r '.name // ""')
+            short_name="${name:0:44}"
+            proc_type=$(echo "$entry" | jq -r '.process.type // 0')
+            if [ "$proc_type" -eq 2 ]; then
+                p_type="YAML"
+            else
+                p_type="Classic Build"
+            fi
+            path=$(echo "$entry" | jq -r '.path // ""')
+            printf "%-8s %-45s %-12s %s\n" "$id" "$short_name" "$p_type" "$path"
+        done
+    fi
 
-print('\n=== Available Pipelines ===')
-print(f'%-8s %-45s %-12s %s' % ('ID', 'Name', 'Type', 'Path'))
-print('-' * 90)
+    if [ -f "$OutputDir/tmp_release_pipelines.json" ]; then
+        readarray -t release_entries < <(jq -c '.value | sort_by(.id)[]' "$OutputDir/tmp_release_pipelines.json" 2>/dev/null || true)
+        for entry in "${release_entries[@]}"; do
+            id=$(echo "$entry" | jq -r '.id')
+            name=$(echo "$entry" | jq -r '.name // ""')
+            short_name="${name:0:44}"
+            path=$(echo "$entry" | jq -r '.path // ""')
+            printf "%-8s %-45s %-12s %s\n" "$id" "$short_name" "Release" "$path"
+        done
+    fi
 
-build_list = sorted(build_data.get('value', []), key=lambda x: x.get('id', 0))
-for p in build_list:
-    p_type = 'YAML' if p.get('process', {}).get('type') == 2 else 'Classic Build'
-    print(f'%-8s %-45s %-12s %s' % (p.get('id'), p.get('name')[:44], p_type, p.get('path')))
-
-release_list = sorted(release_data.get('value', []), key=lambda x: x.get('id', 0))
-for r in release_list:
-    print(f'%-8s %-45s %-12s %s' % (r.get('id'), r.get('name')[:44], 'Release', r.get('path')))
-"
     rm -f "$OutputDir/tmp_build_pipelines.json" "$OutputDir/tmp_release_pipelines.json"
     exit 0
 fi
@@ -276,7 +672,7 @@ if [ "$CONF_MIGRATE_MODE" = "migrate-reusables" ]; then
     fi
 
     if [ -n "$ReusablesTargetRepo" ]; then
-        python3 "$(dirname "$0")/generate_migration_dashboard.py" rewrite-config "$ConfigFilePath" "$ReusablesTargetRepo" "$ReusablesRef"
+        rewrite_config "$ConfigFilePath" "$ReusablesTargetRepo" "$ReusablesRef"
     fi
 
     # Retrieve default target URL from central target URL or config
@@ -300,13 +696,11 @@ if [ "$CONF_MIGRATE_MODE" = "migrate-reusables" ]; then
     anyFailure=false
 
     for pid in "${PIDS[@]}"; do
-        # Only process if in allowed reusable IDs list
         if [ -n "$CONF_REUSABLE_PIPELINE_IDS" ] && [ -z "${reusable_ids_dict[$pid]}" ]; then
             echo -e "${YELLOW}  Pipeline $pid not in REUSABLE_PIPELINE_IDS -- SKIPPING.${NC}"
             continue
         fi
 
-        # Find consumer repo mapping
         consumerRepo="${repo_map_dict[$pid]:-$CONF_GH_REPO}"
         if [ -z "$consumerRepo" ]; then
             echo -e "${RED}  ERROR: No consumer repo mapped for pipeline $pid. Set PIPELINE_REPO_MAP or GH_REPO.${NC}"
@@ -348,7 +742,6 @@ fi
 base64Auth=$(echo -n ":$CONF_ADO_PAT" | base64 | tr -d '\n')
 adoOrgUrl="https://dev.azure.com/$CONF_ADO_ORG"
 
-# Fetch pipelines list
 if [ "$CONF_PIPELINE_TYPE" = "release" ]; then
     pipelinesUrl="https://vsrm.dev.azure.com/$CONF_ADO_ORG/$CONF_ADO_PROJECT/_apis/release/definitions?api-version=7.1"
 else
@@ -358,77 +751,57 @@ fi
 echo -e "${YELLOW}Fetching pipeline configurations from ADO...${NC}"
 curl -s -k -H "Authorization: Basic $base64Auth" "$pipelinesUrl" > "$OutputDir/tmp_pipelines.json" || echo '{"value":[]}' > "$OutputDir/tmp_pipelines.json"
 
-# Process definitions and filter in Python, writing results directly toresults_list.json
 resultsFile="$OutputDir/results.json"
 echo "[]" > "$resultsFile"
-
 results_list_file="$OutputDir/results_list.json"
 
-python3 -c "
-import json, os
-try:
-    with open('$OutputDir/tmp_pipelines.json', 'r', encoding='utf-8') as f:
-        data = json.load(f)
-except Exception as e:
-    data = {'value':[]}
-    print('Error loading configurations:', e)
-
-pids = [int(x) for x in '$CONF_PIPELINE_IDS'.split(',')] if '$CONF_PIPELINE_IDS' else []
-
-filtered = []
-for p in data.get('value', []):
-    if not pids or int(p.get('id')) in pids:
-        filtered.append({
-            'id': p.get('id'),
-            'name': p.get('name'),
-            'repo': p.get('repository', {}).get('name') if p.get('repository') else ''
-        })
-
-with open('$results_list_file', 'w', encoding='utf-8') as f:
-    json.dump(filtered, f)
-
-print(f'Found {len(filtered)} pipeline(s) to process')
-"
+# Build filtered list using jq
+jq --arg ids_str "$CONF_PIPELINE_IDS" '
+  if $ids_str == "" then [] else ($ids_str | split(",") | map(tonumber)) end as $pids |
+  [ .value[] | 
+    if ($pids | length == 0) or (.id as $id | $pids | contains([$id])) then
+      {
+        id: .id,
+        name: .name,
+        repo: (.repository.name // "")
+      }
+    else
+      empty
+    end
+  ]
+' "$OutputDir/tmp_pipelines.json" > "$results_list_file"
 
 rm -f "$OutputDir/tmp_pipelines.json"
 
-# Read selected from json list
-len_selected=$(python3 -c "import json; print(len(json.load(open('$results_list_file'))))")
+len_selected=$(jq 'length' "$results_list_file")
+echo -e "Found $len_selected pipeline(s) to process"
 
 for ((i=0; i<len_selected; i++)); do
-    pipeline_id=$(python3 -c "import json; print(json.load(open('$results_list_file'))[$i]['id'])")
-    pipeline_name=$(python3 -c "import json; print(json.load(open('$results_list_file'))[$i]['name'])")
-    pipeline_repo=$(python3 -c "import json; print(json.load(open('$results_list_file'))[$i]['repo'])")
+    pipeline_id=$(jq -r ".[$i].id" "$results_list_file")
+    pipeline_name=$(jq -r ".[$i].name" "$results_list_file")
+    pipeline_repo=$(jq -r ".[$i].repo" "$results_list_file")
 
     echo -e "\n  Processing: $pipeline_name (ID: $pipeline_id)"
 
-    # Check if this pipeline is in REUSABLE_PIPELINE_IDS (skip if migrating to avoid duplicates)
     if [ "$CONF_MIGRATE_MODE" = "migrate" ] && [ -n "${reusable_ids_dict[$pipeline_id]}" ]; then
         echo -e "${YELLOW}    Pipeline $pipeline_id is in REUSABLE_PIPELINE_IDS -- already handled by MigrateReusables job. Skipping.${NC}"
         
-        # Append skip result
-        python3 -c "
-import json
-try:
-    with open('$resultsFile', 'r', encoding='utf-8') as f:
-        res = json.load(f)
-except Exception:
-    res = []
-res.append({
-    'Pipeline': '$pipeline_name',
-    'Id': $pipeline_id,
-    'TargetRepo': '${repo_map_dict[$pipeline_id]:-$CONF_GH_REPO}',
-    'Mode': '$CONF_MIGRATE_MODE',
-    'Status': 'SKIPPED',
-    'OutputDir': ''
-})
-with open('$resultsFile', 'w', encoding='utf-8') as f:
-    json.dump(res, f)
-"
+        # Append skip result using jq
+        jq --arg name "$pipeline_name" \
+           --argjson id "$pipeline_id" \
+           --arg repo "${repo_map_dict[$pipeline_id]:-$CONF_GH_REPO}" \
+           --arg mode "$CONF_MIGRATE_MODE" \
+           '. += [{
+               Pipeline: $name,
+               Id: $id,
+               TargetRepo: $repo,
+               Mode: $mode,
+               Status: "SKIPPED",
+               OutputDir: ""
+           }]' "$resultsFile" > "${resultsFile}.tmp" && mv "${resultsFile}.tmp" "$resultsFile"
         continue
     fi
 
-    # Determine target repo
     targetRepo="${repo_map_dict[$pipeline_id]}"
     if [ -z "$targetRepo" ]; then
         if [ -n "$CONF_GH_REPO" ]; then
@@ -442,7 +815,6 @@ with open('$resultsFile', 'w', encoding='utf-8') as f:
 
     echo -e "    Target repo: $CONF_GH_ORG/$targetRepo"
 
-    # Set output dir
     outputSubDir="$OutputDir/$CONF_MIGRATE_MODE/$pipeline_name"
     mkdir -p "$outputSubDir"
 
@@ -461,7 +833,6 @@ with open('$resultsFile', 'w', encoding='utf-8') as f:
         importerArgs+=("--custom-transformers" "$CustomTransformersDir")
     fi
 
-    # Check for config path
     if [ -n "$ConfigFilePath" ] && [ -f "$ConfigFilePath" ]; then
         importerArgs+=("--config-file-path" "$ConfigFilePath")
     elif [ -n "$ImporterConfigFile" ] && [ -f "$ImporterConfigFile" ]; then
@@ -470,18 +841,16 @@ with open('$resultsFile', 'w', encoding='utf-8') as f:
 
     echo -e "    Command: gh ${importerArgs[*]}"
     
-    # Run
     set +e
     gh "${importerArgs[@]}" > "$outputSubDir/importer_exec.log" 2>&1
     exitCode=$?
     set -e
 
-    outputStr=$(cat "$outputSubDir/importer_exec.log")
+    outputStr=$(cat "$outputSubDir/importer_exec.log" 2>/dev/null || echo "")
     echo "    --- actions-importer output ---"
-    cat "$outputSubDir/importer_exec.log"
+    cat "$outputSubDir/importer_exec.log" 2>/dev/null || true
     echo "    --- end output ---"
 
-    # Evaluate status
     status="SUCCESS"
     if [ $exitCode -ne 0 ]; then
         status="FAILED"
@@ -491,7 +860,6 @@ with open('$resultsFile', 'w', encoding='utf-8') as f:
         status="PARTIAL"
     fi
 
-    # Check if yaml generated
     yamlFiles=$(find "$outputSubDir" -name "*.yml" -o -name "*.yaml" 2>/dev/null || echo "")
     if [ "$CONF_MIGRATE_MODE" = "dry-run" ] && [ -z "$yamlFiles" ] && [ "$status" = "SUCCESS" ]; then
         status="NO_OUTPUT"
@@ -502,47 +870,30 @@ with open('$resultsFile', 'w', encoding='utf-8') as f:
     if [ "$status" = "PARTIAL" ] || [ "$status" = "NO_OUTPUT" ]; then color="${YELLOW}"; fi
     echo -e "    ${color}$status${NC}"
 
-    python3 -c "
-import json
-try:
-    with open('$resultsFile', 'r', encoding='utf-8') as f:
-        res = json.load(f)
-except Exception:
-    res = []
-res.append({
-    'Pipeline': '$pipeline_name',
-    'Id': $pipeline_id,
-    'TargetRepo': '$targetRepo',
-    'Mode': '$CONF_MIGRATE_MODE',
-    'Status': '$status',
-    'OutputDir': '$outputSubDir'
-})
-with open('$resultsFile', 'w', encoding='utf-8') as f:
-    json.dump(res, f)
-"
+    jq --arg name "$pipeline_name" \
+       --argjson id "$pipeline_id" \
+       --arg repo "$targetRepo" \
+       --arg mode "$CONF_MIGRATE_MODE" \
+       --arg stat "$status" \
+       --arg outDir "$outputSubDir" \
+       '. += [{
+           Pipeline: $name,
+           Id: $id,
+           TargetRepo: $repo,
+           Mode: $mode,
+           Status: $stat,
+           OutputDir: $outDir
+       }]' "$resultsFile" > "${resultsFile}.tmp" && mv "${resultsFile}.tmp" "$resultsFile"
 done
 
-# Cleanup temp files
 rm -f "$results_list_file"
 
-# Generate CSV summary
 csvFile="$OutputDir/pipeline-migration-$(date +%Y%m%d-%H%M%S).csv"
-python3 -c "
-import json, csv
-with open('$resultsFile', 'r') as f:
-    data = json.load(f)
-if data:
-    keys = data[0].keys()
-    with open('$csvFile', 'w', newline='') as f:
-        dict_writer = csv.DictWriter(f, keys)
-        dict_writer.writeheader()
-        dict_writer.writerows(data)
-" || true
+echo '"Pipeline","Id","TargetRepo","Mode","Status","OutputDir"' > "$csvFile"
+jq -r '.[] | [.Pipeline, .Id, .TargetRepo, .Mode, .Status, .OutputDir] | @csv' "$resultsFile" >> "$csvFile"
 
-# Generate HTML Dashboard
-python3 "$(dirname "$0")/generate_migration_dashboard.py" generate-dashboard "$OutputDir" "$CONF_ADO_ORG" "$CONF_ADO_PROJECT" "$CONF_GH_ORG" "$resultsFile"
+generate_dashboard "$OutputDir" "$CONF_ADO_ORG" "$CONF_ADO_PROJECT" "$CONF_GH_ORG" "$resultsFile"
 
-# Cleanup token environment variables
 unset GITHUB_ACCESS_TOKEN
 unset AZURE_DEVOPS_ACCESS_TOKEN
 
