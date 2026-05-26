@@ -42,6 +42,20 @@ run_sudo() {
     fi
 }
 
+# 0. JQ (JSON Parser)
+if command -v jq >/dev/null 2>&1; then
+    echo -e "${GREEN}[OK] jq: $(jq --version | head -n 1)${NC}"
+else
+    echo -e "${YELLOW}[MISSING] jq — Installing...${NC}"
+    if [ "$is_ubuntu" = true ]; then
+        run_sudo apt-get update
+        run_sudo apt-get install jq -y
+        echo -e "${GREEN}[OK] jq installed successfully.${NC}"
+    else
+        echo -e "${RED}  Manual installation required: install jq via your package manager.${NC}"
+    fi
+fi
+
 # 1. GitHub CLI (gh)
 if command -v gh >/dev/null 2>&1; then
     echo -e "${GREEN}[OK] GitHub CLI (gh): $(gh --version | head -n 1)${NC}"
