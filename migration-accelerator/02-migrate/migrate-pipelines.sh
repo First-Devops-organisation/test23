@@ -181,6 +181,22 @@ if [ -z "$CONF_ADO_PROJECT" ]; then echo -e "${RED}ERROR: ADO project not set.${
 
 mkdir -p "$OutputDir"
 
+# Print configuration details matching powershell style
+if [ -n "$ConfigFile" ] && [ -f "$ConfigFile" ]; then
+    echo "Loaded config from: $ConfigFile"
+fi
+if [ -n "$CONF_PIPELINE_REPO_MAP" ]; then
+    IFS=',' read -ra ADDR <<< "$CONF_PIPELINE_REPO_MAP"
+    echo "  Pipeline-to-Repo map: ${#ADDR[@]} entries loaded"
+fi
+if [ -n "$CONF_REUSABLE_PIPELINE_IDS" ]; then
+    formatted_reusables=$(echo "$CONF_REUSABLE_PIPELINE_IDS" | sed 's/,/, /g')
+    echo -e "${CYAN}Reusable pipeline allow-list: $formatted_reusables${NC}"
+fi
+echo -e "${CYAN}=== Pipeline Migration ($CONF_MIGRATE_MODE) ===${NC}"
+echo -e "  Organization: https://dev.azure.com/$CONF_ADO_ORG"
+echo -e "  Project:      $CONF_ADO_PROJECT"
+
 # Export token vars for actions-importer
 export GITHUB_ACCESS_TOKEN="$CONF_GH_PAT"
 export AZURE_DEVOPS_ACCESS_TOKEN="$CONF_ADO_PAT"
@@ -614,7 +630,14 @@ if [ "$CONF_MIGRATE_MODE" = "list" ]; then
     releaseUrl="https://vsrm.dev.azure.com/$CONF_ADO_ORG/$CONF_ADO_PROJECT/_apis/release/definitions?api-version=7.1"
     curl -s -k -H "Authorization: Basic $base64Auth" "$releaseUrl" > "$OutputDir/tmp_release_pipelines.json" || echo '{"value":[]}' > "$OutputDir/tmp_release_pipelines.json"
 
-    echo -e "\n=== Available Pipelines ==="
+    buildCount=$(jq '.value | length // 0' "$OutputDir/tmp_build_pipelines.json" 2>/dev/null || echo "0")
+    releaseCount=$(jq '.value | length // 0' "$OutputDir/tmp_release_pipelines.json" 2>/dev/null || echo "0")
+    totalCount=$((buildCount + releaseCount))
+
+    echo -e "\n${CYAN}=== Available Pipelines ($totalCount found) ===${NC}"
+
+    # Build pipelines
+    echo -e "\n--- Build Pipelines ($buildCount) ---"
     printf "%-8s %-45s %-12s %s\n" "ID" "Name" "Type" "Path"
     printf "%.0s-" {1..90}; echo
 
@@ -635,16 +658,26 @@ if [ "$CONF_MIGRATE_MODE" = "list" ]; then
         done
     fi
 
-    if [ -f "$OutputDir/tmp_release_pipelines.json" ]; then
-        readarray -t release_entries < <(jq -c '.value | sort_by(.id)[]' "$OutputDir/tmp_release_pipelines.json" 2>/dev/null || true)
-        for entry in "${release_entries[@]}"; do
-            id=$(echo "$entry" | jq -r '.id')
-            name=$(echo "$entry" | jq -r '.name // ""')
-            short_name="${name:0:44}"
-            path=$(echo "$entry" | jq -r '.path // ""')
-            printf "%-8s %-45s %-12s %s\n" "$id" "$short_name" "Release" "$path"
-        done
+    # Release pipelines
+    if [ "$releaseCount" -gt 0 ]; then
+        echo -e "\n--- Classic Release Pipelines ($releaseCount) ---"
+        printf "%-8s %-45s %-12s %s\n" "ID" "Name" "Type" "Path"
+        printf "%.0s-" {1..90}; echo
+
+        if [ -f "$OutputDir/tmp_release_pipelines.json" ]; then
+            readarray -t release_entries < <(jq -c '.value | sort_by(.id)[]' "$OutputDir/tmp_release_pipelines.json" 2>/dev/null || true)
+            for entry in "${release_entries[@]}"; do
+                id=$(echo "$entry" | jq -r '.id')
+                name=$(echo "$entry" | jq -r '.name // ""')
+                short_name="${name:0:44}"
+                path=$(echo "$entry" | jq -r '.path // ""')
+                printf "%-8s %-45s %-12s %s\n" "$id" "$short_name" "Release" "$path"
+            done
+        fi
     fi
+
+    echo -e "\n${GREEN}To migrate a build pipeline:   --pipeline-id <ID> --pipeline-type build --mode migrate${NC}"
+    echo -e "${GREEN}To migrate a release pipeline: --pipeline-id <ID> --pipeline-type release --mode migrate${NC}"
 
     rm -f "$OutputDir/tmp_build_pipelines.json" "$OutputDir/tmp_release_pipelines.json"
     exit 0
