@@ -85,9 +85,9 @@
 #                 mode=""
 #                 type=""
 #                 if [ -f "$configPath" ]; then
-#                     ids=$(python3 -c "import json; data=json.load(open('$configPath')); print(','.join(map(str, data['PIPELINE_IDS']))) if 'PIPELINE_IDS' in data and data['PIPELINE_IDS'] is not None else print('')" 2>/dev/null)
-#                     mode=$(python3 -c "import json; data=json.load(open('$configPath')); print(data.get('MIGRATE_MODE', data.get('MODE', '')))" 2>/dev/null)
-#                     type=$(python3 -c "import json; data=json.load(open('$configPath')); print(data.get('PIPELINE_TYPE', ''))" 2>/dev/null)
+#                     ids=$(jq -r 'if .PIPELINE_IDS == null then "" elif .PIPELINE_IDS | type == "array" then .PIPELINE_IDS | join(",") else .PIPELINE_IDS | tostring end' "$configPath" 2>/dev/null || echo "")
+#                     mode=$(jq -r '.MIGRATE_MODE // .MODE // empty' "$configPath" 2>/dev/null || echo "")
+#                     type=$(jq -r '.PIPELINE_TYPE // empty' "$configPath" 2>/dev/null || echo "")
 #                 fi
 #                 
 #                 macroIds="$(PIPELINE_IDS)"
@@ -360,8 +360,8 @@
 
 trigger: none
 
-pool: linux
-  
+pool:
+  vmImage: ubuntu-latest
 
 
 variables:
@@ -451,10 +451,10 @@ stages:
                 mode=""
                 type=""
                 if [ -f "$configPath" ]; then
-                    ids=$(python3 -c "import json; data=json.load(open('$configPath')); print(','.join(map(str, data['PIPELINE_IDS']))) if 'PIPELINE_IDS' in data and data['PIPELINE_IDS'] is not None else print('')" 2>/dev/null)
-                    reusableIds=$(python3 -c "import json; data=json.load(open('$configPath')); print(','.join(map(str, data['REUSABLE_PIPELINE_IDS']))) if 'REUSABLE_PIPELINE_IDS' in data and data['REUSABLE_PIPELINE_IDS'] is not None else print('')" 2>/dev/null)
-                    mode=$(python3 -c "import json; data=json.load(open('$configPath')); print(data.get('MIGRATE_MODE', data.get('MODE', '')))" 2>/dev/null)
-                    type=$(python3 -c "import json; data=json.load(open('$configPath')); print(data.get('PIPELINE_TYPE', ''))" 2>/dev/null)
+                    ids=$(jq -r 'if .PIPELINE_IDS == null then "" elif .PIPELINE_IDS | type == "array" then .PIPELINE_IDS | join(",") else .PIPELINE_IDS | tostring end' "$configPath" 2>/dev/null || echo "")
+                    reusableIds=$(jq -r 'if .REUSABLE_PIPELINE_IDS == null then "" elif .REUSABLE_PIPELINE_IDS | type == "array" then .REUSABLE_PIPELINE_IDS | join(",") else .REUSABLE_PIPELINE_IDS | tostring end' "$configPath" 2>/dev/null || echo "")
+                    mode=$(jq -r '.MIGRATE_MODE // .MODE // empty' "$configPath" 2>/dev/null || echo "")
+                    type=$(jq -r '.PIPELINE_TYPE // empty' "$configPath" 2>/dev/null || echo "")
                 fi
                 
                 macroIds="$(PIPELINE_IDS)"
