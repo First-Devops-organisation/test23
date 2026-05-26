@@ -25,11 +25,10 @@ fix_permissions() {
         elif [ -d "output" ]; then
             target_dir="output"
         fi
-        
         if [ -n "$target_dir" ]; then
             echo -e "${YELLOW}Fixing ownership of generated files in $target_dir...${NC}"
             local abs_target=$(realpath "$target_dir")
-            docker run --rm -v "$abs_target":/data alpine chown -R "$(id -u):$(id -g)" /data 2>/dev/null || true
+            docker run --rm -v "$abs_target":/data ghcr.io/actions-importer/cli:latest chown -R "$(id -u):$(id -g)" /data 2>/dev/null || true
         fi
     fi
 }
