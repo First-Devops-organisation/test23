@@ -113,9 +113,17 @@ echo -e "${GRAY}  ConfigFile path: $ConfigFile${NC}"
 if [ -n "$ConfigFile" ]; then
     if [ -f "$ConfigFile" ]; then
         echo -e "${GRAY}  ConfigFile status: Found${NC}"
+        echo -e "${GRAY}  ConfigFile contents:${NC}"
+        cat "$ConfigFile" | sed 's/^/    /'
     else
         echo -e "${RED}  WARNING: ConfigFile not found at '$ConfigFile'${NC}"
     fi
+fi
+
+if command -v jq >/dev/null 2>&1; then
+    echo -e "${GRAY}  jq tool version: $(jq --version)${NC}"
+else
+    echo -e "${RED}  ERROR: jq tool is NOT installed/found on this agent!${NC}"
 fi
 
 get_val() {
@@ -173,7 +181,7 @@ if [ -f "$ConfigFile" ]; then
     repo_map_str=$(jq -r '
         if .PIPELINE_REPO_MAP == null then "" 
         elif .PIPELINE_REPO_MAP | type == "object" then 
-            [to_entries[] | "\(.key)=\(.value)"] | join(",") 
+            .PIPELINE_REPO_MAP | [to_entries[] | "\(.key)=\(.value)"] | join(",") 
         elif .PIPELINE_REPO_MAP | type == "array" then 
             .PIPELINE_REPO_MAP | join(",") 
         else 
