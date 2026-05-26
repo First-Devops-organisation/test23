@@ -1,14 +1,11 @@
 {
-  "targetGitHubOrg": "First-Devops-organisation",
-  "variableGroups": [
-    {
-  "targetGitHubOrg": "First-Devops-organisation",
+  "targetGitHubOrg": "Second-Devops-organisation",
   "variableGroups": [
     {
       "adoGroupName": "repo-migration-discove-release",
       "action": "migrate",
       "targetScope": "repository",
-      "targetRepo": "ADO-githubcopilot-repo",
+      "targetRepo": "Demoapp-Application-API",
       "targetEnvironment": "release",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
@@ -17,12 +14,10 @@
       "adoGroupName": "repo-migration-discove-uat_i",
       "action": "migrate",
       "targetScope": "repository",
-      "targetRepo": "ADO-githubcopilot-repo",
+      "targetRepo": "Demoapp-Application-API",
       "targetEnvironment": "uat_i",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
     }
-  ]
-}
   ]
 }
