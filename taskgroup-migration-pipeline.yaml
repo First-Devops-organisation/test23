@@ -14,8 +14,7 @@ pool:
 # Required: GH_PAT, ADO_PAT, GH_TARGET_REPO, ANCHOR_PIPELINE_ID
 variables:
   - group: repo-migration-discove
-  - group: repo-migration-migrate
-   # Auto-resolves to current project name
+  - group: repo-migration-migrate   # Auto-resolves to current project name
 
 stages:
   - stage: MigrateTaskGroups
@@ -62,7 +61,7 @@ stages:
                 fi
                 
                 echo "Task Groups Found:"
-                grep 'name:' output/taskgroups/config.yml | sed 's/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/  - /'
+                awk '/^reusable-templates:/{flag=1; next} /^[a-zA-Z0-9_-]+:/{flag=0} flag && /^[[:space:]]*- name:/{print}' output/taskgroups/config.yml | sed 's/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/  - /'
 
           - task: Bash@3
             displayName: "2. Configure Routing"
@@ -75,8 +74,15 @@ stages:
                 
                 echo "Routing all Task Groups to $TARGET_URL"
                 
+                IN_REUSABLES=0
                 while IFS= read -r line || [[ -n "$line" ]]; do
-                    if [[ "$line" =~ ^([[:space:]]*)-[[:space:]]+name:[[:space:]]+([^[:space:]]+) ]]; then
+                    if [[ "$line" =~ ^reusable-templates: ]]; then
+                        IN_REUSABLES=1
+                        echo "$line" >> "$TEMP_CONFIG"
+                    elif [[ "$line" =~ ^[a-zA-Z0-9_-]+: ]] && [[ ! "$line" =~ ^reusable-templates: ]]; then
+                        IN_REUSABLES=0
+                        echo "$line" >> "$TEMP_CONFIG"
+                    elif [[ "$IN_REUSABLES" == "1" ]] && [[ "$line" =~ ^([[:space:]]*)-[[:space:]]+name:[[:space:]]+([^[:space:]]+) ]]; then
                         raw_name="${BASH_REMATCH[2]}"
                         folderName=$(echo "$raw_name" | sed -E 's/\.ya?ml$//I' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]/_/g')
                         
@@ -84,7 +90,7 @@ stages:
                         echo "      target_url: $TARGET_URL" >> "$TEMP_CONFIG"
                         echo "      ref: main" >> "$TEMP_CONFIG"
                         echo "      path: .github/actions/$folderName" >> "$TEMP_CONFIG"
-                    elif [[ "$line" =~ ^[[:space:]]+target_url: ]] || [[ "$line" =~ ^[[:space:]]+ref: ]] || [[ "$line" =~ ^[[:space:]]+path: ]]; then
+                    elif [[ "$IN_REUSABLES" == "1" ]] && ([[ "$line" =~ ^[[:space:]]+target_url: ]] || [[ "$line" =~ ^[[:space:]]+ref: ]] || [[ "$line" =~ ^[[:space:]]+path: ]]); then
                         continue
                     else
                         echo "$line" >> "$TEMP_CONFIG"
