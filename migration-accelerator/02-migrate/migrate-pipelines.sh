@@ -437,36 +437,6 @@ generate_dashboard() {
 "
     done
     
-    local workflowRows=""
-    local yamlFiles=()
-    while IFS= read -r -d '' yf; do
-        yamlFiles+=("$yf")
-    done < <(find "$output_dir" -type f \( -name "*.yml" -o -name "*.yaml" \) -print0 2>/dev/null)
-    
-    for yf in "${yamlFiles[@]}"; do
-        local relPath="${yf#$output_dir/}"
-        local name=$(basename "$yf" | sed -E 's/\.ya?ml$//I')
-        local dir=$(dirname "$relPath")
-        
-        local sizeBytes=$(wc -c < "$yf" | tr -d ' ')
-        local sizeKb=$(( sizeBytes * 10 / 1024 ))
-        local sizeKbStr="$(( sizeKb / 10 )).$(( sizeKb % 10 )) KB"
-        
-        workflowRows+="    <tr><td>$dir</td><td>$name</td><td class='num'>$sizeKbStr</td></tr>
-"
-    done
-    
-    local workflowSection=""
-    if [ -n "$workflowRows" ]; then
-        workflowSection="      <table>
-        <thead><tr><th>Directory</th><th>Workflow</th><th>Size</th></tr></thead>
-        <tbody>
-$workflowRows
-        </tbody>
-      </table>"
-    else
-        workflowSection="      <p class='empty-state'><span class='empty-icon'>&#128194;</span>No workflow YAML files generated.</p>"
-    fi
     
     local htmlOut="$dashboardDir/index.html"
     cat <<EOF > "$htmlOut"
@@ -814,9 +784,7 @@ ${pipelineTableRows}
     </tbody>
   </table>
 
-  <!-- ===== GENERATED WORKFLOW FILES ===== -->
-  <h2><span class="sec-icon">&#128196;</span>Generated Workflow Files</h2>
-${workflowSection}
+
 
   <!-- ===== POST-MIGRATION CHECKLIST ===== -->
   <div class="checklist">
