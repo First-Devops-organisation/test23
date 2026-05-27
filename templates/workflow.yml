@@ -1,0 +1,21 @@
+name: 'Migrated: {{TASK_GROUP_NAME}}'
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+{{WORKFLOW_INPUTS_BLOCK}}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  {{JOB_NAME}}:
+    runs-on: {{RUNNER}}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+{{STEPS_BLOCK}}

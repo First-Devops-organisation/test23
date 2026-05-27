@@ -1,0 +1,10 @@
+name: '{{TASK_GROUP_NAME}}'
+description: 'Migrated from Azure DevOps Task Group: {{TASK_GROUP_NAME}} (v{{VERSION}})'
+
+inputs:
+{{INPUTS_BLOCK}}
+
+runs:
+  using: "composite"
+  steps:
+{{STEPS_BLOCK}}
