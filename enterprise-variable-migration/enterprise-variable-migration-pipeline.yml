@@ -127,7 +127,19 @@ stages:
               exit 0
           }
           echo "$(Git_pat)" | gh auth login --with-token
-          gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "First-Devops-organisation/reusable-workflows" --env "release"
+          
+          $targetOrg = "First-Devops-organisation"
+          $targetRepo = $mapping.targetRepo
+          $targetEnv = $mapping.targetEnvironment
+          $targetScope = $mapping.targetScope
+          
+          if ($targetScope -eq 'environment') {
+              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "$targetOrg/$targetRepo" --env "$targetEnv"
+          } elseif ($targetScope -eq 'repository') {
+              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "$targetOrg/$targetRepo"
+          } elseif ($targetScope -eq 'organization') {
+              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --org "$targetOrg" --visibility private
+          }
 
   - job: Migrate_Secrets_repo_migration_discove_uat_i
     variables:
@@ -147,4 +159,16 @@ stages:
               exit 0
           }
           echo "$(Git_pat)" | gh auth login --with-token
-          gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "First-Devops-organisation/reusable-workflows" --env "uat_i"
+          
+          $targetOrg = "First-Devops-organisation"
+          $targetRepo = $mapping.targetRepo
+          $targetEnv = $mapping.targetEnvironment
+          $targetScope = $mapping.targetScope
+          
+          if ($targetScope -eq 'environment') {
+              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "$targetOrg/$targetRepo" --env "$targetEnv"
+          } elseif ($targetScope -eq 'repository') {
+              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "$targetOrg/$targetRepo"
+          } elseif ($targetScope -eq 'organization') {
+              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --org "$targetOrg" --visibility private
+          }
