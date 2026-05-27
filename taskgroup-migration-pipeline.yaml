@@ -1,0 +1,118 @@
+# ==============================================================================
+# Azure DevOps Pipeline: Task Group to GitHub Actions Migration
+# 
+# This pipeline uses the GitHub Actions Importer to discover all Task Groups
+# in this project, convert them to Composite Actions, and open PRs in GitHub.
+# ==============================================================================
+
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+# Variables should be set in an ADO Variable Group or pipeline UI
+# Required: GH_PAT, ADO_PAT, GH_TARGET_REPO, ANCHOR_PIPELINE_ID
+variables:
+  - name: ADO_ORG
+    value: $(System.CollectionUri) # Auto-resolves to https://dev.azure.com/org
+  - name: ADO_PROJECT
+    value: $(System.TeamProject)   # Auto-resolves to current project name
+
+stages:
+  - stage: MigrateTaskGroups
+    displayName: "Migrate Task Groups to GitHub"
+    jobs:
+      - job: DiscoverAndMigrate
+        displayName: "Discover & Migrate Task Groups"
+        steps:
+          - checkout: none
+
+          - task: Bash@3
+            displayName: "Install GitHub Actions Importer"
+            inputs:
+              targetType: 'inline'
+              script: |
+                # Install GitHub CLI extension
+                echo $(GH_PAT) | gh auth login --with-token
+                gh extension install github/gh-actions-importer || true
+                gh actions-importer update
+
+          - task: Bash@3
+            displayName: "1. Audit (Discover Task Groups)"
+            env:
+              GITHUB_ACCESS_TOKEN: $(GH_PAT)
+              AZURE_DEVOPS_ACCESS_TOKEN: $(ADO_PAT)
+            inputs:
+              targetType: 'inline'
+              script: |
+                mkdir -p output/taskgroups
+                
+                echo "Scanning ADO for Task Groups..."
+                gh actions-importer audit azure-devops \
+                    --output-dir "output/taskgroups" \
+                    --azure-devops-organization "$(ADO_ORG)" \
+                    --azure-devops-project "$(ADO_PROJECT)" > /dev/null 2>&1
+                
+                if [ ! -f "output/taskgroups/config.yml" ]; then
+                    echo "##vso[task.logissue type=error]Failed to discover any Task Groups."
+                    exit 1
+                fi
+                
+                echo "Task Groups Found:"
+                grep 'name:' output/taskgroups/config.yml | sed 's/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/  - /'
+
+          - task: Bash@3
+            displayName: "2. Configure Routing"
+            inputs:
+              targetType: 'inline'
+              script: |
+                CONFIG_FILE="output/taskgroups/config.yml"
+                TEMP_CONFIG="${CONFIG_FILE}.tmp"
+                TARGET_URL="https://github.com/$(GH_TARGET_REPO)"
+                
+                echo "Routing all Task Groups to $TARGET_URL"
+                
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    if [[ "$line" =~ ^([[:space:]]*)-[[:space:]]+name:[[:space:]]+([^[:space:]]+) ]]; then
+                        raw_name="${BASH_REMATCH[2]}"
+                        folderName=$(echo "$raw_name" | sed -E 's/\.ya?ml$//I' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]/_/g')
+                        
+                        echo "$line" >> "$TEMP_CONFIG"
+                        echo "      target_url: $TARGET_URL" >> "$TEMP_CONFIG"
+                        echo "      ref: main" >> "$TEMP_CONFIG"
+                        echo "      path: .github/actions/$folderName" >> "$TEMP_CONFIG"
+                    elif [[ "$line" =~ ^[[:space:]]+target_url: ]] || [[ "$line" =~ ^[[:space:]]+ref: ]] || [[ "$line" =~ ^[[:space:]]+path: ]]; then
+                        continue
+                    else
+                        echo "$line" >> "$TEMP_CONFIG"
+                    fi
+                done < "$CONFIG_FILE"
+                
+                mv "$TEMP_CONFIG" "$CONFIG_FILE"
+
+          - task: Bash@3
+            displayName: "3. Migrate & Create Pull Requests"
+            env:
+              GITHUB_ACCESS_TOKEN: $(GH_PAT)
+              AZURE_DEVOPS_ACCESS_TOKEN: $(ADO_PAT)
+            inputs:
+              targetType: 'inline'
+              script: |
+                TARGET_URL="https://github.com/$(GH_TARGET_REPO)"
+                
+                echo "Migrating Task Groups to GitHub..."
+                gh actions-importer migrate azure-devops pipeline \
+                    --output-dir "output/migrated" \
+                    --azure-devops-organization "$(ADO_ORG)" \
+                    --azure-devops-project "$(ADO_PROJECT)" \
+                    --pipeline-id "$(ANCHOR_PIPELINE_ID)" \
+                    --config-file-path "output/taskgroups/config.yml" \
+                    --target-url "$TARGET_URL"
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Migration Logs"
+            condition: always()
+            inputs:
+              targetPath: 'output'
+              artifact: "taskgroup-migration-logs"
+              publishLocation: pipeline
