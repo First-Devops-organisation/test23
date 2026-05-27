@@ -51,7 +51,7 @@ jobs:
           $Params = @{
               AdoOrganization = "${{ parameters.ado_org }}"
               AdoProject      = "${{ parameters.ado_project }}"
-              AdoPat          = "$(ADO_PAT)"
+              AdoPat          = $env:ADO_PAT
               OutputMode      = "${{ parameters.output_mode }}"
               Filter          = "${{ parameters.filter }}"
               OutputDir       = "$(OUTPUT_DIR)"
@@ -60,7 +60,7 @@ jobs:
           if ("${{ parameters.dry_run }}" -ne "True") {
               $Params["GitHubOrg"] = $GitHubOrg
               $Params["GitHubRepo"] = $GitHubRepo
-              $Params["GitHubPat"] = "$(GH_MIGRATION_PAT)"
+              $Params["GitHubPat"] = $env:GH_MIGRATION_PAT
           } else {
               $Params["DryRun"] = $true
           }
