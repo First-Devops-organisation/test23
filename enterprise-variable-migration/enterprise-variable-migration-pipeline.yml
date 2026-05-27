@@ -128,7 +128,6 @@ stages:
           }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "First-Devops-organisation/reusable-workflows" --env "release"
-          gh secret set "GH_PAT"  --body "$(GH_PAT)"  --repo "First-Devops-organisation/reusable-workflows" --env "release"
 
   - job: Migrate_Secrets_repo_migration_discove_uat_i
     variables:
@@ -149,4 +148,3 @@ stages:
           }
           echo "$(Git_pat)" | gh auth login --with-token
           gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "First-Devops-organisation/reusable-workflows" --env "uat_i"
-          gh secret set "GH_PAT"  --body "$(GH_PAT)"  --repo "First-Devops-organisation/reusable-workflows" --env "uat_i"
