@@ -14,7 +14,8 @@ pool:
 # Required: GH_PAT, ADO_PAT, GH_TARGET_REPO, ANCHOR_PIPELINE_ID
 variables:
   - group: repo-migration-discove
-  
+  - group: repo-migration-migrate
+
 
 stages:
   - stage: MigrateTaskGroups
