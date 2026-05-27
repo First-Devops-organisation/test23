@@ -1,3 +1,14 @@
+The container pull failed with a `denied` error because the GitHub Container Registry (`ghcr.io`) requires authentication to pull the GitHub Actions Importer image. It is not publicly accessible without logging in.
+
+To fix this, we can avoid pulling the container image directly in the `container:` block. Instead, we can run a normal script block that logs into `ghcr.io` using your existing **GitHub PAT (`GH_PAT`)** before downloading and running the CLI.
+
+I have updated the pipeline to run without requiring container configurations. It now logs in, runs the importer container locally via standard shell steps, and generates the workflows.
+
+### 📄 Updated File: [azure-pipelines-migrate-taskgroups.yml](file:///C:/Users/varsha.patil/.gemini/antigravity/scratch/azure-pipelines-migrate-taskgroups.yml)
+
+Here is the updated YAML to copy:
+
+```yaml
 # azure-pipelines-migrate-taskgroups.yml
 # =========================================================================
 # Azure DevOps YAML Pipeline
@@ -27,36 +38,49 @@ stages:
   jobs:
   - job: RunImporter
     displayName: 'Run GitHub Actions Importer'
-    container:
-      image: ghcr.io/github/github-actions-importer-cli:latest
-      options: --user 0:0 # Runs as root to write directories inside the container
     steps:
 
-    - script: |
-        # Create output directory
+    # Log in to ghcr.io using your GitHub PAT to bypass the denied pull error
+    - bash: |
+        echo "$(GH_PAT)" | docker login ghcr.io -u token --password-stdin
+      displayName: 'Log in to GitHub Container Registry'
+      env:
+        GH_PAT: $(GH_PAT)
+
+    - bash: |
+        # Create staging output directory
         mkdir -p $(Build.ArtifactStagingDirectory)/importer-audit
         
-        # Execute the official audit command
-        github-actions-importer azure-devops audit \
-          --output-dir $(Build.ArtifactStagingDirectory)/importer-audit
+        # Run the audit command inside docker, mounting workspace dirs
+        docker run --rm \
+          -e PERSONAL_ACCESS_TOKEN="${ADO_PAT}" \
+          -e AZURE_DEVOPS_ORGANIZATION="${ADO_Org}" \
+          -e AZURE_DEVOPS_PROJECT="${ADO_Project}" \
+          -v "$(Build.ArtifactStagingDirectory)/importer-audit:/data" \
+          ghcr.io/github/github-actions-importer-cli:latest \
+          azure-devops audit --output-dir /data
       displayName: 'Audit Azure DevOps Pipelines'
       env:
-        # Importer matches these specific environment variables automatically
-        PERSONAL_ACCESS_TOKEN: $(ADO_PAT)
-        AZURE_DEVOPS_ORGANIZATION: $(ADO_Org)
-        AZURE_DEVOPS_PROJECT: $(ADO_Project)
+        ADO_PAT: $(ADO_PAT)
+        ADO_Org: $(ADO_Org)
+        ADO_Project: $(ADO_Project)
 
-    - script: |
+    - bash: |
         mkdir -p $(Build.ArtifactStagingDirectory)/workflows
         
-        # Run a generic dry-run conversion of target pipeline configurations
-        github-actions-importer azure-devops forecast \
-          --output-dir $(Build.ArtifactStagingDirectory)/workflows
+        # Run conversion inside docker
+        docker run --rm \
+          -e PERSONAL_ACCESS_TOKEN="${ADO_PAT}" \
+          -e AZURE_DEVOPS_ORGANIZATION="${ADO_Org}" \
+          -e AZURE_DEVOPS_PROJECT="${ADO_Project}" \
+          -v "$(Build.ArtifactStagingDirectory)/workflows:/data" \
+          ghcr.io/github/github-actions-importer-cli:latest \
+          azure-devops forecast --output-dir /data
       displayName: 'Convert Pipelines to GitHub Actions'
       env:
-        PERSONAL_ACCESS_TOKEN: $(ADO_PAT)
-        AZURE_DEVOPS_ORGANIZATION: $(ADO_Org)
-        AZURE_DEVOPS_PROJECT: $(ADO_Project)
+        ADO_PAT: $(ADO_PAT)
+        ADO_Org: $(ADO_Org)
+        ADO_Project: $(ADO_Project)
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish converted workflows'
@@ -128,3 +152,4 @@ stages:
         GH_ORG: $(GH_Org)
         GH_PAT: $(GH_PAT)
         GH_REPO: $(GitHub_Repo)
+```
