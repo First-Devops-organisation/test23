@@ -13,10 +13,9 @@ pool:
 # Variables should be set in an ADO Variable Group or pipeline UI
 # Required: GH_PAT, ADO_PAT, GH_TARGET_REPO, ANCHOR_PIPELINE_ID
 variables:
-  - name: ADO_ORG
-    value: $(System.CollectionUri) # Auto-resolves to https://dev.azure.com/org
-  - name: ADO_PROJECT
-    value: $(System.TeamProject)   # Auto-resolves to current project name
+  - group: repo-migration-discove
+  - group: repo-migration-migrate
+   # Auto-resolves to current project name
 
 stages:
   - stage: MigrateTaskGroups
