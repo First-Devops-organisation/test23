@@ -5,7 +5,7 @@
       "adoGroupName": "repo-migration-discove-release",
       "action": "migrate",
       "targetScope": "environment",
-      "targetRepo": "reusable-workflows",
+      "targetRepo": "test1",
       "targetEnvironment": "release",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
@@ -14,7 +14,7 @@
       "adoGroupName": "repo-migration-discove-uat_i",
       "action": "migrate",
       "targetScope": "environment",
-      "targetRepo": "reusable-workflows",
+      "targetRepo": "test1",
       "targetEnvironment": "uat_i",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
