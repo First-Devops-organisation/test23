@@ -9,9 +9,7 @@ trigger: none
 
 pool:
   vmImage: ubuntu-latest
-variables:
- - group: repo-migration-discove
- - group: repo-migration-migrate
+
 
 # Variables should be set in an ADO Variable Group or pipeline UI
 # Required: GH_PAT, ADO_PAT, GH_TARGET_REPO, ANCHOR_PIPELINE_ID
