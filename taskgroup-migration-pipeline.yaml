@@ -1,17 +1,7 @@
-It looks like some explanatory text was accidentally copied into the top of the YAML file in your repository, which is causing Azure DevOps to fail parsing the document.
-
-I have cleaned up the file in your workspace to ensure that it contains **only valid YAML** (with no leading conversational text).
-
-### 📄 Cleaned File: [azure-pipelines-migrate-taskgroups.yml](file:///C:/Users/varsha.patil/.gemini/antigravity/scratch/azure-pipelines-migrate-taskgroups.yml)
-
-Here is the exact code. Make sure that when you copy it to your repository, **no text before the first line (`# azure-pipelines...`) is included**:
-
-```yaml
 # azure-pipelines-migrate-taskgroups.yml
 # =========================================================================
 # Azure DevOps YAML Pipeline
-# Uses the GitHub Actions Importer (Valet) to automatically convert and
-# migrate ADO Pipelines/Task Groups to GitHub Actions workflow files.
+# 3-Step Process: Discover -> Convert -> Push Workflows to GitHub
 # =========================================================================
 
 trigger: none                     # manual trigger only
@@ -29,44 +19,65 @@ variables:
 stages:
 
 # =========================================================================
-# STAGE 1 — Audit and Convert using GitHub Actions Importer
+# STEP 1: DISCOVER (Audit Azure DevOps configuration)
 # =========================================================================
-- stage: MigratePipelines
-  displayName: 'Migrate Pipelines to GH'
+- stage: Discover
+  displayName: '1. Discover Pipelines & Task Groups'
   jobs:
-  - job: RunImporter
-    displayName: 'Run GitHub Actions Importer'
+  - job: AuditADO
+    displayName: 'Audit Azure DevOps'
     steps:
-
-    # Log in to ghcr.io using your GitHub PAT to bypass the denied pull error
     - bash: |
+        # Login to GitHub Container Registry using GITHUB PAT
         echo "$(GH_PAT)" | docker login ghcr.io -u token --password-stdin
-      displayName: 'Log in to GitHub Container Registry'
+      displayName: 'Authenticate with GHCR'
       env:
         GH_PAT: $(GH_PAT)
 
     - bash: |
-        # Create staging output directory
-        mkdir -p $(Build.ArtifactStagingDirectory)/importer-audit
+        mkdir -p $(Build.ArtifactStagingDirectory)/audit-report
         
-        # Run the audit command inside docker, mounting workspace dirs
+        # Run Importer audit to discover all pipelines and task groups
         docker run --rm \
           -e PERSONAL_ACCESS_TOKEN="${ADO_PAT}" \
           -e AZURE_DEVOPS_ORGANIZATION="${ADO_Org}" \
           -e AZURE_DEVOPS_PROJECT="${ADO_Project}" \
-          -v "$(Build.ArtifactStagingDirectory)/importer-audit:/data" \
+          -v "$(Build.ArtifactStagingDirectory)/audit-report:/data" \
           ghcr.io/github/github-actions-importer-cli:latest \
           azure-devops audit --output-dir /data
-      displayName: 'Audit Azure DevOps Pipelines'
+      displayName: 'Discover and Audit ADO Assets'
       env:
         ADO_PAT: $(ADO_PAT)
         ADO_Org: $(ADO_Org)
         ADO_Project: $(ADO_Project)
 
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Audit Discovery Report'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/audit-report'
+        ArtifactName: 'audit-report'
+        publishLocation: 'Container'
+
+# =========================================================================
+# STEP 2: CONVERT (Generate GitHub Actions YAML files)
+# =========================================================================
+- stage: Convert
+  displayName: '2. Convert to Action YAML'
+  dependsOn: Discover
+  jobs:
+  - job: ForecastWorkflows
+    displayName: 'Forecast Actions Workflows'
+    steps:
+    - bash: |
+        echo "$(GH_PAT)" | docker login ghcr.io -u token --password-stdin
+      displayName: 'Authenticate with GHCR'
+      env:
+        GH_PAT: $(GH_PAT)
+
     - bash: |
         mkdir -p $(Build.ArtifactStagingDirectory)/workflows
         
-        # Run conversion inside docker
+        # Generate the converted Actions YAML files into the staging directory
         docker run --rm \
           -e PERSONAL_ACCESS_TOKEN="${ADO_PAT}" \
           -e AZURE_DEVOPS_ORGANIZATION="${ADO_Org}" \
@@ -74,32 +85,31 @@ stages:
           -v "$(Build.ArtifactStagingDirectory)/workflows:/data" \
           ghcr.io/github/github-actions-importer-cli:latest \
           azure-devops forecast --output-dir /data
-      displayName: 'Convert Pipelines to GitHub Actions'
+      displayName: 'Convert and Generate YAML workflows'
       env:
         ADO_PAT: $(ADO_PAT)
         ADO_Org: $(ADO_Org)
         ADO_Project: $(ADO_Project)
 
     - task: PublishBuildArtifacts@1
-      displayName: 'Publish converted workflows'
+      displayName: 'Publish Generated Workflows'
       inputs:
         PathtoPublish: '$(Build.ArtifactStagingDirectory)/workflows'
         ArtifactName: 'github-workflows'
         publishLocation: 'Container'
 
 # =========================================================================
-# STAGE 2 — Push Converted Workflows to GitHub Repository
+# STEP 3: MIGRATE (Push to target GitHub Repository)
 # =========================================================================
-- stage: PushToGitHub
-  displayName: 'Push Workflows to GitHub'
-  dependsOn: MigratePipelines
+- stage: Migrate
+  displayName: '3. Push to GitHub Repository'
+  dependsOn: Convert
   jobs:
-  - job: GitPush
-    displayName: 'Commit and push to GitHub'
+  - job: PushWorkflows
+    displayName: 'Git Push Workflows'
     steps:
-
     - task: DownloadBuildArtifacts@0
-      displayName: 'Download converted workflows'
+      displayName: 'Download Generated Workflows'
       inputs:
         buildType: 'current'
         downloadType: 'single'
@@ -107,47 +117,40 @@ stages:
         downloadPath: '$(System.ArtifactsDirectory)'
 
     - task: Bash@3
-      displayName: 'Clone GitHub repo, add workflows, push'
+      displayName: 'Push to Target GitHub Repo'
       inputs:
         targetType: 'inline'
         script: |
           set -euo pipefail
 
-          echo "=== Pushing workflows to GitHub ==="
-
           WORKFLOW_DIR="$(System.ArtifactsDirectory)/github-workflows"
           CLONE_DIR="$(Agent.TempDirectory)/github-repo"
 
-          # Clone target GitHub repo using GH_PAT and GH_ORG / GH_REPO
+          # Clone your target repository using the mapped variable credentials
           git clone "https://x-access-token:${GH_PAT}@github.com/${GH_ORG}/${GH_REPO}.git" "$CLONE_DIR"
           cd "$CLONE_DIR"
           
-          # Setup target branch
+          # Ensure checkout main branch
           git checkout "main" || git checkout -b "main"
 
-          # Copy files to workflows folder
+          # Populate .github/workflows directory with generated YAML files
           mkdir -p .github/workflows
-          cp "$WORKFLOW_DIR"/*.yml .github/workflows/ 2>/dev/null || cp "$WORKFLOW_DIR"/*.yaml .github/workflows/ 2>/dev/null || echo "No workflow files found to copy"
+          cp "$WORKFLOW_DIR"/*.yml .github/workflows/ 2>/dev/null || cp "$WORKFLOW_DIR"/*.yaml .github/workflows/ 2>/dev/null || echo "No workflows to copy"
 
-          echo "Workflow files to commit:"
-          ls -la .github/workflows/ || echo "No files in workflows directory"
-
-          # Configure git
-          git config user.name  "GitHub Actions Importer Bot"
+          # Setup Importer Git Author
+          git config user.name "GitHub Actions Importer"
           git config user.email "importer-bot@github.com"
 
-          # Commit and push
+          # Commit & Push
           git add .github/workflows/
           if git diff --cached --quiet; then
-            echo "No changes to commit — workflows already up to date."
+            echo "Workflows already match repository. Nothing to push."
           else
-            git commit -m "chore: migrate pipelines using GitHub Actions Importer [automated]"
+            git commit -m "chore: migrate task groups and pipelines via GH Importer [automated]"
             git push origin "main"
-            echo "✅ Workflows pushed to https://github.com/${GH_ORG}/${GH_REPO}"
+            echo "✅ Workflows successfully migrated and pushed."
           fi
       env:
-        # Map variables from Variable Group 'repo-migration-migrate'
         GH_ORG: $(GH_Org)
         GH_PAT: $(GH_PAT)
         GH_REPO: $(GitHub_Repo)
-```
