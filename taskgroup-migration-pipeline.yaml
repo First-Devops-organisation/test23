@@ -40,10 +40,13 @@ stages:
               script: |
                 mkdir -p output/taskgroups
                 
-                echo "Scanning ADO for Task Groups in org: $(ADO_Org), project: $(ADO_Project)..."
+                # Strip out URL if the user provided the full URL instead of just the Org name
+                ADO_ORG_NAME=$(echo "$(ADO_Org)" | sed -E 's|https?://dev.azure.com/([^/]+).*|\1|')
+                
+                echo "Scanning ADO for Task Groups in org: $ADO_ORG_NAME, project: $(ADO_Project)..."
                 gh actions-importer audit azure-devops \
                     --output-dir "output/taskgroups" \
-                    --azure-devops-organization "$(ADO_Org)" \
+                    --azure-devops-organization "$ADO_ORG_NAME" \
                     --azure-devops-project "$(ADO_Project)"
                 
                 if [ ! -f "output/taskgroups/config.yml" ]; then
@@ -99,11 +102,12 @@ stages:
               targetType: 'inline'
               script: |
                 TARGET_URL="https://github.com/$(GH_Org)/$(GitHub_Repo)"
+                ADO_ORG_NAME=$(echo "$(ADO_Org)" | sed -E 's|https?://dev.azure.com/([^/]+).*|\1|')
                 
                 echo "Migrating Task Groups to GitHub..."
                 gh actions-importer migrate azure-devops pipeline \
                     --output-dir "output/migrated" \
-                    --azure-devops-organization "$(ADO_Org)" \
+                    --azure-devops-organization "$ADO_ORG_NAME" \
                     --azure-devops-project "$(ADO_Project)" \
                     --pipeline-id "1" \
                     --config-file-path "output/taskgroups/config.yml" \
