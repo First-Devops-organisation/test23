@@ -61,6 +61,11 @@ Write-Host "[+] Initializing Task Group Discovery..." -ForegroundColor Cyan
     $ApiUrl = "$BaseUrl/$Project/_apis/distributedtask/taskgroups?api-version=7.1-preview.1"
     
     # Prepare Auth Header
+    if ([string]::IsNullOrWhiteSpace($Pat)) {
+        Write-Error "[-] PAT (Personal Access Token) is empty or null. Please ensure the pipeline variable ADO_PAT is set and mapped correctly."
+        return
+    }
+    
     $AuthBytes = [System.Text.Encoding]::ASCII.GetBytes(":$Pat")
     $AuthBase64 = [System.Convert]::ToBase64String($AuthBytes)
     $Headers = @{
@@ -96,8 +101,19 @@ Write-Host "[+] Querying ADO API: GET $ApiUrl" -ForegroundColor Yellow
         }
     }
 
-    if ($null -eq $Response -or $null -eq $Response.value) {
-        Write-Error "[-] Failed to fetch Task Groups after $MaxRetries attempts."
+    $AttemptsMade = $RetryCount + 1
+    if ($null -eq $Response) {
+        Write-Error "[-] Failed to fetch Task Groups after $AttemptsMade attempts. Response was null."
+        return
+    }
+    
+    if (-not $Response.PSObject.Properties.Match('value').Count) {
+        Write-Host "[-] API did not return expected JSON structure. Received instead:" -ForegroundColor Red
+        # Print a snippet of what we actually received (e.g. an HTML sign-in page if auth failed)
+        $ResponseString = $Response | Out-String
+        if ($ResponseString.Length -gt 500) { $ResponseString = $ResponseString.Substring(0, 500) + "..." }
+        Write-Host $ResponseString -ForegroundColor Gray
+        Write-Error "[-] Failed to fetch Task Groups (Invalid Response Type)."
         return
     }
 
