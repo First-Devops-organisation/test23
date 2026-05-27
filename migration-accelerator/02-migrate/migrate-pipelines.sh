@@ -696,7 +696,145 @@ $workflowRows
     color: #6b7280;
     text-align: center;
   }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
 </style>
+</head>
+<body>
+
+<!-- ===== HEADER BANNER ===== -->
+<div style="background: linear-gradient(135deg, #10b981 0%, #0ea5e9 50%, #8b5cf6 100%); padding: 40px 48px 32px; position: relative; overflow: hidden; color: #fff;">
+  <div style="position:absolute; top:-50%; right:-20%; width:600px; height:600px; background: radial-gradient(circle, rgba(255,255,255,.08) 0%, transparent 70%);"></div>
+  <h1 style="font-size:2.2rem; font-weight:800; letter-spacing:-.02em; position:relative; z-index:1; color:#fff; border:none; padding:0; margin:0;">
+    <span class="title-icon">&#128640;</span>Pipeline Migration Report
+  </h1>
+  <div style="margin-top:8px; font-size:.9rem; opacity:.85; position:relative; z-index:1;">
+    <span style="margin-right:24px;">&#127970; ADO: <strong>${ado_org} / ${ado_project}</strong></span>
+    <span style="margin-right:24px;">&#128049; GitHub: <strong>${gh_org}</strong></span>
+    <span>&#128197; ${scanDate}</span>
+  </div>
+  <div style="display:inline-block; background:rgba(255,255,255,.2); backdrop-filter:blur(8px); padding:4px 14px; border-radius:20px; font-size:.8rem; font-weight:600; margin-top:12px; position:relative; z-index:1;">
+    &#9989; Migration Rate: ${pctMigrated}% ($((successCount + partialCount)) of ${totalCount} pipelines)
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ===== KPI CARDS ===== -->
+  <div class="meta-grid" style="margin-top:24px;">
+    <div class="meta-card" style="text-align:center;">
+      <div style="font-size:1.6rem;">&#128202;</div>
+      <div class="meta-value" style="font-size:2.2rem; color:#2563eb;">${totalCount}</div>
+      <div class="meta-label">Total Pipelines</div>
+    </div>
+    <div class="meta-card" style="text-align:center;">
+      <div style="font-size:1.6rem;">&#9989;</div>
+      <div class="meta-value" style="font-size:2.2rem; color:#10b981;">${successCount}</div>
+      <div class="meta-label">Successful</div>
+    </div>
+    <div class="meta-card" style="text-align:center;">
+      <div style="font-size:1.6rem;">&#9888;&#65039;</div>
+      <div class="meta-value" style="font-size:2.2rem; color:#f59e0b;">${partialCount}</div>
+      <div class="meta-label">Partial</div>
+    </div>
+    <div class="meta-card" style="text-align:center;">
+      <div style="font-size:1.6rem;">&#10060;</div>
+      <div class="meta-value" style="font-size:2.2rem; color:#ef4444;">${failedCount}</div>
+      <div class="meta-label">Failed / Error</div>
+    </div>
+    <div class="meta-card" style="text-align:center;">
+      <div style="font-size:1.6rem;">&#128196;</div>
+      <div class="meta-value" style="font-size:2.2rem; color:#6b7280;">${noOutputCount}</div>
+      <div class="meta-label">No Output</div>
+    </div>
+  </div>
+
+  <!-- ===== READINESS CHART ===== -->
+  <h2><span class="sec-icon">&#127760;</span>Migration Breakdown</h2>
+  <div class="dashboard-grid">
+    <div>
+      <table class="breakdown-table">
+        <tr>
+          <td><span class="dot" style="background:#10b981"></span> Successful</td>
+          <td class="num">${successCount}</td>
+          <td><div class="mini-bar"><div class="mini-fill" style="width:${pctSuccess}%;background:#10b981"></div></div></td>
+          <td class="num">${pctSuccess}%</td>
+        </tr>
+        <tr>
+          <td><span class="dot" style="background:#f59e0b"></span> Partial</td>
+          <td class="num">${partialCount}</td>
+          <td><div class="mini-bar"><div class="mini-fill" style="width:${pctPartial}%;background:#f59e0b"></div></div></td>
+          <td class="num">${pctPartial}%</td>
+        </tr>
+        <tr>
+          <td><span class="dot" style="background:#ef4444"></span> Failed / Error</td>
+          <td class="num">${failedCount}</td>
+          <td><div class="mini-bar"><div class="mini-fill" style="width:${pctFailed}%;background:#ef4444"></div></div></td>
+          <td class="num">${pctFailed}%</td>
+        </tr>
+        <tr>
+          <td><span class="dot" style="background:#6b7280"></span> No Output</td>
+          <td class="num">${noOutputCount}</td>
+          <td><div class="mini-bar"><div class="mini-fill" style="width:${pctNoOutput}%;background:#6b7280"></div></div></td>
+          <td class="num">${pctNoOutput}%</td>
+        </tr>
+      </table>
+      <!-- Stacked bar -->
+      <div style="display:flex; height:14px; border-radius:7px; overflow:hidden; margin-top:16px;">
+        <div style="width:${pctSuccess}%;background:#10b981"></div>
+        <div style="width:${pctPartial}%;background:#f59e0b"></div>
+        <div style="width:${pctFailed}%;background:#ef4444"></div>
+        <div style="width:${pctNoOutput}%;background:#6b7280"></div>
+      </div>
+    </div>
+    <div class="chart-box">
+      <svg class="donut-svg" width="160" height="160" viewBox="0 0 42 42">
+        <circle class="donut-hole" cx="21" cy="21" r="15.91549431"></circle>
+        <circle class="donut-ring" cx="21" cy="21" r="15.91549431"></circle>
+        <circle class="donut-segment-1" cx="21" cy="21" r="15.91549431"></circle>
+        <circle class="donut-segment-2" cx="21" cy="21" r="15.91549431"></circle>
+        <circle class="donut-segment-3" cx="21" cy="21" r="15.91549431"></circle>
+        <circle class="donut-segment-4" cx="21" cy="21" r="15.91549431"></circle>
+        <g class="donut-text" style="transform: rotate(90deg); transform-origin: center;">
+          <text class="donut-percent" x="21" y="20">${pctMigrated}%</text>
+          <text class="donut-label" x="21" y="25">Migrated</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ===== PIPELINE DETAILS ===== -->
+  <h2><span class="sec-icon">&#128736;</span>Pipeline Details</h2>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Pipeline</th><th>Target Repo</th><th>Mode</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+${pipelineTableRows}
+    </tbody>
+  </table>
+
+  <!-- ===== GENERATED WORKFLOW FILES ===== -->
+  <h2><span class="sec-icon">&#128196;</span>Generated Workflow Files</h2>
+${workflowSection}
+
+  <!-- ===== POST-MIGRATION CHECKLIST ===== -->
+  <div class="checklist">
+    <h2 style="margin-top:0;"><span class="sec-icon">&#9997;&#65039;</span>Post-Migration Checklist</h2>
+    <label class="checklist-item"><input type="checkbox"/><span>Review generated GitHub Actions YAML for correctness</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Create GitHub Actions secrets: Settings &gt; Secrets &gt; Actions</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Configure environments with protection rules (replaces ADO gates)</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Set up self-hosted runners if needed</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Configure OIDC for Azure deployments (replaces service connections)</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Test trigger each workflow in GitHub Actions</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Disable original ADO pipelines after verification</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Update branch policies and PR triggers</span></label>
+  </div>
+
+  <div class="footer">
+    Generated by <strong>ADO-to-GitHub Migration Accelerator</strong> &mdash; Pipeline Migration Module &bull; ${scanDate}
+  </div>
+</div>
 
 </body>
 </html>
