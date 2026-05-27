@@ -191,10 +191,24 @@ stages:
             checkout=$(jq -n '{name:"Checkout repository", uses:"actions/checkout@v4"}')
             workflow=$(echo "$workflow" | jq ".jobs.migrated.steps += [$checkout]")
 
-            jq -c '.tasks[]' "$jsonfile" 2>/dev/null | while IFS= read -r task; do
-              step=$(build_step "$task")
-              workflow=$(echo "$workflow" | jq ".jobs.migrated.steps += [$step]")
-            done
+            # ── CORRECTED: Retrieve tasks whether root-level or nested under value list
+            is_list=$(jq '.value // empty' "$jsonfile")
+            if [[ -n "$is_list" && "$is_list" != "null" ]]; then
+              tasks_json=$(jq -c '.value[0].tasks[]' "$jsonfile" 2>/dev/null)
+            else
+              tasks_json=$(jq -c '.tasks[]' "$jsonfile" 2>/dev/null)
+            fi
+
+            # Check if we have tasks to iterate over
+            if [[ -n "$tasks_json" ]]; then
+              while IFS= read -r task; do
+                [[ -z "$task" ]] && continue
+                step=$(build_step "$task")
+                workflow=$(echo "$workflow" | jq ".jobs.migrated.steps += [$step]")
+              done <<< "$tasks_json"
+            else
+              echo "⚠️ No tasks found in $FILENAME"
+            fi
 
             echo "$workflow" | yq -P > "$OUTPUT_DIR/${FILENAME}.yml"
             echo "  ✔ Written: ${FILENAME}.yml"
@@ -241,7 +255,6 @@ stages:
           CLONE_DIR="$(Agent.TempDirectory)/github-repo"
 
           # Clone target GitHub repo using GH_PAT and GH_ORG / GH_REPO
-          # Formats URL as: https://x-access-token:<PAT>@github.com/<org>/<repo>.git
           git clone "https://x-access-token:${GH_PAT}@github.com/${GH_ORG}/${GH_REPO}.git" "$CLONE_DIR"
           cd "$CLONE_DIR"
           
@@ -273,4 +286,4 @@ stages:
         GH_ORG: $(GH_Org)
         GH_PAT: $(GH_PAT)
         GH_REPO: $(GitHub_Repo)
-        GH_BRANCH: 'main'  # Adjust as needed (e.g. use another variable from the group if available)
+        GH_BRANCH: 'main'
