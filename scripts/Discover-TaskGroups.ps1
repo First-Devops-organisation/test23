@@ -49,15 +49,17 @@ Write-Host "[+] Initializing Task Group Discovery..." -ForegroundColor Cyan
         New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     }
 
-    # Clean Org URL
-    $OrgName = $Organization
-    if ($Organization -match "dev.azure.com/([^/]+)") {
-        $OrgName = $Matches[1]
-    } elseif ($Organization -match "https://([^.]+)\.visualstudio\.com") {
-        $OrgName = $Matches[1]
+    # Prepare Base URL
+    $BaseUrl = "https://dev.azure.com/$Organization"
+    if ($Organization.StartsWith("http", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $BaseUrl = $Organization.TrimEnd("/")
+    } elseif ($Organization -match "\.visualstudio\.com") {
+        $BaseUrl = "https://$($Organization.TrimEnd('/'))"
     }
-    $OrgName = $OrgName.Trim("/")
 
+    # Base API URL
+    $ApiUrl = "$BaseUrl/$Project/_apis/distributedtask/taskgroups?api-version=7.1-preview.1"
+    
     # Prepare Auth Header
     $AuthBytes = [System.Text.Encoding]::ASCII.GetBytes(":$Pat")
     $AuthBase64 = [System.Convert]::ToBase64String($AuthBytes)
@@ -66,9 +68,7 @@ Write-Host "[+] Initializing Task Group Discovery..." -ForegroundColor Cyan
         "Accept"        = "application/json"
     }
 
-    # Base API URL
-    $ApiUrl = "https://dev.azure.com/$OrgName/$Project/_apis/distributedtask/taskgroups?api-version=7.1-preview.1"
-Write-Host "[+] Querying ADO API for Task Groups in project '$Project'..." -ForegroundColor Yellow
+Write-Host "[+] Querying ADO API: GET $ApiUrl" -ForegroundColor Yellow
     
     $Response = $null
     $MaxRetries = 3
