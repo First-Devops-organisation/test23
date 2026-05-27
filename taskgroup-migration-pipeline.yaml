@@ -1,156 +1,103 @@
-# azure-pipelines-migrate-taskgroups.yml
-# =========================================================================
-# Azure DevOps YAML Pipeline
-# 3-Step Process: Discover -> Convert -> Push Workflows to GitHub
-# =========================================================================
+trigger: none
+pr: none
 
-trigger: none                     # manual trigger only
+parameters:
+  - name: ado_org
+    displayName: 'Azure DevOps Organization URL or Name'
+    type: string
+  - name: ado_project
+    displayName: 'Azure DevOps Project Name'
+    type: string
+  - name: output_mode
+    displayName: 'Output format'
+    type: string
+    default: 'composite-action'
+    values:
+      - 'composite-action'
+      - 'workflow'
+  - name: target_repo
+    displayName: 'Target GitHub repo (owner/repo) for migrated workflows'
+    type: string
+  - name: filter
+    displayName: 'Task group name filter (glob pattern)'
+    type: string
+    default: '*'
+  - name: dry_run
+    displayName: 'Dry run (discover + convert only, no push)'
+    type: boolean
+    default: true
+
+variables:
+  OUTPUT_DIR: '$(Build.SourcesDirectory)/output'
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'windows-latest'
 
-# ─────────────────────────────────────────────────────────────────────────
-# Link your Variable Groups from ADO Library
-# ─────────────────────────────────────────────────────────────────────────
-variables:
-  - group: 'repo-migration-discove' # Contains: ADO_Org, ADO_PAT, ADO_Project, ADO_Repo
-  - group: 'repo-migration-migrate' # Contains: GH_Org, GH_PAT, GitHub_Repo, GitHub_User
-
-stages:
-
-# =========================================================================
-# STEP 1: DISCOVER (Audit Azure DevOps configuration)
-# =========================================================================
-- stage: Discover
-  displayName: '1. Discover Pipelines & Task Groups'
-  jobs:
-  - job: AuditADO
-    displayName: 'Audit Azure DevOps'
+jobs:
+  - job: MigrateTaskGroups
+    displayName: 'Migrate Task Groups'
     steps:
-    - bash: |
-        # Login to GitHub Container Registry using GITHUB PAT
-        echo "$(GH_PAT)" | docker login ghcr.io -u token --password-stdin
-      displayName: 'Authenticate with GHCR'
-      env:
-        GH_PAT: $(GH_PAT)
+      - checkout: self
 
-    - bash: |
-        mkdir -p $(Build.ArtifactStagingDirectory)/audit-report
-        
-        # Run Importer audit to discover all pipelines and task groups
-        docker run --rm \
-          -e PERSONAL_ACCESS_TOKEN="${ADO_PAT}" \
-          -e AZURE_DEVOPS_ORGANIZATION="${ADO_Org}" \
-          -e AZURE_DEVOPS_PROJECT="${ADO_Project}" \
-          -v "$(Build.ArtifactStagingDirectory)/audit-report:/data" \
-          ghcr.io/github/github-actions-importer-cli:latest \
-          azure-devops audit --output-dir /data
-      displayName: 'Discover and Audit ADO Assets'
-      env:
-        ADO_PAT: $(ADO_PAT)
-        ADO_Org: $(ADO_Org)
-        ADO_Project: $(ADO_Project)
+      - pwsh: |
+          New-Item -ItemType Directory -Path $(OUTPUT_DIR) -Force
+        displayName: 'Initialize Directories'
 
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Audit Discovery Report'
-      inputs:
-        PathtoPublish: '$(Build.ArtifactStagingDirectory)/audit-report'
-        ArtifactName: 'audit-report'
-        publishLocation: 'Container'
-
-# =========================================================================
-# STEP 2: CONVERT (Generate GitHub Actions YAML files)
-# =========================================================================
-- stage: Convert
-  displayName: '2. Convert to Action YAML'
-  dependsOn: Discover
-  jobs:
-  - job: ForecastWorkflows
-    displayName: 'Forecast Actions Workflows'
-    steps:
-    - bash: |
-        echo "$(GH_PAT)" | docker login ghcr.io -u token --password-stdin
-      displayName: 'Authenticate with GHCR'
-      env:
-        GH_PAT: $(GH_PAT)
-
-    - bash: |
-        mkdir -p $(Build.ArtifactStagingDirectory)/workflows
-        
-        # Generate the converted Actions YAML files into the staging directory
-        docker run --rm \
-          -e PERSONAL_ACCESS_TOKEN="${ADO_PAT}" \
-          -e AZURE_DEVOPS_ORGANIZATION="${ADO_Org}" \
-          -e AZURE_DEVOPS_PROJECT="${ADO_Project}" \
-          -v "$(Build.ArtifactStagingDirectory)/workflows:/data" \
-          ghcr.io/github/github-actions-importer-cli:latest \
-          azure-devops forecast --output-dir /data
-      displayName: 'Convert and Generate YAML workflows'
-      env:
-        ADO_PAT: $(ADO_PAT)
-        ADO_Org: $(ADO_Org)
-        ADO_Project: $(ADO_Project)
-
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Generated Workflows'
-      inputs:
-        PathtoPublish: '$(Build.ArtifactStagingDirectory)/workflows'
-        ArtifactName: 'github-workflows'
-        publishLocation: 'Container'
-
-# =========================================================================
-# STEP 3: MIGRATE (Push to target GitHub Repository)
-# =========================================================================
-- stage: Migrate
-  displayName: '3. Push to GitHub Repository'
-  dependsOn: Convert
-  jobs:
-  - job: PushWorkflows
-    displayName: 'Git Push Workflows'
-    steps:
-    - task: DownloadBuildArtifacts@0
-      displayName: 'Download Generated Workflows'
-      inputs:
-        buildType: 'current'
-        downloadType: 'single'
-        artifactName: 'github-workflows'
-        downloadPath: '$(System.ArtifactsDirectory)'
-
-    - task: Bash@3
-      displayName: 'Push to Target GitHub Repo'
-      inputs:
-        targetType: 'inline'
-        script: |
-          set -euo pipefail
-
-          WORKFLOW_DIR="$(System.ArtifactsDirectory)/github-workflows"
-          CLONE_DIR="$(Agent.TempDirectory)/github-repo"
-
-          # Clone your target repository using the mapped variable credentials
-          git clone "https://x-access-token:${GH_PAT}@github.com/${GH_ORG}/${GH_REPO}.git" "$CLONE_DIR"
-          cd "$CLONE_DIR"
+      - pwsh: |
+          $TargetRepoSplit = "${{ parameters.target_repo }}" -split "/"
+          $GitHubOrg = $TargetRepoSplit[0]
+          $GitHubRepo = $TargetRepoSplit[1]
           
-          # Ensure checkout main branch
-          git checkout "main" || git checkout -b "main"
+          $Params = @{
+              AdoOrganization = "${{ parameters.ado_org }}"
+              AdoProject      = "${{ parameters.ado_project }}"
+              AdoPat          = "$(ADO_PAT)"
+              OutputMode      = "${{ parameters.output_mode }}"
+              Filter          = "${{ parameters.filter }}"
+              OutputDir       = "$(OUTPUT_DIR)"
+          }
+          
+          if ("${{ parameters.dry_run }}" -ne "True") {
+              $Params["GitHubOrg"] = $GitHubOrg
+              $Params["GitHubRepo"] = $GitHubRepo
+              $Params["GitHubPat"] = "$(GH_MIGRATION_PAT)"
+          } else {
+              $Params["DryRun"] = $true
+          }
+          
+          # Run the main orchestrator script
+          .\scripts\Migrate-TaskGroups.ps1 @Params
+        displayName: 'Run Discovery and Conversion'
+        env:
+          ADO_PAT: $(ADO_PAT)
+          GH_MIGRATION_PAT: $(GH_MIGRATION_PAT)
 
-          # Populate .github/workflows directory with generated YAML files
-          mkdir -p .github/workflows
-          cp "$WORKFLOW_DIR"/*.yml .github/workflows/ 2>/dev/null || cp "$WORKFLOW_DIR"/*.yaml .github/workflows/ 2>/dev/null || echo "No workflows to copy"
+      - task: PublishPipelineArtifact@1
+        displayName: 'Upload Discovered Task Groups'
+        inputs:
+          targetPath: '$(OUTPUT_DIR)/discovered/'
+          artifact: 'discovered-taskgroups'
+          publishLocation: 'pipeline'
+        condition: always()
 
-          # Setup Importer Git Author
-          git config user.name "GitHub Actions Importer"
-          git config user.email "importer-bot@github.com"
+      - task: PublishPipelineArtifact@1
+        displayName: 'Upload Migrated Workflows'
+        inputs:
+          targetPath: '$(OUTPUT_DIR)/migrated/'
+          artifact: 'migrated-workflows'
+          publishLocation: 'pipeline'
+        condition: always()
 
-          # Commit & Push
-          git add .github/workflows/
-          if git diff --cached --quiet; then
-            echo "Workflows already match repository. Nothing to push."
-          else
-            git commit -m "chore: migrate task groups and pipelines via GH Importer [automated]"
-            git push origin "main"
-            echo "✅ Workflows successfully migrated and pushed."
-          fi
-      env:
-        GH_ORG: $(GH_Org)
-        GH_PAT: $(GH_PAT)
-        GH_REPO: $(GitHub_Repo)
+      - pwsh: |
+          $ReportPath = "$(OUTPUT_DIR)/migration-report.md"
+          if (Test-Path $ReportPath) {
+              $Content = Get-Content $ReportPath -Raw
+              Write-Host "##vso[task.uploadsummary]$ReportPath"
+          } else {
+              $SummaryError = "### [WARN] Migration Report Not Generated`nSee logs for details."
+              $SummaryPath = "$(OUTPUT_DIR)/error-summary.md"
+              $SummaryError | Out-File -FilePath $SummaryPath -Encoding utf8
+              Write-Host "##vso[task.uploadsummary]$SummaryPath"
+          }
+        displayName: 'Publish Job Summary'
+        condition: always()
