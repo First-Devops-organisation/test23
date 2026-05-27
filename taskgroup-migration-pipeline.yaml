@@ -105,11 +105,11 @@ stages:
                 ADO_ORG_NAME=$(echo "$(ADO_Org)" | sed -E 's|https?://dev.azure.com/([^/]+).*|\1|')
                 
                 echo "Migrating Task Groups to GitHub..."
-                gh actions-importer migrate azure-devops pipeline \
+                gh actions-importer migrate azure-devops release \
                     --output-dir "output/migrated" \
                     --azure-devops-organization "$ADO_ORG_NAME" \
                     --azure-devops-project "$(ADO_Project)" \
-                    --pipeline-id "1" \
+                    --release-id "$(ADO_Pipeline_ID)" \
                     --config-file-path "output/taskgroups/config.yml" \
                     --target-url "$TARGET_URL"
 
