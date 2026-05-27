@@ -209,7 +209,7 @@ stages:
             displayName: "Publish Mannequin Reports"
             condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
               artifact: "MannequinReports"
               publishLocation: pipeline
 
@@ -286,7 +286,7 @@ stages:
             displayName: "Download Mannequin Reports"
             inputs:
               artifact: "MannequinReports"
-              path: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              path: '$(Build.SourcesDirectory)/repo-migration/output/reports'
 
           - task: Bash@3
             displayName: "Reclaim Mannequins"
@@ -327,6 +327,6 @@ stages:
             displayName: "Publish Reclaim Results"
             condition: always()
             inputs:
-              targetPath: '$(Build.SourcesDirectory)\repo-migration\output\reports'
+              targetPath: '$(Build.SourcesDirectory)/repo-migration/output/reports'
               artifact: "ReclaimResults"
               publishLocation: pipeline
