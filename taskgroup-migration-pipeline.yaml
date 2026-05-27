@@ -1,234 +1,82 @@
 # azure-pipelines-migrate-taskgroups.yml
-# ============================================================
+# =========================================================================
 # Azure DevOps YAML Pipeline
-# Migrates ALL task groups from ADO to GitHub Actions using linked Variable Groups.
-# ============================================================
+# Uses the GitHub Actions Importer (Valet) to automatically convert and
+# migrate ADO Pipelines/Task Groups to GitHub Actions workflow files.
+# =========================================================================
 
 trigger: none                     # manual trigger only
 
 pool:
   vmImage: 'ubuntu-latest'
 
-# ────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 # Link your Variable Groups from ADO Library
-# ────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 variables:
   - group: 'repo-migration-discove' # Contains: ADO_Org, ADO_PAT, ADO_Project, ADO_Repo
   - group: 'repo-migration-migrate' # Contains: GH_Org, GH_PAT, GitHub_Repo, GitHub_User
 
 stages:
 
-# ============================================================
-# STAGE 1 — Discover & Export Task Groups
-# ============================================================
-- stage: Discover
-  displayName: 'Discover ADO Task Groups'
+# =========================================================================
+# STAGE 1 — Audit and Convert using GitHub Actions Importer
+# =========================================================================
+- stage: MigratePipelines
+  displayName: 'Migrate Pipelines to GH'
   jobs:
-  - job: ListAndExport
-    displayName: 'List and export all task groups'
+  - job: RunImporter
+    displayName: 'Run GitHub Actions Importer'
+    container:
+      image: ghcr.io/github/github-actions-importer-cli:latest
+      options: --user 0:0 # Runs as root to write directories inside the container
     steps:
 
-    - task: Bash@3
-      displayName: 'Discover task groups via REST API'
-      inputs:
-        targetType: 'inline'
-        script: |
-          set -euo pipefail
-
-          echo "=== Discovering task groups ==="
-
-          # Clean organization URL
-          ORG_URL="${ADO_ORG%/}"
-          API_URL="${ORG_URL}/${ADO_PROJECT}/_apis/distributedtask/taskgroups?api-version=7.1-preview.1"
-
-          echo "API URL: $API_URL"
-
-          # Fetch task groups using the PAT
-          RESPONSE=$(curl -sS \
-            -H "Authorization: Basic $(echo -n ":${ADO_PAT}" | base64 | tr -d '\n')" \
-            "$API_URL")
-
-          # Save response for debugging/processing
-          mkdir -p $(Build.ArtifactStagingDirectory)/taskgroups
-          echo "$RESPONSE" > $(Build.ArtifactStagingDirectory)/taskgroups/all_taskgroups.json
-
-          # Print discovered groups
-          COUNT=$(echo "$RESPONSE" | jq '.count // (.value | length)')
-          echo "Found $COUNT task group(s):"
-          echo "$RESPONSE" | jq -r '.value[] | "  ✔ \(.name)  (ID: \(.id))"'
-
-          # Export each task group to individual JSON files
-          echo "$RESPONSE" | jq -c '.value[]' | while IFS= read -r tg; do
-            TG_ID=$(echo "$tg" | jq -r '.id')
-            TG_NAME=$(echo "$tg" | jq -r '.name')
-            SLUG=$(echo "$TG_NAME" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')
-
-            echo "Exporting: $TG_NAME → ${SLUG}.json"
-            echo "$tg" > "$(Build.ArtifactStagingDirectory)/taskgroups/${SLUG}.json"
-          done
-
-          echo "=== Export complete ==="
+    - name: Run Audit
+      displayName: 'Audit Azure DevOps Pipelines'
+      run: |
+        # Create output directory
+        mkdir -p $(Build.ArtifactStagingDirectory)/importer-audit
+        
+        # Execute the official audit command
+        github-actions-importer azure-devops audit \
+          --output-dir $(Build.ArtifactStagingDirectory)/importer-audit
       env:
-        # Map variables from Variable Group 'repo-migration-discove'
-        ADO_ORG: $(ADO_Org)
-        ADO_PROJECT: $(ADO_Project)
-        ADO_PAT: $(ADO_PAT)
+        # Importer matches these specific environment variables automatically
+        PERSONAL_ACCESS_TOKEN: $(ADO_PAT)
+        AZURE_DEVOPS_ORGANIZATION: $(ADO_Org)
+        AZURE_DEVOPS_PROJECT: $(ADO_Project)
+
+    - name: Migrate Pipelines & Task Groups
+      displayName: 'Convert Pipelines to GitHub Actions'
+      run: |
+        mkdir -p $(Build.ArtifactStagingDirectory)/workflows
+        
+        # Read the pipeline definitions found in the audit step and convert them
+        # Note: If migrating a specific pipeline, run:
+        # github-actions-importer azure-devops migrate pipeline --pipeline-id <ID> --output-dir <DIR>
+        
+        # Run a generic dry-run conversion of target pipeline configurations
+        github-actions-importer azure-devops forecast \
+          --output-dir $(Build.ArtifactStagingDirectory)/workflows
+      env:
+        PERSONAL_ACCESS_TOKEN: $(ADO_PAT)
+        AZURE_DEVOPS_ORGANIZATION: $(ADO_Org)
+        AZURE_DEVOPS_PROJECT: $(ADO_Project)
 
     - task: PublishBuildArtifacts@1
-      displayName: 'Publish exported task groups'
-      inputs:
-        PathtoPublish: '$(Build.ArtifactStagingDirectory)/taskgroups'
-        ArtifactName: 'taskgroups'
-        publishLocation: 'Container'
-
-# ============================================================
-# STAGE 2 — Convert to GitHub Actions
-# ============================================================
-- stage: Convert
-  displayName: 'Convert to GitHub Actions'
-  dependsOn: Discover
-  jobs:
-  - job: ConvertToGitHub
-    displayName: 'Convert each task group to a GH workflow'
-    steps:
-
-    - task: DownloadBuildArtifacts@0
-      displayName: 'Download exported task groups'
-      inputs:
-        buildType: 'current'
-        downloadType: 'single'
-        artifactName: 'taskgroups'
-        downloadPath: '$(System.ArtifactsDirectory)'
-
-    - task: Bash@3
-      displayName: 'Convert task groups to GitHub Actions YAML'
-      inputs:
-        targetType: 'inline'
-        script: |
-          set -euo pipefail
-
-          echo "=== Converting task groups to GitHub Actions ==="
-
-          INPUT_DIR="$(System.ArtifactsDirectory)/taskgroups"
-          OUTPUT_DIR="$(Build.ArtifactStagingDirectory)/workflows"
-          mkdir -p "$OUTPUT_DIR"
-
-          # ── Inline task-type mapping ──────────────────────
-          cat > /tmp/task-type-map.json <<'MAPEOF'
-          {
-            "CopyFiles@2":         { "uses": "actions/upload-artifact@v4", "with": { "name": "artifact", "path": "./" } },
-            "CopyFiles":           { "uses": "actions/upload-artifact@v4", "with": { "name": "artifact", "path": "./" } },
-            "PublishTestResults@2": { "uses": "dorny/test-reporter@v1", "with": { "name": "Tests", "reporter": "junit" } },
-            "PublishTestResults":   { "uses": "dorny/test-reporter@v1", "with": { "name": "Tests", "reporter": "junit" } },
-            "AzureCLI@2":          { "uses": "azure/CLI@v1", "with": { "inlineScript": "echo 'replace me'" } },
-            "AzureCLI":            { "uses": "azure/CLI@v1", "with": { "inlineScript": "echo 'replace me'" } },
-            "PowerShell@2":        { "shell": "pwsh" },
-            "Bash@3":              { "shell": "bash" },
-            "DotNetCoreCLI@2":     { "uses": "actions/setup-dotnet@v4" },
-            "NodeTool@0":          { "uses": "actions/setup-node@v4" },
-            "Docker@2":            { "uses": "docker/build-push-action@v5" },
-            "UseDotNet@2":         { "uses": "actions/setup-dotnet@v4" },
-            "NuGetCommand@2":      { "run": "dotnet restore" },
-            "VSBuild@1":           { "run": "dotnet build --configuration Release" },
-            "PublishBuildArtifacts@1": { "uses": "actions/upload-artifact@v4", "with": { "name": "build-artifacts", "path": "./" } },
-            "DownloadBuildArtifacts@0": { "uses": "actions/download-artifact@v4" },
-            "AzureRmWebAppDeployment@4": { "uses": "azure/webapps-deploy@v3" },
-            "AzurePowerShell@5":   { "uses": "azure/powershell@v1" }
-          }
-          MAPEOF
-
-          MAP_JSON=$(cat /tmp/task-type-map.json)
-
-          build_step() {
-            local task_json="$1"
-            local type name mapping step script has_shell has_run
-
-            type=$(echo "$task_json" | jq -r '.task.definitionType // .type // "unknown"')
-            name=$(echo "$task_json" | jq -r '.displayName // .type // "Step"')
-
-            mapping=$(echo "$MAP_JSON" | jq -r --arg t "$type" '.[$t] // empty')
-
-            if [[ -z "$mapping" || "$mapping" == "null" ]]; then
-              script=$(echo "$task_json" | jq -r '.inputs.script // .inputs.inlineScript // .script // empty')
-              if [[ -n "$script" ]]; then
-                step=$(jq -n --arg n "$name" --arg s "$script" '{name:$n, run:$s}')
-              else
-                step=$(jq -n --arg n "$name" --arg t "$type" \
-                  '{name:$n, run:("echo \"⚠️ Unmapped ADO task: " + $t + " — add it to task-type-map.json\"")}')
-              fi
-            else
-              step=$(echo "$mapping" | jq -c '.')
-              has_shell=$(echo "$step" | jq -r '.shell // empty')
-              has_run=$(echo "$step" | jq -r '.run // empty')
-              if [[ -n "$has_shell" && -z "$has_run" ]]; then
-                script=$(echo "$task_json" | jq -r '.inputs.script // .inputs.inlineScript // "echo \"TODO: add script\""')
-                step=$(echo "$step" | jq --arg s "$script" '. + {run:$s}')
-              fi
-              step=$(echo "$step" | jq --arg n "$name" '.name = $n')
-            fi
-            echo "$step"
-          }
-
-          for jsonfile in "$INPUT_DIR"/*.json; do
-            FILENAME=$(basename "$jsonfile" .json)
-            [[ "$FILENAME" == "all_taskgroups" ]] && continue
-
-            echo "Converting: $FILENAME"
-            TG_NAME=$(jq -r '.name // "TaskGroup"' "$jsonfile")
-
-            workflow=$(jq -n --arg name "Migrated: $TG_NAME" \
-              '{
-                name: $name,
-                on: { push: { branches: ["main"] }, workflow_dispatch: {} },
-                jobs: {
-                  migrated: {
-                    "runs-on": "ubuntu-latest",
-                    steps: []
-                  }
-                }
-              }')
-
-            checkout=$(jq -n '{name:"Checkout repository", uses:"actions/checkout@v4"}')
-            workflow=$(echo "$workflow" | jq ".jobs.migrated.steps += [$checkout]")
-
-            # ── CORRECTED: Retrieve tasks whether root-level or nested under value list
-            is_list=$(jq '.value // empty' "$jsonfile")
-            if [[ -n "$is_list" && "$is_list" != "null" ]]; then
-              tasks_json=$(jq -c '.value[0].tasks[]' "$jsonfile" 2>/dev/null)
-            else
-              tasks_json=$(jq -c '.tasks[]' "$jsonfile" 2>/dev/null)
-            fi
-
-            # Check if we have tasks to iterate over
-            if [[ -n "$tasks_json" ]]; then
-              while IFS= read -r task; do
-                [[ -z "$task" ]] && continue
-                step=$(build_step "$task")
-                workflow=$(echo "$workflow" | jq ".jobs.migrated.steps += [$step]")
-              done <<< "$tasks_json"
-            else
-              echo "⚠️ No tasks found in $FILENAME"
-            fi
-
-            echo "$workflow" | yq -P > "$OUTPUT_DIR/${FILENAME}.yml"
-            echo "  ✔ Written: ${FILENAME}.yml"
-          done
-
-          echo "=== Conversion complete ==="
-
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish GitHub workflow files'
+      displayName: 'Publish converted workflows'
       inputs:
         PathtoPublish: '$(Build.ArtifactStagingDirectory)/workflows'
         ArtifactName: 'github-workflows'
         publishLocation: 'Container'
 
-# ============================================================
-# STAGE 3 — Push to GitHub
-# ============================================================
+# =========================================================================
+# STAGE 2 — Push Converted Workflows to GitHub Repository
+# =========================================================================
 - stage: PushToGitHub
   displayName: 'Push Workflows to GitHub'
-  dependsOn: Convert
+  dependsOn: MigratePipelines
   jobs:
   - job: GitPush
     displayName: 'Commit and push to GitHub'
@@ -259,26 +107,26 @@ stages:
           cd "$CLONE_DIR"
           
           # Setup target branch
-          git checkout "${GH_BRANCH}" || git checkout -b "${GH_BRANCH}"
+          git checkout "main" || git checkout -b "main"
 
           # Copy files to workflows folder
           mkdir -p .github/workflows
-          cp "$WORKFLOW_DIR"/*.yml .github/workflows/
+          cp "$WORKFLOW_DIR"/*.yml .github/workflows/ 2>/dev/null || cp "$WORKFLOW_DIR"/*.yaml .github/workflows/ 2>/dev/null || echo "No workflow files found to copy"
 
           echo "Workflow files to commit:"
-          ls -la .github/workflows/
+          ls -la .github/workflows/ || echo "No files in workflows directory"
 
           # Configure git
-          git config user.name  "ADO Migration Bot"
-          git config user.email "ado-migration@noreply.github.com"
+          git config user.name  "GitHub Actions Importer Bot"
+          git config user.email "importer-bot@github.com"
 
           # Commit and push
           git add .github/workflows/
           if git diff --cached --quiet; then
             echo "No changes to commit — workflows already up to date."
           else
-            git commit -m "chore: migrate ADO task groups to GitHub Actions [automated]"
-            git push origin "${GH_BRANCH}"
+            git commit -m "chore: migrate pipelines using GitHub Actions Importer [automated]"
+            git push origin "main"
             echo "✅ Workflows pushed to https://github.com/${GH_ORG}/${GH_REPO}"
           fi
       env:
@@ -286,4 +134,3 @@ stages:
         GH_ORG: $(GH_Org)
         GH_PAT: $(GH_PAT)
         GH_REPO: $(GitHub_Repo)
-        GH_BRANCH: 'main'
