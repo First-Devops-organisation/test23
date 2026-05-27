@@ -20,7 +20,8 @@ parameters:
   default: false
 
 variables:
-- group: DevOpsConfigtest # Contains Pat, Git_pat, Organization, Project
+- group: DevOpsConfigtest
+- group: 'repo-migration-discove-release' # Contains Pat, Git_pat, Organization, Project
 
 stages:
 
@@ -111,8 +112,8 @@ stages:
 
   - job: Migrate_Secrets_repo_migration_discove_release
     variables:
-    - group: DevOpsConfig
-    - group: 'repo-migration-discove-release'
+    - group: DevOpsConfigtest
+    # - group: 'repo-migration-discove-release'
     steps:
     - task: PowerShell@2
       displayName: 'Secrets: repo-migration-discove-release'
