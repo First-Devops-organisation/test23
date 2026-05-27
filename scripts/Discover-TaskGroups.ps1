@@ -66,6 +66,7 @@ Write-Host "[+] Initializing Task Group Discovery..." -ForegroundColor Cyan
         return
     }
     
+    $Pat = $Pat.Trim()
     $AuthBytes = [System.Text.Encoding]::ASCII.GetBytes(":$Pat")
     $AuthBase64 = [System.Convert]::ToBase64String($AuthBytes)
     $Headers = @{
