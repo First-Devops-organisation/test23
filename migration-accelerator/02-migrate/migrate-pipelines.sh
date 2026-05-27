@@ -468,6 +468,25 @@ $workflowRows
         workflowSection="      <p class='empty-state'><span class='empty-icon'>&#128194;</span>No workflow YAML files generated.</p>"
     fi
     
+    local breakdownRows="
+        <tr><td><span class='dot' style='background:#10b981'></span> Successful / Skipped</td>
+            <td class='num'>$successCount</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctSuccess}%;background:#10b981'></div></div></td>
+            <td class='num'>${pctSuccess}%</td></tr>
+        <tr><td><span class='dot' style='background:#f59e0b'></span> Partial</td>
+            <td class='num'>$partialCount</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctPartial}%;background:#f59e0b'></div></div></td>
+            <td class='num'>${pctPartial}%</td></tr>
+        <tr><td><span class='dot' style='background:#ef4444'></span> Failed / Error</td>
+            <td class='num'>$failedCount</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctFailed}%;background:#ef4444'></div></div></td>
+            <td class='num'>${pctFailed}%</td></tr>
+        <tr><td><span class='dot' style='background:#6b7280'></span> No Output</td>
+            <td class='num'>$noOutputCount</td>
+            <td><div class='mini-bar'><div class='mini-fill' style='width:${pctNoOutput}%;background:#6b7280'></div></div></td>
+            <td class='num'>${pctNoOutput}%</td></tr>
+"
+    
     local htmlOut="$dashboardDir/index.html"
     cat <<EOF > "$htmlOut"
 <!DOCTYPE html>
@@ -696,7 +715,252 @@ $workflowRows
     color: #6b7280;
     text-align: center;
   }
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #10b981 0%, #3b82f6 50%, #6366f1 100%);
+    padding: 40px 48px;
+    color: #ffffff;
+  }
+  .header h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    border: none;
+    padding: 0;
+    color: #fff;
+  }
+  .header .meta {
+    margin-top: 8px;
+    font-size: 0.9rem;
+    opacity: 0.9;
+  }
+  .header .meta span {
+    margin-right: 24px;
+  }
+  .header .badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.2);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 12px;
+  }
+  /* Panel */
+  .panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px 0 rgba(0,0,0,0.05);
+  }
+  .panel h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: none;
+  }
+  /* KPI Row */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .kpi {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 24px 20px;
+    text-align: center;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  }
+  .kpi .kpi-icon { font-size: 1.6rem; margin-bottom: 8px; }
+  .kpi .kpi-val { font-size: 2.4rem; font-weight: 800; }
+  .kpi .kpi-label {
+    font-size: 0.78rem;
+    color: #475569;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+  .kpi.total .kpi-val { color: #3b82f6; }
+  .kpi.success .kpi-val { color: #10b981; }
+  .kpi.partial .kpi-val { color: #f59e0b; }
+  .kpi.failed .kpi-val { color: #ef4444; }
+  .kpi.nooutput .kpi-val { color: #6b7280; }
+  /* Chart Grid */
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 32px;
+    align-items: center;
+  }
+  @media (max-width: 768px) {
+    .chart-grid { grid-template-columns: 1fr; }
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  }
+  .donut-wrap {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    margin: 0 auto;
+  }
+  .donut {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: conic-gradient(
+      #10b981 0% ${seg1}%,
+      #f59e0b ${seg1}% ${seg2}%,
+      #ef4444 ${seg2}% ${seg3}%,
+      #6b7280 ${seg3}% 100%
+    );
+  }
+  .donut-mask-inner {
+    position: absolute;
+    top: 20px; left: 20px;
+    width: 180px; height: 180px;
+    background: #ffffff;
+    border-radius: 50%;
+  }
+  .donut-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 3;
+  }
+  .donut-center .big {
+    font-size: 2.6rem;
+    font-weight: 800;
+    color: #3b82f6;
+  }
+  .donut-center .sub {
+    font-size: 0.8rem;
+    color: #475569;
+  }
+  /* Breakdown */
+  .breakdown { border-collapse: collapse; }
+  .breakdown td {
+    padding: 12px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.9rem;
+  }
+  .breakdown tr:last-child td { border-bottom: none; }
+  /* Stacked Bar */
+  .stacked-bar {
+    display: flex;
+    height: 14px;
+    border-radius: 7px;
+    overflow: hidden;
+    margin-top: 16px;
+    background: #f1f5f9;
+  }
+  .seg { height: 100%; }
 </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>&#128640; Pipeline Migration Report</h1>
+  <div class="meta">
+    <span>&#127970; ADO: <strong>$ado_org / $ado_project</strong></span>
+    <span>&#128049; GitHub: <strong>$gh_org</strong></span>
+    <span>&#128197; $scanDate</span>
+  </div>
+  <div class="badge">&#9989; Migration Rate: $pctMigrated% ($((successCount + partialCount)) of $totalCount pipelines)</div>
+</div>
+
+<div class="container">
+
+  <div class="kpi-row">
+    <div class="kpi total">
+      <div class="kpi-icon">&#128202;</div>
+      <div class="kpi-val">$totalCount</div>
+      <div class="kpi-label">Total Pipelines</div>
+    </div>
+    <div class="kpi success">
+      <div class="kpi-icon">&#9989;</div>
+      <div class="kpi-val">$successCount</div>
+      <div class="kpi-label">Successful</div>
+    </div>
+    <div class="kpi partial">
+      <div class="kpi-icon">&#9888;&#65039;</div>
+      <div class="kpi-val">$partialCount</div>
+      <div class="kpi-label">Partial</div>
+    </div>
+    <div class="kpi failed">
+      <div class="kpi-icon">&#10060;</div>
+      <div class="kpi-val">$failedCount</div>
+      <div class="kpi-label">Failed / Error</div>
+    </div>
+    <div class="kpi nooutput">
+      <div class="kpi-icon">&#128196;</div>
+      <div class="kpi-val">$noOutputCount</div>
+      <div class="kpi-label">No Output</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="sec-icon">&#127760;</span> Migration Breakdown</h2>
+    <div class="chart-grid">
+      <div class="donut-wrap">
+        <div class="donut"></div>
+        <div class="donut-mask-inner"></div>
+        <div class="donut-center">
+          <div class="big">$pctMigrated%</div>
+          <div class="sub">Migrated</div>
+        </div>
+      </div>
+      <div>
+        <table class="breakdown">
+$breakdownRows
+        </table>
+        <div class="stacked-bar">
+          <div class="seg" style="width:${pctSuccess}%;background:#10b981"></div>
+          <div class="seg" style="width:${pctPartial}%;background:#f59e0b"></div>
+          <div class="seg" style="width:${pctFailed}%;background:#ef4444"></div>
+          <div class="seg" style="width:${pctNoOutput}%;background:#6b7280"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="sec-icon">&#128736;&#65039;</span> Pipeline Details</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Pipeline</th><th>Target Repo</th><th>Mode</th><th>Status</th></tr></thead>
+      <tbody>
+$pipelineTableRows
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2><span class="sec-icon">&#128196;</span> Generated Workflow Files</h2>
+$workflowSection
+  </div>
+
+  <div class="panel">
+    <h2><span class="sec-icon">&#9997;&#65039;</span> Post-Migration Checklist</h2>
+    <label class="checklist-item"><input type="checkbox"/><span>Review generated GitHub Actions YAML for correctness</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Create GitHub Actions secrets: Settings &gt; Secrets &gt; Actions</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Configure environments with protection rules (replaces ADO gates)</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Set up self-hosted runners if needed</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Configure OIDC for Azure deployments (replaces service connections)</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Test trigger each workflow in GitHub Actions</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Disable original ADO pipelines after verification</span></label>
+    <label class="checklist-item"><input type="checkbox"/><span>Update branch policies and PR triggers</span></label>
+  </div>
+
+  <div class="footer">
+    Generated by <strong>ADO-to-GitHub Migration Accelerator</strong> &mdash; Pipeline Migration Module &bull; $scanDate
+  </div>
+</div>
 
 </body>
 </html>
