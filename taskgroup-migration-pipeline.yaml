@@ -13,9 +13,10 @@ pool:
 # Variables should be set in an ADO Variable Group or pipeline UI
 # Required: GH_PAT, ADO_PAT, GH_TARGET_REPO, ANCHOR_PIPELINE_ID
 variables:
-  - group: repo-migration-discove
-  - group: repo-migration-migrate
-
+  - name: ADO_ORG
+    value: $(System.CollectionUri) # Auto-resolves to https://dev.azure.com/org
+  - name: ADO_PROJECT
+    value: $(System.TeamProject)   # Auto-resolves to current project name
 
 stages:
   - stage: MigrateTaskGroups
@@ -46,11 +47,15 @@ stages:
               script: |
                 mkdir -p output/taskgroups
                 
-                echo "Scanning ADO for Task Groups..."
+                # System.CollectionUri returns https://dev.azure.com/org/
+                # actions-importer expects just 'org'
+                ADO_ORG_NAME=$(echo "$(ADO_ORG)" | sed -E 's|https?://dev.azure.com/([^/]+).*|\1|')
+                
+                echo "Scanning ADO for Task Groups in org: $ADO_ORG_NAME, project: $(ADO_PROJECT)..."
                 gh actions-importer audit azure-devops \
                     --output-dir "output/taskgroups" \
-                    --azure-devops-organization "$(ADO_ORG)" \
-                    --azure-devops-project "$(ADO_PROJECT)" > /dev/null 2>&1
+                    --azure-devops-organization "$ADO_ORG_NAME" \
+                    --azure-devops-project "$(ADO_PROJECT)"
                 
                 if [ ! -f "output/taskgroups/config.yml" ]; then
                     echo "##vso[task.logissue type=error]Failed to discover any Task Groups."
@@ -98,11 +103,12 @@ stages:
               targetType: 'inline'
               script: |
                 TARGET_URL="https://github.com/$(GH_TARGET_REPO)"
+                ADO_ORG_NAME=$(echo "$(ADO_ORG)" | sed -E 's|https?://dev.azure.com/([^/]+).*|\1|')
                 
                 echo "Migrating Task Groups to GitHub..."
                 gh actions-importer migrate azure-devops pipeline \
                     --output-dir "output/migrated" \
-                    --azure-devops-organization "$(ADO_ORG)" \
+                    --azure-devops-organization "$ADO_ORG_NAME" \
                     --azure-devops-project "$(ADO_PROJECT)" \
                     --pipeline-id "$(ANCHOR_PIPELINE_ID)" \
                     --config-file-path "output/taskgroups/config.yml" \
