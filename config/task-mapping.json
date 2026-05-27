@@ -1,0 +1,498 @@
+{
+  "_metadata": {
+    "version": "1.0.0",
+    "description": "Azure DevOps Task Type to GitHub Actions mapping config"
+  },
+  "mappings": {
+    "PowerShell@2": {
+      "type": "script",
+      "shell": "pwsh"
+    },
+    "PowerShell": {
+      "type": "script",
+      "shell": "pwsh"
+    },
+    "Bash@3": {
+      "type": "script",
+      "shell": "bash"
+    },
+    "Bash": {
+      "type": "script",
+      "shell": "bash"
+    },
+    "CmdLine@2": {
+      "type": "script",
+      "shell": "cmd"
+    },
+    "CmdLine": {
+      "type": "script",
+      "shell": "cmd"
+    },
+    "ExtractFiles@1": {
+      "type": "action",
+      "uses": "montudor/action-zip@v1",
+      "with": {
+        "args": "unzip -o ${{ inputs.archiveFilePatterns }} -d ${{ inputs.destinationFolder }}"
+      }
+    },
+    "ExtractFiles": {
+      "type": "action",
+      "uses": "montudor/action-zip@v1",
+      "with": {
+        "args": "unzip -o ${{ inputs.archiveFilePatterns }} -d ${{ inputs.destinationFolder }}"
+      }
+    },
+    "qetza.replacetokens.replacetokens-task.replacetokens@6": {
+      "type": "action",
+      "uses": "cschleiden/replace-tokens@v1.3",
+      "with": {
+        "tokenPrefix": "${{ inputs.tokenPrefix }}",
+        "tokenSuffix": "${{ inputs.tokenSuffix }}",
+        "files": "${{ inputs.targetFiles }}"
+      }
+    },
+    "qetza.replacetokens.replacetokens-task.replacetokens": {
+      "type": "action",
+      "uses": "cschleiden/replace-tokens@v1.3",
+      "with": {
+        "tokenPrefix": "${{ inputs.tokenPrefix }}",
+        "tokenSuffix": "${{ inputs.tokenSuffix }}",
+        "files": "${{ inputs.targetFiles }}"
+      }
+    },
+    "ArchiveFiles@2": {
+      "type": "script",
+      "shell": "bash",
+      "template": "zip -r ${{ inputs.archiveFile }} ${{ inputs.rootFolderOrFile }}"
+    },
+    "ArchiveFiles": {
+      "type": "script",
+      "shell": "bash",
+      "template": "zip -r ${{ inputs.archiveFile }} ${{ inputs.rootFolderOrFile }}"
+    },
+    "PublishBuildArtifacts@1": {
+      "type": "action",
+      "uses": "actions/upload-artifact@v4",
+      "with": {
+        "name": "${{ inputs.ArtifactName }}",
+        "path": "${{ inputs.PathtoPublish }}"
+      }
+    },
+    "PublishBuildArtifacts": {
+      "type": "action",
+      "uses": "actions/upload-artifact@v4",
+      "with": {
+        "name": "${{ inputs.ArtifactName }}",
+        "path": "${{ inputs.PathtoPublish }}"
+      }
+    },
+    "PublishPipelineArtifact@1": {
+      "type": "action",
+      "uses": "actions/upload-artifact@v4",
+      "with": {
+        "name": "${{ inputs.artifact }}",
+        "path": "${{ inputs.targetPath }}"
+      }
+    },
+    "PublishPipelineArtifact": {
+      "type": "action",
+      "uses": "actions/upload-artifact@v4",
+      "with": {
+        "name": "${{ inputs.artifact }}",
+        "path": "${{ inputs.targetPath }}"
+      }
+    },
+    "AzureWebApp@1": {
+      "type": "action",
+      "uses": "azure/webapps-deploy@v3",
+      "with": {
+        "app-name": "${{ inputs.appName }}",
+        "package": "${{ inputs.package }}"
+      }
+    },
+    "AzureWebApp": {
+      "type": "action",
+      "uses": "azure/webapps-deploy@v3",
+      "with": {
+        "app-name": "${{ inputs.appName }}",
+        "package": "${{ inputs.package }}"
+      }
+    },
+    "AzureRmWebAppDeployment@4": {
+      "type": "action",
+      "uses": "azure/webapps-deploy@v3",
+      "with": {
+        "app-name": "${{ inputs.WebAppName }}",
+        "package": "${{ inputs.Package }}"
+      }
+    },
+    "AzureRmWebAppDeployment": {
+      "type": "action",
+      "uses": "azure/webapps-deploy@v3",
+      "with": {
+        "app-name": "${{ inputs.WebAppName }}",
+        "package": "${{ inputs.Package }}"
+      }
+    },
+    "AzureCLI@2": {
+      "type": "action",
+      "uses": "azure/CLI@v2",
+      "with": {
+        "inlineScript": "${{ inputs.scriptLocation == 'inlineScript' && inputs.inlineScript || inputs.scriptPath }}"
+      }
+    },
+    "AzureCLI": {
+      "type": "action",
+      "uses": "azure/CLI@v2",
+      "with": {
+        "inlineScript": "${{ inputs.scriptLocation == 'inlineScript' && inputs.inlineScript || inputs.scriptPath }}"
+      }
+    },
+    "AzurePowerShell@5": {
+      "type": "action",
+      "uses": "azure/powershell@v2",
+      "with": {
+        "inlineScript": "${{ inputs.ScriptType == 'InlineScript' && inputs.Inline || inputs.ScriptPath }}",
+        "azPSVersion": "latest"
+      }
+    },
+    "AzurePowerShell": {
+      "type": "action",
+      "uses": "azure/powershell@v2",
+      "with": {
+        "inlineScript": "${{ inputs.ScriptType == 'InlineScript' && inputs.Inline || inputs.ScriptPath }}",
+        "azPSVersion": "latest"
+      }
+    },
+    "DotNetCoreCLI@2": {
+      "type": "action",
+      "uses": "actions/setup-dotnet@v4"
+    },
+    "DotNetCoreCLI": {
+      "type": "action",
+      "uses": "actions/setup-dotnet@v4"
+    },
+    "NuGetCommand@2": {
+      "type": "script",
+      "shell": "bash",
+      "template": "dotnet restore"
+    },
+    "NuGetCommand": {
+      "type": "script",
+      "shell": "bash",
+      "template": "dotnet restore"
+    },
+    "VSBuild@1": {
+      "type": "script",
+      "shell": "bash",
+      "template": "dotnet build --configuration Release"
+    },
+    "VSBuild": {
+      "type": "script",
+      "shell": "bash",
+      "template": "dotnet build --configuration Release"
+    },
+    "Docker@2": {
+      "type": "action",
+      "uses": "docker/build-push-action@v6",
+      "with": {
+        "context": "${{ inputs.context }}",
+        "tags": "${{ inputs.tags }}"
+      }
+    },
+    "Docker": {
+      "type": "action",
+      "uses": "docker/build-push-action@v6",
+      "with": {
+        "context": "${{ inputs.context }}",
+        "tags": "${{ inputs.tags }}"
+      }
+    },
+    "NodeTool@0": {
+      "type": "action",
+      "uses": "actions/setup-node@v4",
+      "with": {
+        "node-version": "${{ inputs.versionSpec }}"
+      }
+    },
+    "NodeTool": {
+      "type": "action",
+      "uses": "actions/setup-node@v4",
+      "with": {
+        "node-version": "${{ inputs.versionSpec }}"
+      }
+    },
+    "UseDotNet@2": {
+      "type": "action",
+      "uses": "actions/setup-dotnet@v4",
+      "with": {
+        "dotnet-version": "${{ inputs.version }}"
+      }
+    },
+    "UseDotNet": {
+      "type": "action",
+      "uses": "actions/setup-dotnet@v4",
+      "with": {
+        "dotnet-version": "${{ inputs.version }}"
+      }
+    },
+    "DownloadBuildArtifacts@0": {
+      "type": "action",
+      "uses": "actions/download-artifact@v4",
+      "with": {
+        "name": "${{ inputs.artifactName }}"
+      }
+    },
+    "DownloadBuildArtifacts": {
+      "type": "action",
+      "uses": "actions/download-artifact@v4",
+      "with": {
+        "name": "${{ inputs.artifactName }}"
+      }
+    },
+    "DownloadPipelineArtifact@2": {
+      "type": "action",
+      "uses": "actions/download-artifact@v4",
+      "with": {
+        "name": "${{ inputs.artifact }}"
+      }
+    },
+    "DownloadPipelineArtifact": {
+      "type": "action",
+      "uses": "actions/download-artifact@v4",
+      "with": {
+        "name": "${{ inputs.artifact }}"
+      }
+    },
+    "CopyFiles@2": {
+      "type": "action",
+      "uses": "actions/upload-artifact@v4",
+      "with": {
+        "name": "copied-files",
+        "path": "${{ inputs.SourceFolder }}"
+      }
+    },
+    "CopyFiles": {
+      "type": "action",
+      "uses": "actions/upload-artifact@v4",
+      "with": {
+        "name": "copied-files",
+        "path": "${{ inputs.SourceFolder }}"
+      }
+    },
+    "PublishTestResults@2": {
+      "type": "action",
+      "uses": "dorny/test-reporter@v1",
+      "with": {
+        "name": "Test Results",
+        "path": "${{ inputs.testResultsFiles }}",
+        "reporter": "dotnet-junit"
+      }
+    },
+    "PublishTestResults": {
+      "type": "action",
+      "uses": "dorny/test-reporter@v1",
+      "with": {
+        "name": "Test Results",
+        "path": "${{ inputs.testResultsFiles }}",
+        "reporter": "dotnet-junit"
+      }
+    },
+    "VSTest@2": {
+      "type": "script",
+      "shell": "pwsh",
+      "template": "dotnet test"
+    },
+    "VSTest": {
+      "type": "script",
+      "shell": "pwsh",
+      "template": "dotnet test"
+    },
+    "AzureKeyVault@2": {
+      "type": "action",
+      "uses": "Azure/get-keyvault-secrets@v1",
+      "with": {
+        "keyvault": "${{ inputs.KeyVaultName }}",
+        "secrets": "${{ inputs.SecretsFilter }}"
+      }
+    },
+    "AzureKeyVault": {
+      "type": "action",
+      "uses": "Azure/get-keyvault-secrets@v1",
+      "with": {
+        "keyvault": "${{ inputs.KeyVaultName }}",
+        "secrets": "${{ inputs.SecretsFilter }}"
+      }
+    },
+    "DeleteFiles@1": {
+      "type": "script",
+      "shell": "bash",
+      "template": "rm -rf ${{ inputs.SourceFolder }}/${{ inputs.Contents }}"
+    },
+    "DeleteFiles": {
+      "type": "script",
+      "shell": "bash",
+      "template": "rm -rf ${{ inputs.SourceFolder }}/${{ inputs.Contents }}"
+    },
+    "UseRubyVersion@0": {
+      "type": "action",
+      "uses": "ruby/setup-ruby@v1",
+      "with": {
+        "ruby-version": "${{ inputs.versionSpec }}"
+      }
+    },
+    "UseRubyVersion": {
+      "type": "action",
+      "uses": "ruby/setup-ruby@v1",
+      "with": {
+        "ruby-version": "${{ inputs.versionSpec }}"
+      }
+    },
+    "UsePythonVersion@0": {
+      "type": "action",
+      "uses": "actions/setup-python@v5",
+      "with": {
+        "python-version": "${{ inputs.versionSpec }}"
+      }
+    },
+    "UsePythonVersion": {
+      "type": "action",
+      "uses": "actions/setup-python@v5",
+      "with": {
+        "python-version": "${{ inputs.versionSpec }}"
+      }
+    },
+    "AzureFileCopy@4": {
+      "type": "action",
+      "uses": "azure/CLI@v2",
+      "with": {
+        "inlineScript": "az storage blob upload-batch --source ${{ inputs.SourcePath }} --destination ${{ inputs.DestinationContainer }}"
+      }
+    },
+    "AzureFileCopy": {
+      "type": "action",
+      "uses": "azure/CLI@v2",
+      "with": {
+        "inlineScript": "az storage blob upload-batch --source ${{ inputs.SourcePath }} --destination ${{ inputs.DestinationContainer }}"
+      }
+    },
+    "Npm@1": {
+      "type": "script",
+      "shell": "bash",
+      "template": "npm ${{ inputs.command }} ${{ inputs.verbose == 'true' && '--verbose' || '' }}"
+    },
+    "Npm": {
+      "type": "script",
+      "shell": "bash",
+      "template": "npm ${{ inputs.command }} ${{ inputs.verbose == 'true' && '--verbose' || '' }}"
+    },
+    "XamarinAndroid@1": {
+      "type": "script",
+      "shell": "pwsh",
+      "template": "msbuild ${{ inputs.projectFile }} /t:SignAndroidPackage /p:Configuration=${{ inputs.configuration }}"
+    },
+    "XamarinAndroid": {
+      "type": "script",
+      "shell": "pwsh",
+      "template": "msbuild ${{ inputs.projectFile }} /t:SignAndroidPackage /p:Configuration=${{ inputs.configuration }}"
+    },
+    "SonarQubePrepare@5": {
+      "type": "action",
+      "uses": "sonarsource/sonarqube-scan-action@v2",
+      "with": {
+        "args": "-Dsonar.projectKey=${{ inputs.SonarQube }}"
+      }
+    },
+    "SonarQubePrepare": {
+      "type": "action",
+      "uses": "sonarsource/sonarqube-scan-action@v2",
+      "with": {
+        "args": "-Dsonar.projectKey=${{ inputs.SonarQube }}"
+      }
+    },
+    "SonarQubeAnalyze@5": {
+      "type": "action",
+      "uses": "sonarsource/sonarqube-scan-action@v2"
+    },
+    "SonarQubeAnalyze": {
+      "type": "action",
+      "uses": "sonarsource/sonarqube-scan-action@v2"
+    },
+    "SonarQubePublish@5": {
+      "type": "action",
+      "uses": "sonarsource/sonarqube-quality-gate-action@v1"
+    },
+    "SonarQubePublish": {
+      "type": "action",
+      "uses": "sonarsource/sonarqube-quality-gate-action@v1"
+    },
+    "Kubernetes@1": {
+      "type": "action",
+      "uses": "azure/k8s-deploy@v5",
+      "with": {
+        "manifests": "${{ inputs.manifests }}"
+      }
+    },
+    "Kubernetes": {
+      "type": "action",
+      "uses": "azure/k8s-deploy@v5",
+      "with": {
+        "manifests": "${{ inputs.manifests }}"
+      }
+    },
+    "HelmDeploy@0": {
+      "type": "action",
+      "uses": "azure/k8s-deploy@v5",
+      "with": {
+        "action": "deploy"
+      }
+    },
+    "HelmDeploy": {
+      "type": "action",
+      "uses": "azure/k8s-deploy@v5",
+      "with": {
+        "action": "deploy"
+      }
+    },
+    "TerraformInstaller@0": {
+      "type": "action",
+      "uses": "hashicorp/setup-terraform@v3",
+      "with": {
+        "terraform_version": "${{ inputs.terraformVersion }}"
+      }
+    },
+    "TerraformInstaller": {
+      "type": "action",
+      "uses": "hashicorp/setup-terraform@v3",
+      "with": {
+        "terraform_version": "${{ inputs.terraformVersion }}"
+      }
+    },
+    "TerraformTaskV4@4": {
+      "type": "action",
+      "uses": "hashicorp/setup-terraform@v3"
+    },
+    "TerraformTaskV4": {
+      "type": "action",
+      "uses": "hashicorp/setup-terraform@v3"
+    }
+  },
+  "defaults": {
+    "fallback_shell": "bash",
+    "unmapped_behavior": "comment",
+    "runner": "ubuntu-latest"
+  },
+  "variable_mapping": {
+    "$(Build.SourcesDirectory)": "${{ github.workspace }}",
+    "$(Build.ArtifactStagingDirectory)": "${{ runner.temp }}/artifacts",
+    "$(Build.BuildId)": "${{ github.run_id }}",
+    "$(Build.BuildNumber)": "${{ github.run_number }}",
+    "$(System.DefaultWorkingDirectory)": "${{ github.workspace }}",
+    "$(Agent.TempDirectory)": "${{ runner.temp }}",
+    "$(Build.Repository.LocalPath)": "${{ github.workspace }}",
+    "$(Build.SourceBranch)": "${{ github.ref }}",
+    "$(Build.SourceBranchName)": "${{ github.ref_name }}",
+    "$(System.TeamFoundationCollectionUri)": "",
+    "$(System.TeamProject)": "${{ github.repository }}"
+  }
+}
