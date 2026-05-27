@@ -128,7 +128,7 @@ stages:
           }
           echo "$(Git_pat)" | gh auth login --with-token
           
-          $targetOrg = "First-Devops-organisation"
+          $targetOrg = "$(GH_Org)"
           $targetRepo = $mapping.targetRepo
           $targetEnv = $mapping.targetEnvironment
           $targetScope = $mapping.targetScope
@@ -160,7 +160,7 @@ stages:
           }
           echo "$(Git_pat)" | gh auth login --with-token
           
-          $targetOrg = "First-Devops-organisation"
+          $targetOrg = "$(GH_Org)"
           $targetRepo = $mapping.targetRepo
           $targetEnv = $mapping.targetEnvironment
           $targetScope = $mapping.targetScope
