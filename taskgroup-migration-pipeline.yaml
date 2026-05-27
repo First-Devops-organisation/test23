@@ -32,33 +32,27 @@ stages:
       options: --user 0:0 # Runs as root to write directories inside the container
     steps:
 
-    - name: Run Audit
-      displayName: 'Audit Azure DevOps Pipelines'
-      run: |
+    - script: |
         # Create output directory
         mkdir -p $(Build.ArtifactStagingDirectory)/importer-audit
         
         # Execute the official audit command
         github-actions-importer azure-devops audit \
           --output-dir $(Build.ArtifactStagingDirectory)/importer-audit
+      displayName: 'Audit Azure DevOps Pipelines'
       env:
         # Importer matches these specific environment variables automatically
         PERSONAL_ACCESS_TOKEN: $(ADO_PAT)
         AZURE_DEVOPS_ORGANIZATION: $(ADO_Org)
         AZURE_DEVOPS_PROJECT: $(ADO_Project)
 
-    - name: Migrate Pipelines & Task Groups
-      displayName: 'Convert Pipelines to GitHub Actions'
-      run: |
+    - script: |
         mkdir -p $(Build.ArtifactStagingDirectory)/workflows
-        
-        # Read the pipeline definitions found in the audit step and convert them
-        # Note: If migrating a specific pipeline, run:
-        # github-actions-importer azure-devops migrate pipeline --pipeline-id <ID> --output-dir <DIR>
         
         # Run a generic dry-run conversion of target pipeline configurations
         github-actions-importer azure-devops forecast \
           --output-dir $(Build.ArtifactStagingDirectory)/workflows
+      displayName: 'Convert Pipelines to GitHub Actions'
       env:
         PERSONAL_ACCESS_TOKEN: $(ADO_PAT)
         AZURE_DEVOPS_ORGANIZATION: $(ADO_Org)
