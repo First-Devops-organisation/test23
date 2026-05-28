@@ -18,7 +18,6 @@ steps:
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
   env:
-    # Notice this is now GH_PAT to match your variable group
     GH_TOKEN: $(GH_PAT) 
 
 # 2. Run the Audit (Discovery Phase)
@@ -28,7 +27,7 @@ steps:
       --azure-devops-organization $(ADO_Org) \
       --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
-      --output-dir $(Build.ArtifactStagingDirectory)/audit-results
+      --output-dir audit-results
   displayName: 'Discover (Audit) Task Groups & Pipelines'
   env:
     GH_TOKEN: $(GH_PAT)
@@ -40,7 +39,7 @@ steps:
       --azure-devops-organization $(ADO_Org) \
       --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
-      --output-dir $(Build.ArtifactStagingDirectory)/dry-run-results
+      --output-dir dry-run-results
   displayName: 'Generate GitHub Actions YAML (Dry-Run)'
   env:
     GH_TOKEN: $(GH_PAT)
@@ -48,7 +47,7 @@ steps:
 # 4. Publish Audit Report Artifact
 - task: PublishBuildArtifacts@1
   inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)/audit-results'
+    PathtoPublish: 'audit-results'
     ArtifactName: 'Audit_Discovery_Report'
     publishLocation: 'Container'
   displayName: 'Publish Discovery Report'
@@ -57,7 +56,7 @@ steps:
 # 5. Publish Generated YAML Artifact
 - task: PublishBuildArtifacts@1
   inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)/dry-run-results'
+    PathtoPublish: 'dry-run-results'
     ArtifactName: 'Generated_GitHub_YAML'
     publishLocation: 'Container'
   displayName: 'Publish Generated YAML Code'
