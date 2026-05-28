@@ -1,5 +1,4 @@
-# azure-pipelines-migrate.yml
-trigger: none # Run this manually
+trigger: none
 
 pool:
   vmImage: 'ubuntu-latest' 
@@ -9,22 +8,16 @@ variables:
 - group: repo-migration-discove
 
 steps:
-# 1. Install the GitHub Actions Importer Extension
 - bash: |
     echo "Authenticating GitHub CLI..."
     gh extension install github/gh-actions-importer
-    
-    echo "Updating Importer Docker Image..."
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
   env:
     GH_TOKEN: $(GH_PAT) 
 
-# 2. Run the Audit (Discovery Phase)
 - bash: |
     echo "Running Audit on Azure DevOps..."
-    
-    # Strip the URL prefix automatically
     CLEAN_ADO_ORG="$(ADO_Org)"
     CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
 
@@ -38,17 +31,14 @@ steps:
     GH_TOKEN: $(GH_PAT)
     GITHUB_ACCESS_TOKEN: $(GH_PAT)
 
-# 3. Run the Dry-Run (Generates the GitHub YAML)
 - bash: |
     echo "Running Dry-Run Migration..."
-    
-    # Strip the URL prefix automatically
     CLEAN_ADO_ORG="$(ADO_Org)"
     CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
 
     # IMPORTANT: Change '123' to your actual Pipeline ID!
     gh actions-importer dry-run azure-devops pipeline \
-      --pipeline-id 1156 \
+      --pipeline-id 123 \
       --azure-devops-organization $CLEAN_ADO_ORG \
       --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
@@ -58,10 +48,18 @@ steps:
     GH_TOKEN: $(GH_PAT)
     GITHUB_ACCESS_TOKEN: $(GH_PAT)
 
-# 4. Publish Audit Report Artifact
 - task: PublishBuildArtifacts@1
   inputs:
     PathtoPublish: 'audit-results'
     ArtifactName: 'Audit_Discovery_Report'
     publishLocation: 'Container'
-  displayName: 'sds'
+  displayName: 'Publish Discovery Report'
+  condition: always() 
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'dry-run-results'
+    ArtifactName: 'Generated_GitHub_YAML'
+    publishLocation: 'Container'
+  displayName: 'Publish Generated YAML Code'
+  condition: always()
