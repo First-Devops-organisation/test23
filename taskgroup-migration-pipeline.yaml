@@ -31,6 +31,7 @@ steps:
   displayName: 'Discover (Audit) Task Groups & Pipelines'
   env:
     GH_TOKEN: $(GH_PAT)
+    GITHUB_ACCESS_TOKEN: $(GH_PAT) # FIXED: Added specifically for the Importer
 
 # 3. Run the Dry-Run (Generates the GitHub YAML)
 - bash: |
@@ -43,6 +44,7 @@ steps:
   displayName: 'Generate GitHub Actions YAML (Dry-Run)'
   env:
     GH_TOKEN: $(GH_PAT)
+    GITHUB_ACCESS_TOKEN: $(GH_PAT) # FIXED: Added specifically for the Importer
 
 # 4. Publish Audit Report Artifact
 - task: PublishBuildArtifacts@1
