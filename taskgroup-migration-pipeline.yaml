@@ -1,16 +1,15 @@
 # azure-pipelines-migrate.yml
 
-# We use parameters so ADO prompts you when you run the pipeline
 parameters:
   - name: TaskGroupName
-    displayName: '🔍 DISCOVER: Enter Task Group Name to find its Pipeline IDs (e.g., test1)'
+    displayName: '🔍 DISCOVER: Enter Task Group Name (e.g., test1)'
     type: string
     default: 'test1'
   
   - name: ReleaseIdToMigrate
-    displayName: '🚀 MIGRATE: Enter the Release ID to dry-run (Leave blank to only Discover)'
+    displayName: '🚀 MIGRATE: Enter Release ID to dry-run (Leave as "none" to only Discover)'
     type: string
-    default: none
+    default: 'none'
 
 trigger: none
 
@@ -24,7 +23,7 @@ variables:
 steps:
 
 # ==========================================
-# PHASE 1: DISCOVER IDS (Runs if ID is blank)
+# PHASE 1: DISCOVER IDS (Runs if ID is 'none')
 # ==========================================
 - pwsh: |
     $org = "$(ADO_Org)".Replace("https://dev.azure.com/", "")
@@ -81,18 +80,18 @@ steps:
         Write-Host "💡 NEXT STEP: Run this pipeline again and type one of the IDs above into the 'MIGRATE' box!"
     }
   displayName: '🔍 Discover Release IDs for Task Group'
-  condition: eq('${{ parameters.ReleaseIdToMigrate }}', '') # Only runs if ID box is empty
+  condition: eq('${{ parameters.ReleaseIdToMigrate }}', 'none') 
 
 
 # ==========================================
-# PHASE 2: MIGRATE (Runs if ID is provided)
+# PHASE 2: MIGRATE (Runs if ID is NOT 'none')
 # ==========================================
 - bash: |
     echo "Authenticating GitHub CLI..."
     gh extension install github/gh-actions-importer
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
-  condition: ne('${{ parameters.ReleaseIdToMigrate }}', '') # Only runs if ID is provided
+  condition: ne('${{ parameters.ReleaseIdToMigrate }}', 'none') 
   env:
     GH_TOKEN: $(GH_PAT) 
 
@@ -110,7 +109,7 @@ steps:
       --azure-devops-access-token $(ADO_PAT) \
       --output-dir dry-run-results
   displayName: 'Generate GitHub Actions YAML (Dry-Run)'
-  condition: ne('${{ parameters.ReleaseIdToMigrate }}', '') # Only runs if ID is provided
+  condition: ne('${{ parameters.ReleaseIdToMigrate }}', 'none') 
   env:
     GH_TOKEN: $(GH_PAT)
     GITHUB_ACCESS_TOKEN: $(GH_PAT)
@@ -121,4 +120,4 @@ steps:
     ArtifactName: 'Generated_GitHub_YAML'
     publishLocation: 'Container'
   displayName: 'Publish Generated YAML Code'
-  condition: ne('${{ parameters.ReleaseIdToMigrate }}', '')
+  condition: ne('${{ parameters.ReleaseIdToMigrate }}', 'none')
