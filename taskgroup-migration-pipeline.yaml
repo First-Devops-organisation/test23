@@ -1,6 +1,15 @@
 # azure-pipelines-migrate.yml
 trigger: none
 
+parameters:
+  - name: Mode
+    displayName: 'What do you want to do?'
+    type: string
+    default: 'Discover'
+    values:
+      - 'Discover'
+      - 'Migrate'
+
 pool:
   vmImage: 'ubuntu-latest' 
 
@@ -11,11 +20,102 @@ variables:
 steps:
 - checkout: self
 
+# ==========================================
+# MODE: DISCOVER ALL TASK GROUPS
+# ==========================================
+- pwsh: |
+    $org = "$(ADO_Org)".Replace("https://dev.azure.com/", "")
+    $project = "$(ADO_Project)"
+    $pat = "$(ADO_PAT)"
+
+    $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$pat"))
+    $headers = @{ Authorization = "Basic $base64AuthInfo" }
+
+    Write-Host "🔍 Fetching all Task Groups in the project..."
+    $tgUrl = "https://dev.azure.com/$org/$project/_apis/distributedtask/taskgroups?api-version=7.0"
+    $tgResponse = Invoke-RestMethod -Uri $tgUrl -Headers $headers
+    
+    if ($tgResponse.value.Count -eq 0) {
+        Write-Host "No Task Groups found in this project."
+        exit 0
+    }
+    
+    # Create a dictionary to map Task Group ID to Task Group Name
+    $tgMap = @{}
+    foreach ($tg in $tgResponse.value) { $tgMap[$tg.id] = $tg.name }
+    
+    Write-Host "✅ Found $($tgMap.Count) Task Groups. Scanning pipelines to find where they are used..."
+    $findings = @()
+
+    # SCAN RELEASE PIPELINES
+    Write-Host "🔍 Scanning Release Pipelines..."
+    $rdUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions?api-version=7.0"
+    $rdResponse = Invoke-RestMethod -Uri $rdUrl -Headers $headers
+    
+    foreach ($def in $rdResponse.value) {
+        $fullDefUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions/$($def.id)?api-version=7.0"
+        $fullDef = Invoke-RestMethod -Uri $fullDefUrl -Headers $headers
+        
+        foreach ($env in $fullDef.environments) {
+            foreach ($phase in $env.deployPhases) {
+                foreach ($task in $phase.workflowTasks) {
+                    if ($tgMap.ContainsKey($task.taskId)) { 
+                        $findings += [PSCustomObject]@{ TaskGroupName = $tgMap[$task.taskId]; PipelineName = $def.name; PipelineId = $def.id; Type = "release" }
+                    }
+                }
+            }
+        }
+    }
+
+    # SCAN BUILD PIPELINES
+    Write-Host "🔍 Scanning Build Pipelines..."
+    $bdUrl = "https://dev.azure.com/$org/$project/_apis/build/definitions?api-version=7.0"
+    $bdResponse = Invoke-RestMethod -Uri $bdUrl -Headers $headers
+    
+    foreach ($def in $bdResponse.value) {
+        $fullDefUrl = "https://dev.azure.com/$org/$project/_apis/build/definitions/$($def.id)?api-version=7.0"
+        $fullDef = Invoke-RestMethod -Uri $fullDefUrl -Headers $headers
+        
+        if ($fullDef.process.type -eq 1) { 
+            foreach ($phase in $fullDef.process.phases) {
+                foreach ($step in $phase.steps) {
+                    if ($tgMap.ContainsKey($step.task.id)) { 
+                        $findings += [PSCustomObject]@{ TaskGroupName = $tgMap[$step.task.id]; PipelineName = $def.name; PipelineId = $def.id; Type = "pipeline" }
+                    }
+                }
+            }
+        }
+    }
+    
+    Write-Host "`n========================================================"
+    Write-Host "🎯 DISCOVERY REPORT: ALL TASK GROUPS"
+    Write-Host "========================================================"
+    
+    if ($findings.Count -eq 0) {
+        Write-Host "None of your Task Groups are currently being used in any pipelines!"
+    } else {
+        $grouped = $findings | Group-Object -Property TaskGroupName
+        foreach ($group in $grouped) {
+            Write-Host "`n📦 Task Group: $($group.Name)"
+            foreach ($item in $group.Group | Sort-Object -Unique -Property PipelineId, Type) {
+                Write-Host "   -> Used in $($item.Type): '$($item.PipelineName)' (ID: $($item.PipelineId))"
+                Write-Host "      JSON Format: { `"pipelineId`": `"$($item.PipelineId)`", `"type`": `"$($item.Type)`", `"targetRepo`": `"YOUR_GITHUB_REPO_URL_HERE`" }"
+            }
+        }
+    }
+  displayName: '🔍 Global Discovery: Find All Task Groups'
+  condition: eq('${{ parameters.Mode }}', 'Discover')
+
+
+# ==========================================
+# MODE: BULK MIGRATE TO GITHUB
+# ==========================================
 - bash: |
     echo "Authenticating GitHub CLI..."
     gh extension install github/gh-actions-importer
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
+  condition: eq('${{ parameters.Mode }}', 'Migrate')
   env:
     GH_TOKEN: $(GH_PAT) 
 
@@ -52,6 +152,7 @@ steps:
         
     done
   displayName: 'Bulk Migrate using JSON Config'
+  condition: eq('${{ parameters.Mode }}', 'Migrate')
   env:
     GH_TOKEN: $(GH_PAT)
     GITHUB_ACCESS_TOKEN: $(GH_PAT)
