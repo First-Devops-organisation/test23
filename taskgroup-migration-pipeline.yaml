@@ -24,10 +24,9 @@ steps:
 - bash: |
     echo "Running Audit on Azure DevOps..."
     
-    # This automatically strips the URL prefix from the variable
+    # Strip the URL prefix automatically
     CLEAN_ADO_ORG="$(ADO_Org)"
     CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
-    echo "Cleaned Organization Name: $CLEAN_ADO_ORG"
 
     gh actions-importer audit azure-devops \
       --azure-devops-organization $CLEAN_ADO_ORG \
@@ -43,11 +42,13 @@ steps:
 - bash: |
     echo "Running Dry-Run Migration..."
     
-    # Clean the org name here as well
+    # Strip the URL prefix automatically
     CLEAN_ADO_ORG="$(ADO_Org)"
     CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
 
-    gh actions-importer dry-run azure-devops \
+    # IMPORTANT: Change '123' to your actual Pipeline ID!
+    gh actions-importer dry-run azure-devops pipeline \
+      --pipeline-id 1156 \
       --azure-devops-organization $CLEAN_ADO_ORG \
       --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
@@ -63,14 +64,4 @@ steps:
     PathtoPublish: 'audit-results'
     ArtifactName: 'Audit_Discovery_Report'
     publishLocation: 'Container'
-  displayName: 'Publish Discovery Report'
-  condition: always() 
-
-# 5. Publish Generated YAML Artifact
-- task: PublishBuildArtifacts@1
-  inputs:
-    PathtoPublish: 'dry-run-results'
-    ArtifactName: 'Generated_GitHub_YAML'
-    publishLocation: 'Container'
-  displayName: 'Publish Generated YAML Code'
-  condition: always()
+  displayName: '
