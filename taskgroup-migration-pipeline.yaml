@@ -3,7 +3,7 @@ trigger: none
 
 parameters:
   - name: Mode
-    displayName: 'What do you want to do?'
+    displayName: '✨ What do you want to do?'
     type: string
     default: 'Discover'
     values:
@@ -21,32 +21,37 @@ steps:
 - checkout: self
 
 # ==========================================
-# MODE: DISCOVER ALL TASK GROUPS
+# MODE: DISCOVER ALL TASK GROUPS (FANCY)
 # ==========================================
 - pwsh: |
     $org = "$(ADO_Org)".Replace("https://dev.azure.com/", "")
     $project = "$(ADO_Project)"
     $pat = "$(ADO_PAT)"
-
     $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$pat"))
     $headers = @{ Authorization = "Basic $base64AuthInfo" }
 
-    Write-Host "🔍 Fetching all Task Groups in the project..."
+    Write-Host "##[section]🕵️‍♂️ INITIALIZING DISCOVERY ENGINE..."
+
+    # -- PHASE 1 --
+    Write-Host "##[group]📦 Phase 1: Fetching Task Groups"
     $tgUrl = "https://dev.azure.com/$org/$project/_apis/distributedtask/taskgroups?api-version=7.0"
     $tgResponse = Invoke-RestMethod -Uri $tgUrl -Headers $headers
     
     if ($tgResponse.value.Count -eq 0) {
-        Write-Host "No Task Groups found in this project."
+        Write-Host "##[warning]No Task Groups found in this project."
+        Write-Host "##[endgroup]"
         exit 0
     }
     
     $tgMap = @{}
     foreach ($tg in $tgResponse.value) { $tgMap[$tg.id] = $tg.name }
+    Write-Host "✅ Successfully loaded $($tgMap.Count) Task Groups into memory."
+    Write-Host "##[endgroup]"
     
-    Write-Host "✅ Found $($tgMap.Count) Task Groups. Scanning pipelines..."
     $findings = @()
 
-    # SCAN RELEASE PIPELINES
+    # -- PHASE 2 --
+    Write-Host "##[group]🚀 Phase 2: Scanning Release Pipelines"
     $rdUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions?api-version=7.0"
     $rdResponse = Invoke-RestMethod -Uri $rdUrl -Headers $headers
     
@@ -64,8 +69,11 @@ steps:
             }
         }
     }
+    Write-Host "✅ Release pipelines scanned successfully."
+    Write-Host "##[endgroup]"
 
-    # SCAN BUILD PIPELINES
+    # -- PHASE 3 --
+    Write-Host "##[group]🏗️ Phase 3: Scanning Build Pipelines"
     $bdUrl = "https://dev.azure.com/$org/$project/_apis/build/definitions?api-version=7.0"
     $bdResponse = Invoke-RestMethod -Uri $bdUrl -Headers $headers
     
@@ -83,14 +91,19 @@ steps:
             }
         }
     }
+    Write-Host "✅ Build pipelines scanned successfully."
+    Write-Host "##[endgroup]"
     
-    Write-Host "`n=========================================================================="
-    Write-Host "🎯 DISCOVERY COMPLETE! COPY THE JSON BLOCK BELOW INTO migration-config.json"
-    Write-Host "==========================================================================`n"
-    
+    # -- RESULTS FORMATTING --
+    Write-Host "##[section]📊 DISCOVERY SUMMARY REPORT"
     if ($findings.Count -eq 0) {
-        Write-Host "None of your Task Groups are currently being used in any pipelines!"
+        Write-Host "##[warning]None of your Task Groups are currently being used in any pipelines!"
     } else {
+        # Print a nice table
+        $findings | Sort-Object -Unique -Property PipelineId, Type | Format-Table -Property TaskGroupName, PipelineName, PipelineId, Type -AutoSize | Out-String | Write-Host
+        
+        Write-Host "##[section]📄 YOUR READY-TO-USE JSON CONFIGURATION"
+        Write-Host "##[command]Copy the block below and save it as 'migration-config.json' in your repo:`n"
         Write-Host "["
         
         $jsonItems = @()
@@ -101,24 +114,23 @@ steps:
                               "    `"pipelineId`": `"$($item.PipelineId)`",`n" +
                               "    `"type`": `"$($item.Type)`",`n" +
                               "    `"targetRepo`": `"https://github.com/YourOrg/YourRepo`",`n" +
-                              "    `"_comment`": `"Migrating from $($item.Type): $($item.PipelineName) (Uses Task Group: $($group.Name))`"`n" +
+                              "    `"_comment`": `"Migrating $($item.Type): $($item.PipelineName) (Uses Task Group: $($group.Name))`"`n" +
                               "  }"
                 $jsonItems += $jsonString
             }
         }
-        
         Write-Host ($jsonItems -join ",`n")
         Write-Host "`n]"
     }
-  displayName: '🔍 Global Discovery: Find All Task Groups'
+  displayName: '🔍 Global Discovery: Advanced Scanner'
   condition: eq('${{ parameters.Mode }}', 'Discover')
 
 
 # ==========================================
-# MODE: BULK MIGRATE TO GITHUB
+# MODE: BULK MIGRATE TO GITHUB (FANCY)
 # ==========================================
 - bash: |
-    echo "Authenticating GitHub CLI..."
+    echo "##[section]🛠️ Preparing GitHub Actions Importer Environment..."
     gh extension install github/gh-actions-importer
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
@@ -127,26 +139,32 @@ steps:
     GH_TOKEN: $(GH_PAT) 
 
 - bash: |
+    echo "
+    =======================================================
+      🚀 GITHUB ACTIONS BULK MIGRATION ENGINE INITIATED 🚀
+    =======================================================
+    "
+
     CLEAN_ADO_ORG="$(ADO_Org)"
     CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
     CONFIG_FILE="migration-config.json"
 
     if [ ! -f "$CONFIG_FILE" ]; then
-      echo "Error: $CONFIG_FILE not found in the repository."
+      echo "##[error]CRITICAL FAILURE: '$CONFIG_FILE' not found in the root of your repository."
+      echo "##[warning]Please run the 'Discover' mode first, create the file, and commit it to your repo!"
       exit 1
     fi
 
-    echo "Found $CONFIG_FILE! Starting bulk migration..."
+    echo "##[command]Config file verified. Commencing bulk processing..."
 
-    # Read the JSON file and loop through each item
     jq -c '.[]' $CONFIG_FILE | while read item; do
       PIPELINE_ID=$(echo $item | jq -r '.pipelineId')
       TYPE=$(echo $item | jq -r '.type')
       TARGET_REPO=$(echo $item | jq -r '.targetRepo')
+      COMMENT=$(echo $item | jq -r '._comment')
       
-      echo "=========================================================="
-      echo "🚀 Migrating $TYPE ID: $PIPELINE_ID to $TARGET_REPO"
-      echo "=========================================================="
+      echo "##[group]📦 Migrating: $COMMENT (ID: $PIPELINE_ID)"
+      echo "Target Destination: $TARGET_REPO"
       
       gh actions-importer migrate azure-devops $TYPE \
         --pipeline-id $PIPELINE_ID \
@@ -157,8 +175,11 @@ steps:
         --github-access-token $(GH_PAT) \
         --output-dir "migrate-results-$PIPELINE_ID"
         
+      echo "##[endgroup]"
     done
-  displayName: 'Bulk Migrate using JSON Config'
+    
+    echo "##[section]🎉 ALL MIGRATIONS COMPLETED SUCCESSFULLY!"
+  displayName: 'Bulk Migrate via migration-config.json'
   condition: eq('${{ parameters.Mode }}', 'Migrate')
   env:
     GH_TOKEN: $(GH_PAT)
