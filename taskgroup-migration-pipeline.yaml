@@ -56,14 +56,18 @@ steps:
     Write-Host "✅ Found Task Group ID: $tgId"
     $foundCount = 0
 
-    # SCAN RELEASE PIPELINES
+    # SCAN RELEASE PIPELINES (FIXED BUG)
     Write-Host "`n🔍 Scanning Release Pipelines..."
-    $rdUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions?api-version=7.0&`$expand=environments"
+    $rdUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions?api-version=7.0"
     $rdResponse = Invoke-RestMethod -Uri $rdUrl -Headers $headers
     
     foreach ($def in $rdResponse.value) {
+        # FIX: Now downloading the FULL definition for Releases so we can see the deep tasks
+        $fullDefUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions/$($def.id)?api-version=7.0"
+        $fullDef = Invoke-RestMethod -Uri $fullDefUrl -Headers $headers
+        
         $isUsed = $false
-        foreach ($env in $def.environments) {
+        foreach ($env in $fullDef.environments) {
             foreach ($phase in $env.deployPhases) {
                 foreach ($task in $phase.workflowTasks) {
                     if ($task.taskId -eq $tgId) { $isUsed = $true }
