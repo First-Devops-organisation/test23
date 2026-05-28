@@ -20,8 +20,8 @@ parameters:
   default: false
 
 variables:
-- group: DevOpsConfigtest
-- group: 'repo-migration-discove-release' # Contains Pat, Git_pat, Organization, Project
+- group: repo-migration-discove
+- group: repo-migration-migrate
 
 stages:
 
@@ -38,7 +38,7 @@ stages:
       displayName: 'Run Discovery Script'
       inputs:
         filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/discover-variable-usage.ps1'
-        arguments: '-Organization "$(Organization)" -Project "$(Project)" -Pat "$(Pat)"'
+        arguments: '-Organization "$(ADO_Org)" -Project "$(ADO_Project)" -Pat "$(ADO_PAT)"'
         pwsh: true
         workingDirectory: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover'
 
@@ -70,7 +70,7 @@ stages:
       displayName: 'Run Migration Script'
       inputs:
         filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/migrate-variables.ps1'
-        arguments: '-Organization "$(Organization)" -Project "$(Project)" -AdoPat "$(Pat)" -GhPat "$(Git_pat)" -ConfigPath "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json"'
+        arguments: '-Organization "$(ADO_Org)" -Project "$(ADO_Project)" -AdoPat "$(ADO_PAT)" -GhPat "$(GH_PAT)" -ConfigPath "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json"'
         pwsh: true
 
     - task: PublishPipelineArtifact@1
@@ -112,8 +112,9 @@ stages:
 
   - job: Migrate_Secrets_repo_migration_discove_release
     variables:
-    - group: DevOpsConfigtest
-    # - group: 'repo-migration-discove-release'
+    - group: repo-migration-discove
+    - group: repo-migration-migrate
+    - group: 'repo-migration-discove-release'
     steps:
     - task: PowerShell@2
       displayName: 'Secrets: repo-migration-discove-release'
@@ -127,7 +128,7 @@ stages:
               Write-Host "##[warning] SKIPPED: 'repo-migration-discove-release' is not marked for migration in variable-mappings.json."
               exit 0
           }
-          echo "$(Git_pat)" | gh auth login --with-token
+          echo "$(GH_PAT)" | gh auth login --with-token
           
           $targetOrg = "$(GH_Org)"
           $targetRepo = $mapping.targetRepo
@@ -144,7 +145,8 @@ stages:
 
   - job: Migrate_Secrets_repo_migration_discove_uat_i
     variables:
-    - group: DevOpsConfig
+    - group: repo-migration-discove
+    - group: repo-migration-migrate
     - group: 'repo-migration-discove-uat_i'
     steps:
     - task: PowerShell@2
@@ -159,7 +161,7 @@ stages:
               Write-Host "##[warning] SKIPPED: 'repo-migration-discove-uat_i' is not marked for migration in variable-mappings.json."
               exit 0
           }
-          echo "$(Git_pat)" | gh auth login --with-token
+          echo "$(GH_PAT)" | gh auth login --with-token
           
           $targetOrg = "$(GH_Org)"
           $targetRepo = $mapping.targetRepo
