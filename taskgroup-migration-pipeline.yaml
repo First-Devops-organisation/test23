@@ -1,3 +1,6 @@
+Here is the final, complete YAML. You can copy this entire block and use it to replace your current pipeline!
+
+```yaml
 # azure-pipelines-migrate.yml
 trigger: none
 
@@ -40,15 +43,13 @@ steps:
         exit 0
     }
     
-    # Create a dictionary to map Task Group ID to Task Group Name
     $tgMap = @{}
     foreach ($tg in $tgResponse.value) { $tgMap[$tg.id] = $tg.name }
     
-    Write-Host "✅ Found $($tgMap.Count) Task Groups. Scanning pipelines to find where they are used..."
+    Write-Host "✅ Found $($tgMap.Count) Task Groups. Scanning pipelines..."
     $findings = @()
 
     # SCAN RELEASE PIPELINES
-    Write-Host "🔍 Scanning Release Pipelines..."
     $rdUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions?api-version=7.0"
     $rdResponse = Invoke-RestMethod -Uri $rdUrl -Headers $headers
     
@@ -68,7 +69,6 @@ steps:
     }
 
     # SCAN BUILD PIPELINES
-    Write-Host "🔍 Scanning Build Pipelines..."
     $bdUrl = "https://dev.azure.com/$org/$project/_apis/build/definitions?api-version=7.0"
     $bdResponse = Invoke-RestMethod -Uri $bdUrl -Headers $headers
     
@@ -87,21 +87,31 @@ steps:
         }
     }
     
-    Write-Host "`n========================================================"
-    Write-Host "🎯 DISCOVERY REPORT: ALL TASK GROUPS"
-    Write-Host "========================================================"
+    Write-Host "`n=========================================================================="
+    Write-Host "🎯 DISCOVERY COMPLETE! COPY THE JSON BLOCK BELOW INTO migration-config.json"
+    Write-Host "==========================================================================`n"
     
     if ($findings.Count -eq 0) {
         Write-Host "None of your Task Groups are currently being used in any pipelines!"
     } else {
+        Write-Host "["
+        
+        $jsonItems = @()
         $grouped = $findings | Group-Object -Property TaskGroupName
         foreach ($group in $grouped) {
-            Write-Host "`n📦 Task Group: $($group.Name)"
             foreach ($item in $group.Group | Sort-Object -Unique -Property PipelineId, Type) {
-                Write-Host "   -> Used in $($item.Type): '$($item.PipelineName)' (ID: $($item.PipelineId))"
-                Write-Host "      JSON Format: { `"pipelineId`": `"$($item.PipelineId)`", `"type`": `"$($item.Type)`", `"targetRepo`": `"YOUR_GITHUB_REPO_URL_HERE`" }"
+                $jsonString = "  {`n" +
+                              "    `"pipelineId`": `"$($item.PipelineId)`",`n" +
+                              "    `"type`": `"$($item.Type)`",`n" +
+                              "    `"targetRepo`": `"https://github.com/YourOrg/YourRepo`",`n" +
+                              "    `"_comment`": `"Migrating from $($item.Type): $($item.PipelineName) (Uses Task Group: $($group.Name))`"`n" +
+                              "  }"
+                $jsonItems += $jsonString
             }
         }
+        
+        Write-Host ($jsonItems -join ",`n")
+        Write-Host "`n]"
     }
   displayName: '🔍 Global Discovery: Find All Task Groups'
   condition: eq('${{ parameters.Mode }}', 'Discover')
@@ -156,3 +166,4 @@ steps:
   env:
     GH_TOKEN: $(GH_PAT)
     GITHUB_ACCESS_TOKEN: $(GH_PAT)
+```
