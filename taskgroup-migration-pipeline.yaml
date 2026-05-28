@@ -10,7 +10,7 @@ parameters:
   - name: ReleaseIdToMigrate
     displayName: '🚀 MIGRATE: Enter the Release ID to dry-run (Leave blank to only Discover)'
     type: string
-    default: ''
+    default: none
 
 trigger: none
 
