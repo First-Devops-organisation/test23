@@ -1,0 +1,12 @@
+[
+  {
+    "pipelineId": "18",
+    "type": "release",
+    "targetRepo": "https://github.com/First-Devops-organisation/test1"
+  },
+  {
+    "pipelineId": "1230",
+    "type": "pipeline",
+    "targetRepo": "https://github.com/First-Devops-organisation/test2"
+  }
+]
