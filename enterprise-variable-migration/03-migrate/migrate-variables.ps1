@@ -7,6 +7,7 @@ param (
 )
 
 $ErrorActionPreference = "Continue"
+$Organization = $Organization.Replace("https://dev.azure.com/", "")
 
 Write-Host "Authenticating with GitHub CLI..."
 echo "$GhPat" | gh auth login --with-token
@@ -197,7 +198,8 @@ trigger: none
 pool:
   vmImage: ubuntu-latest
 variables:
-- group: DevOpsConfig
+- group: repo-migration-discove
+- group: repo-migration-migrate
 jobs:
 "@
 
@@ -205,7 +207,8 @@ jobs:
         $safeJobName = $groupName -replace "[^a-zA-Z0-9]","_"
         $yamlContent += "`n- job: Migrate_Secrets_$safeJobName`n"
         $yamlContent += "  variables:`n"
-        $yamlContent += "  - group: DevOpsConfig`n"
+        $yamlContent += "  - group: repo-migration-discove`n"
+        $yamlContent += "  - group: repo-migration-migrate`n"
         $yamlContent += "  - group: '$groupName'`n"
         $yamlContent += "  steps:`n"
         $yamlContent += "  - task: PowerShell@2`n"
@@ -213,7 +216,7 @@ jobs:
         $yamlContent += "    inputs:`n"
         $yamlContent += "      targetType: 'inline'`n"
         $yamlContent += "      script: |`n"
-        $yamlContent += "        echo `"`$(Git_pat)`" | gh auth login --with-token`n"
+        $yamlContent += "        echo `"\`$(GH_PAT)`" | gh auth login --with-token`n"
 
         foreach ($secret in $secretsByGroup[$groupName]) {
             $origName    = $secret['OriginalName']
