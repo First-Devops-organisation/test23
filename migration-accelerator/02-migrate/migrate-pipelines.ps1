@@ -507,8 +507,12 @@ if ($Mode -eq "migrate-reusables") {
         Write-Host "  Consumer target-url: $consumerTargetUrl" -ForegroundColor Gray
         Write-Host "  Reusables target_url(s) inside config.yml: $reusableTargetUrl" -ForegroundColor DarkGray
 
+     # NEW: We check the pipeline type and use the correct command dynamically
+        $importerSubCommand = if ($PipelineType -eq "release") { "release" } else { "pipeline" }
+
         $reusableArgs = @(
-            "actions-importer", "migrate", "azure-devops", "pipeline",
+            # "actions-importer", "migrate", "azure-devops", "pipeline",
+            "actions-importer", "migrate", "azure-devops", $importerSubCommand,
             "--output-dir",                (Join-Path $OutputDir "reusables/$pipelineIdItem"),
             "--azure-devops-organization", $adoOrgName,
             "--azure-devops-project",      $AdoProject,
