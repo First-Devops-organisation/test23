@@ -5,7 +5,7 @@
     "targetRepo": "https://github.com/First-Devops-organisation/test1"
   },
   {
-    "pipelineId": "1230",
+    "pipelineId": "17",
     "type": "pipeline",
     "targetRepo": "https://github.com/First-Devops-organisation/test2"
   }
