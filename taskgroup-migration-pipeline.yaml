@@ -1,103 +1,61 @@
-trigger: none
-pr: none
-
-parameters:
-  - name: ado_org
-    displayName: 'Azure DevOps Organization URL or Name'
-    type: string
-  - name: ado_project
-    displayName: 'Azure DevOps Project Name'
-    type: string
-  - name: output_mode
-    displayName: 'Output format'
-    type: string
-    default: 'composite-action'
-    values:
-      - 'composite-action'
-      - 'workflow'
-  - name: target_repo
-    displayName: 'Target GitHub repo (owner/repo) for migrated workflows'
-    type: string
-  - name: filter
-    displayName: 'Task group name filter (glob pattern)'
-    type: string
-    default: '*'
-  - name: dry_run
-    displayName: 'Dry run (discover + convert only, no push)'
-    type: boolean
-    default: true
-
-variables:
-  OUTPUT_DIR: '$(Build.SourcesDirectory)/output'
+# azure-pipelines-migrate.yml
+trigger: none # Run this manually
 
 pool:
-  vmImage: 'windows-latest'
+  vmImage: 'ubuntu-latest' # Linux agent is recommended as it comes with Docker & GH CLI
 
-jobs:
-  - job: MigrateTaskGroups
-    displayName: 'Migrate Task Groups'
-    steps:
-      - checkout: self
+variables:
+- group: repo-migration-migrate
+- group: repo-migration-discove
+  # GITHUB_TOKEN and ADO_PAT should be set as secret pipeline variables in the UI
 
-      - pwsh: |
-          New-Item -ItemType Directory -Path $(OUTPUT_DIR) -Force
-        displayName: 'Initialize Directories'
+steps:
+- script: |
+    # Install GitHub Actions Importer extension
+    echo "Installing GitHub Actions Importer..."
+    gh extension install github/gh-actions-importer
+    
+    # Update the importer Docker image
+    gh actions-importer update
+  displayName: 'Install GitHub Actions Importer'
+  env:
+    GH_TOKEN: $(GITHUB_TOKEN)
 
-      - pwsh: |
-          $TargetRepoSplit = "${{ parameters.target_repo }}" -split "/"
-          $GitHubOrg = $TargetRepoSplit[0]
-          $GitHubRepo = $TargetRepoSplit[1]
-          
-          $Params = @{
-              AdoOrganization = "${{ parameters.ado_org }}"
-              AdoProject      = "${{ parameters.ado_project }}"
-              AdoPat          = $env:ADO_PAT
-              OutputMode      = "${{ parameters.output_mode }}"
-              Filter          = "${{ parameters.filter }}"
-              OutputDir       = "$(OUTPUT_DIR)"
-          }
-          
-          if ("${{ parameters.dry_run }}" -ne "True") {
-              $Params["GitHubOrg"] = $GitHubOrg
-              $Params["GitHubRepo"] = $GitHubRepo
-              $Params["GitHubPat"] = $env:GH_MIGRATION_PAT
-          } else {
-              $Params["DryRun"] = $true
-          }
-          
-          # Run the main orchestrator script
-          .\scripts\Migrate-TaskGroups.ps1 @Params
-        displayName: 'Run Discovery and Conversion'
-        env:
-          ADO_PAT: $(ADO_PAT)
-          GH_MIGRATION_PAT: $(GH_MIGRATION_PAT)
+- script: |
+    echo "Running Audit (Discovery) on Azure DevOps..."
+    # This discovers all pipelines and task groups
+    gh actions-importer audit azure-devops \
+      --azure-devops-organization $(ADO_ORG) \
+      --azure-devops-project $(ADO_PROJECT) \
+      --azure-devops-access-token $(ADO_PAT) \
+      --output-dir $(Build.ArtifactStagingDirectory)/audit-results
+  displayName: '1. Discover (Audit) Task Groups & Pipelines'
+  env:
+    GH_TOKEN: $(GITHUB_TOKEN)
 
-      - task: PublishPipelineArtifact@1
-        displayName: 'Upload Discovered Task Groups'
-        inputs:
-          targetPath: '$(OUTPUT_DIR)/discovered/'
-          artifact: 'discovered-taskgroups'
-          publishLocation: 'pipeline'
-        condition: always()
+- script: |
+    echo "Running Dry-Run Migration..."
+    # This simulates migration and generates the GitHub Actions YAML files
+    # without pushing them to GitHub.
+    gh actions-importer dry-run azure-devops \
+      --azure-devops-organization $(ADO_ORG) \
+      --azure-devops-project $(ADO_PROJECT) \
+      --azure-devops-access-token $(ADO_PAT) \
+      --output-dir $(Build.ArtifactStagingDirectory)/dry-run-results
+  displayName: '2. Generate Migration YAML (Dry-Run)'
+  env:
+    GH_TOKEN: $(GITHUB_TOKEN)
 
-      - task: PublishPipelineArtifact@1
-        displayName: 'Upload Migrated Workflows'
-        inputs:
-          targetPath: '$(OUTPUT_DIR)/migrated/'
-          artifact: 'migrated-workflows'
-          publishLocation: 'pipeline'
-        condition: always()
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/audit-results'
+    ArtifactName: 'Audit_Discovery_Report'
+    publishLocation: 'Container'
+  displayName: 'Publish Discovery Report'
 
-      - pwsh: |
-          $ReportPath = "$(OUTPUT_DIR)/migration-report.md"
-          if (Test-Path $ReportPath) {
-              $Content = Get-Content $ReportPath -Raw
-              Write-Host "##vso[task.uploadsummary]$ReportPath"
-          } else {
-              $SummaryError = "### [WARN] Migration Report Not Generated`nSee logs for details."
-              $SummaryPath = "$(OUTPUT_DIR)/error-summary.md"
-              $SummaryError | Out-File -FilePath $SummaryPath -Encoding utf8
-              Write-Host "##vso[task.uploadsummary]$SummaryPath"
-          }
-        displayName: 'Publish Job Summary'
-        condition: always()
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/dry-run-results'
+    ArtifactName: 'Generated_GitHub_YAML'
+    publishLocation: 'Container'
+  displayName: 'Publish Generated YAML Code'
