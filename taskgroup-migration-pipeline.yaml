@@ -7,7 +7,7 @@ parameters:
     default: 'test1'
   
   - name: PipelineIdToMigrate
-    displayName: '🚀 MIGRATE: Enter ID to dry-run (Leave as "none" to only Discover)'
+    displayName: '🚀 MIGRATE: Enter ID to migrate (Leave as "none" to only Discover)'
     type: string
     default: 'none'
     
@@ -17,7 +17,12 @@ parameters:
     default: 'release'
     values:
       - 'release'
-      - 'pipeline' # Use 'pipeline' for Build pipelines
+      - 'pipeline'
+
+  - name: TargetGitHubRepo
+    displayName: '📦 TARGET: Enter GitHub Repo URL to open a PR (Leave blank for Dry-Run)'
+    type: string
+    default: ''
 
 trigger: none
 
@@ -56,13 +61,12 @@ steps:
     Write-Host "✅ Found Task Group ID: $tgId"
     $foundCount = 0
 
-    # SCAN RELEASE PIPELINES (FIXED BUG)
+    # SCAN RELEASE PIPELINES
     Write-Host "`n🔍 Scanning Release Pipelines..."
     $rdUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions?api-version=7.0"
     $rdResponse = Invoke-RestMethod -Uri $rdUrl -Headers $headers
     
     foreach ($def in $rdResponse.value) {
-        # FIX: Now downloading the FULL definition for Releases so we can see the deep tasks
         $fullDefUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions/$($def.id)?api-version=7.0"
         $fullDef = Invoke-RestMethod -Uri $fullDefUrl -Headers $headers
         
@@ -106,7 +110,6 @@ steps:
     Write-Host "`n--------------------------------------------------------"
     if ($foundCount -eq 0) {
         Write-Host "This Task Group is not currently used in any Build or Release Pipelines."
-        Write-Host "Please attach it to a pipeline and try again!"
     } else {
         Write-Host "💡 NEXT STEP: Run this again, paste the ID into the MIGRATE box, and select the correct type!"
     }
@@ -131,25 +134,38 @@ steps:
     CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
     PIPELINE_ID="${{ parameters.PipelineIdToMigrate }}"
     TYPE="${{ parameters.PipelineType }}"
+    TARGET_REPO="${{ parameters.TargetGitHubRepo }}"
 
-    echo "Running Dry-Run Migration for $TYPE ID: $PIPELINE_ID..."
+    if [ -z "$TARGET_REPO" ]; then
+      echo "Running Dry-Run Migration (No Target Repo Provided)..."
+      gh actions-importer dry-run azure-devops $TYPE \
+        --pipeline-id $PIPELINE_ID \
+        --azure-devops-organization $CLEAN_ADO_ORG \
+        --azure-devops-project $(ADO_Project) \
+        --azure-devops-access-token $(ADO_PAT) \
+        --output-dir dry-run-results
+    else
+      echo "Running FULL MIGRATION to GitHub Repo: $TARGET_REPO ..."
+      gh actions-importer migrate azure-devops $TYPE \
+        --pipeline-id $PIPELINE_ID \
+        --target-url $TARGET_REPO \
+        --azure-devops-organization $CLEAN_ADO_ORG \
+        --azure-devops-project $(ADO_Project) \
+        --azure-devops-access-token $(ADO_PAT) \
+        --github-access-token $(GH_PAT)
+    fi
 
-    gh actions-importer dry-run azure-devops $TYPE \
-      --pipeline-id $PIPELINE_ID \
-      --azure-devops-organization $CLEAN_ADO_ORG \
-      --azure-devops-project $(ADO_Project) \
-      --azure-devops-access-token $(ADO_PAT) \
-      --output-dir dry-run-results
-  displayName: 'Generate GitHub Actions YAML (Dry-Run)'
+  displayName: 'Run GitHub Actions Importer (Dry-Run or Migrate)'
   condition: ne('${{ parameters.PipelineIdToMigrate }}', 'none') 
   env:
     GH_TOKEN: $(GH_PAT)
     GITHUB_ACCESS_TOKEN: $(GH_PAT)
 
+# Only publish the artifact if it was a dry run (if TargetGitHubRepo is empty)
 - task: PublishBuildArtifacts@1
   inputs:
     PathtoPublish: 'dry-run-results'
     ArtifactName: 'Generated_GitHub_YAML'
     publishLocation: 'Container'
   displayName: 'Publish Generated YAML Code'
-  condition: ne('${{ parameters.PipelineIdToMigrate }}', 'none')
+  condition: and(ne('${{ parameters.PipelineIdToMigrate }}', 'none'), eq('${{ parameters.TargetGitHubRepo }}', ''))
