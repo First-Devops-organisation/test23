@@ -9,53 +9,60 @@ variables:
 - group: repo-migration-discove
   # GITHUB_TOKEN and ADO_PAT should be set as secret pipeline variables in the UI
 
+
+
 steps:
-- script: |
-    # Install GitHub Actions Importer extension
-    echo "Installing GitHub Actions Importer..."
+# 1. Install the GitHub Actions Importer Extension
+- bash: |
+    echo "Authenticating GitHub CLI..."
+    # The extension install requires authentication to GitHub
     gh extension install github/gh-actions-importer
     
-    # Update the importer Docker image
+    echo "Updating Importer Docker Image..."
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
   env:
-    GH_TOKEN: $(GITHUB_TOKEN)
+    # This maps your secret pipeline variable to the GH_TOKEN environment variable
+    GH_TOKEN: $(GITHUB_TOKEN) 
 
-- script: |
-    echo "Running Audit (Discovery) on Azure DevOps..."
-    # This discovers all pipelines and task groups
+# 2. Run the Audit (Discovery Phase)
+- bash: |
+    echo "Running Audit on Azure DevOps..."
     gh actions-importer audit azure-devops \
       --azure-devops-organization $(ADO_ORG) \
       --azure-devops-project $(ADO_PROJECT) \
       --azure-devops-access-token $(ADO_PAT) \
       --output-dir $(Build.ArtifactStagingDirectory)/audit-results
-  displayName: '1. Discover (Audit) Task Groups & Pipelines'
+  displayName: 'Discover (Audit) Task Groups & Pipelines'
   env:
     GH_TOKEN: $(GITHUB_TOKEN)
 
-- script: |
+# 3. Run the Dry-Run (Generates the GitHub YAML)
+- bash: |
     echo "Running Dry-Run Migration..."
-    # This simulates migration and generates the GitHub Actions YAML files
-    # without pushing them to GitHub.
     gh actions-importer dry-run azure-devops \
       --azure-devops-organization $(ADO_ORG) \
       --azure-devops-project $(ADO_PROJECT) \
       --azure-devops-access-token $(ADO_PAT) \
       --output-dir $(Build.ArtifactStagingDirectory)/dry-run-results
-  displayName: '2. Generate Migration YAML (Dry-Run)'
+  displayName: 'Generate GitHub Actions YAML (Dry-Run)'
   env:
     GH_TOKEN: $(GITHUB_TOKEN)
 
+# 4. Publish Audit Report Artifact
 - task: PublishBuildArtifacts@1
   inputs:
     PathtoPublish: '$(Build.ArtifactStagingDirectory)/audit-results'
     ArtifactName: 'Audit_Discovery_Report'
     publishLocation: 'Container'
   displayName: 'Publish Discovery Report'
+  condition: always() # Run this even if previous steps fail so you get the logs
 
+# 5. Publish Generated YAML Artifact
 - task: PublishBuildArtifacts@1
   inputs:
     PathtoPublish: '$(Build.ArtifactStagingDirectory)/dry-run-results'
     ArtifactName: 'Generated_GitHub_YAML'
     publishLocation: 'Container'
   displayName: 'Publish Generated YAML Code'
+  condition: always()
