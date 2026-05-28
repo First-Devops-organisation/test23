@@ -43,7 +43,7 @@
   ],
   "PIPELINE_IDS": [18],
   "PIPELINE_REPO_MAP": {"18": "sample2"},
-  "PIPELINE_TYPE": "build",
+  "PIPELINE_TYPE": "release",
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "",
   "REUSABLE_PIPELINE_IDS": [18]
