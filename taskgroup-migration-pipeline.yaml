@@ -130,7 +130,6 @@ steps:
 
     echo "Running Dry-Run Migration for $TYPE ID: $PIPELINE_ID..."
 
-    # FIXED: Reverted back to --pipeline-id which is required for both commands
     gh actions-importer dry-run azure-devops $TYPE \
       --pipeline-id $PIPELINE_ID \
       --azure-devops-organization $CLEAN_ADO_ORG \
