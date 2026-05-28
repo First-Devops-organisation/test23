@@ -2,52 +2,48 @@
 trigger: none # Run this manually
 
 pool:
-  vmImage: 'ubuntu-latest' # Linux agent is recommended as it comes with Docker & GH CLI
+  vmImage: 'ubuntu-latest' 
 
 variables:
 - group: repo-migration-migrate
 - group: repo-migration-discove
-  # GITHUB_TOKEN and ADO_PAT should be set as secret pipeline variables in the UI
-
-
 
 steps:
 # 1. Install the GitHub Actions Importer Extension
 - bash: |
     echo "Authenticating GitHub CLI..."
-    # The extension install requires authentication to GitHub
     gh extension install github/gh-actions-importer
     
     echo "Updating Importer Docker Image..."
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
   env:
-    # This maps your secret pipeline variable to the GH_TOKEN environment variable
-    GH_TOKEN: $(GITHUB_TOKEN) 
+    # Notice this is now GH_PAT to match your variable group
+    GH_TOKEN: $(GH_PAT) 
 
 # 2. Run the Audit (Discovery Phase)
 - bash: |
     echo "Running Audit on Azure DevOps..."
     gh actions-importer audit azure-devops \
-      --azure-devops-organization $(ADO_ORG) \
-      --azure-devops-project $(ADO_PROJECT) \
+      --azure-devops-organization $(ADO_Org) \
+      --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
       --output-dir $(Build.ArtifactStagingDirectory)/audit-results
   displayName: 'Discover (Audit) Task Groups & Pipelines'
   env:
-    GH_TOKEN: $(GITHUB_TOKEN)
+    GH_TOKEN: $(GH_PAT)
 
 # 3. Run the Dry-Run (Generates the GitHub YAML)
 - bash: |
     echo "Running Dry-Run Migration..."
     gh actions-importer dry-run azure-devops \
-      --azure-devops-organization $(ADO_ORG) \
-      --azure-devops-project $(ADO_PROJECT) \
+      --azure-devops-organization $(ADO_Org) \
+      --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
       --output-dir $(Build.ArtifactStagingDirectory)/dry-run-results
   displayName: 'Generate GitHub Actions YAML (Dry-Run)'
   env:
-    GH_TOKEN: $(GITHUB_TOKEN)
+    GH_TOKEN: $(GH_PAT)
 
 # 4. Publish Audit Report Artifact
 - task: PublishBuildArtifacts@1
@@ -56,7 +52,7 @@ steps:
     ArtifactName: 'Audit_Discovery_Report'
     publishLocation: 'Container'
   displayName: 'Publish Discovery Report'
-  condition: always() # Run this even if previous steps fail so you get the logs
+  condition: always() 
 
 # 5. Publish Generated YAML Artifact
 - task: PublishBuildArtifacts@1
