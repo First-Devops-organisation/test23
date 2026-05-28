@@ -38,7 +38,7 @@ steps:
 
     # IMPORTANT: Change '123' to your actual Pipeline ID!
     gh actions-importer dry-run azure-devops pipeline \
-      --pipeline-id 123 \
+      --pipeline-id 1156 \
       --azure-devops-organization $CLEAN_ADO_ORG \
       --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
