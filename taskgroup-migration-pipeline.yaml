@@ -1,3 +1,17 @@
+# azure-pipelines-migrate.yml
+
+# We use parameters so ADO prompts you when you run the pipeline
+parameters:
+  - name: TaskGroupName
+    displayName: '🔍 DISCOVER: Enter Task Group Name to find its Pipeline IDs (e.g., test1)'
+    type: string
+    default: 'test1'
+  
+  - name: ReleaseIdToMigrate
+    displayName: '🚀 MIGRATE: Enter the Release ID to dry-run (Leave blank to only Discover)'
+    type: string
+    default: ''
+
 trigger: none
 
 pool:
@@ -8,53 +22,98 @@ variables:
 - group: repo-migration-discove
 
 steps:
+
+# ==========================================
+# PHASE 1: DISCOVER IDS (Runs if ID is blank)
+# ==========================================
+- pwsh: |
+    $org = "$(ADO_Org)".Replace("https://dev.azure.com/", "")
+    $project = "$(ADO_Project)"
+    $pat = "$(ADO_PAT)"
+    $taskGroupName = "${{ parameters.TaskGroupName }}"
+
+    $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$pat"))
+    $headers = @{ Authorization = "Basic $base64AuthInfo" }
+
+    Write-Host "🔍 Looking for Task Group '$taskGroupName'..."
+    
+    # 1. Get the Task Group ID
+    $tgUrl = "https://dev.azure.com/$org/$project/_apis/distributedtask/taskgroups?api-version=7.0"
+    $tgResponse = Invoke-RestMethod -Uri $tgUrl -Headers $headers
+    $taskGroup = $tgResponse.value | Where-Object { $_.name -eq $taskGroupName } | Select-Object -First 1
+
+    if (-not $taskGroup) {
+        Write-Error "Task Group '$taskGroupName' not found in project $project!"
+        exit 1
+    }
+    
+    $tgId = $taskGroup.id
+    Write-Host "✅ Found Task Group ID: $tgId"
+    Write-Host "🔍 Scanning all Release Pipelines to see where it is used..."
+
+    # 2. Scan all Release Definitions to find where the Task Group is used
+    $rdUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions?api-version=7.0&`$expand=environments"
+    $rdResponse = Invoke-RestMethod -Uri $rdUrl -Headers $headers
+    
+    $foundCount = 0
+    Write-Host "--------------------------------------------------------"
+    foreach ($def in $rdResponse.value) {
+        $isUsed = $false
+        foreach ($env in $def.environments) {
+            foreach ($phase in $env.deployPhases) {
+                foreach ($task in $phase.workflowTasks) {
+                    if ($task.taskId -eq $tgId) {
+                        $isUsed = $true
+                    }
+                }
+            }
+        }
+        if ($isUsed) {
+            Write-Host "🎯 FOUND IN RELEASE PIPELINE: $($def.name)  --->  USE ID: $($def.id)"
+            $foundCount++
+        }
+    }
+    Write-Host "--------------------------------------------------------"
+    
+    if ($foundCount -eq 0) {
+        Write-Host "This Task Group is not currently used in any Release Pipelines."
+    } else {
+        Write-Host "💡 NEXT STEP: Run this pipeline again and type one of the IDs above into the 'MIGRATE' box!"
+    }
+  displayName: '🔍 Discover Release IDs for Task Group'
+  condition: eq('${{ parameters.ReleaseIdToMigrate }}', '') # Only runs if ID box is empty
+
+
+# ==========================================
+# PHASE 2: MIGRATE (Runs if ID is provided)
+# ==========================================
 - bash: |
     echo "Authenticating GitHub CLI..."
     gh extension install github/gh-actions-importer
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
+  condition: ne('${{ parameters.ReleaseIdToMigrate }}', '') # Only runs if ID is provided
   env:
     GH_TOKEN: $(GH_PAT) 
 
 - bash: |
-    echo "Running Audit on Azure DevOps..."
     CLEAN_ADO_ORG="$(ADO_Org)"
     CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
+    RELEASE_ID="${{ parameters.ReleaseIdToMigrate }}"
 
-    gh actions-importer audit azure-devops \
-      --azure-devops-organization $CLEAN_ADO_ORG \
-      --azure-devops-project $(ADO_Project) \
-      --azure-devops-access-token $(ADO_PAT) \
-      --output-dir audit-results
-  displayName: 'Discover (Audit) Task Groups & Pipelines'
-  env:
-    GH_TOKEN: $(GH_PAT)
-    GITHUB_ACCESS_TOKEN: $(GH_PAT)
+    echo "Running Dry-Run Migration for Release Pipeline ID: $RELEASE_ID..."
 
-- bash: |
-    echo "Running Dry-Run Migration..."
-    CLEAN_ADO_ORG="$(ADO_Org)"
-    CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
-
-    # IMPORTANT: Change '123' to your actual Pipeline ID!
-    gh actions-importer dry-run azure-devops pipeline \
-      --pipeline-id 1156 \
+    gh actions-importer dry-run azure-devops release \
+      --release-id $RELEASE_ID \
       --azure-devops-organization $CLEAN_ADO_ORG \
       --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
       --output-dir dry-run-results
   displayName: 'Generate GitHub Actions YAML (Dry-Run)'
+  condition: ne('${{ parameters.ReleaseIdToMigrate }}', '') # Only runs if ID is provided
   env:
     GH_TOKEN: $(GH_PAT)
     GITHUB_ACCESS_TOKEN: $(GH_PAT)
-
-- task: PublishBuildArtifacts@1
-  inputs:
-    PathtoPublish: 'audit-results'
-    ArtifactName: 'Audit_Discovery_Report'
-    publishLocation: 'Container'
-  displayName: 'Publish Discovery Report'
-  condition: always() 
 
 - task: PublishBuildArtifacts@1
   inputs:
@@ -62,4 +121,4 @@ steps:
     ArtifactName: 'Generated_GitHub_YAML'
     publishLocation: 'Container'
   displayName: 'Publish Generated YAML Code'
-  condition: always()
+  condition: ne('${{ parameters.ReleaseIdToMigrate }}', '')
