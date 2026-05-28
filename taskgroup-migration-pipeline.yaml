@@ -1,29 +1,4 @@
 # azure-pipelines-migrate.yml
-
-parameters:
-  - name: TaskGroupName
-    displayName: '🔍 DISCOVER: Enter Task Group Name (e.g., test1)'
-    type: string
-    default: 'test1'
-  
-  - name: PipelineIdToMigrate
-    displayName: '🚀 MIGRATE: Enter ID to migrate (Leave as "none" to only Discover)'
-    type: string
-    default: 'none'
-    
-  - name: PipelineType
-    displayName: 'Type of Pipeline you are migrating'
-    type: string
-    default: 'release'
-    values:
-      - 'release'
-      - 'pipeline'
-
-  - name: TargetGitHubRepo
-    displayName: '📦 TARGET: Enter GitHub Repo URL to open a PR (Leave blank for Dry-Run)'
-    type: string
-    default: ''
-
 trigger: none
 
 pool:
@@ -34,118 +9,38 @@ variables:
 - group: repo-migration-discove
 
 steps:
+- checkout: self
 
-# ==========================================
-# PHASE 1: DISCOVER IDS (Runs if ID is 'none')
-# ==========================================
-- pwsh: |
-    $org = "$(ADO_Org)".Replace("https://dev.azure.com/", "")
-    $project = "$(ADO_Project)"
-    $pat = "$(ADO_PAT)"
-    $taskGroupName = "${{ parameters.TaskGroupName }}"
-
-    $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$pat"))
-    $headers = @{ Authorization = "Basic $base64AuthInfo" }
-
-    Write-Host "🔍 Looking for Task Group '$taskGroupName'..."
-    $tgUrl = "https://dev.azure.com/$org/$project/_apis/distributedtask/taskgroups?api-version=7.0"
-    $tgResponse = Invoke-RestMethod -Uri $tgUrl -Headers $headers
-    $taskGroup = $tgResponse.value | Where-Object { $_.name -eq $taskGroupName } | Select-Object -First 1
-
-    if (-not $taskGroup) {
-        Write-Error "Task Group '$taskGroupName' not found in project $project!"
-        exit 1
-    }
-    
-    $tgId = $taskGroup.id
-    Write-Host "✅ Found Task Group ID: $tgId"
-    $foundCount = 0
-
-    # SCAN RELEASE PIPELINES
-    Write-Host "`n🔍 Scanning Release Pipelines..."
-    $rdUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions?api-version=7.0"
-    $rdResponse = Invoke-RestMethod -Uri $rdUrl -Headers $headers
-    
-    foreach ($def in $rdResponse.value) {
-        $fullDefUrl = "https://vsrm.dev.azure.com/$org/$project/_apis/release/definitions/$($def.id)?api-version=7.0"
-        $fullDef = Invoke-RestMethod -Uri $fullDefUrl -Headers $headers
-        
-        $isUsed = $false
-        foreach ($env in $fullDef.environments) {
-            foreach ($phase in $env.deployPhases) {
-                foreach ($task in $phase.workflowTasks) {
-                    if ($task.taskId -eq $tgId) { $isUsed = $true }
-                }
-            }
-        }
-        if ($isUsed) {
-            Write-Host "🎯 FOUND IN RELEASE PIPELINE: $($def.name)  --->  USE ID: $($def.id) (Type: release)"
-            $foundCount++
-        }
-    }
-
-    # SCAN BUILD PIPELINES
-    Write-Host "`n🔍 Scanning Build Pipelines..."
-    $bdUrl = "https://dev.azure.com/$org/$project/_apis/build/definitions?api-version=7.0"
-    $bdResponse = Invoke-RestMethod -Uri $bdUrl -Headers $headers
-    
-    foreach ($def in $bdResponse.value) {
-        $fullDefUrl = "https://dev.azure.com/$org/$project/_apis/build/definitions/$($def.id)?api-version=7.0"
-        $fullDef = Invoke-RestMethod -Uri $fullDefUrl -Headers $headers
-        
-        $isUsed = $false
-        if ($fullDef.process.type -eq 1) { 
-            foreach ($phase in $fullDef.process.phases) {
-                foreach ($step in $phase.steps) {
-                    if ($step.task.id -eq $tgId) { $isUsed = $true }
-                }
-            }
-        }
-        if ($isUsed) {
-            Write-Host "🎯 FOUND IN BUILD PIPELINE: $($def.name)  --->  USE ID: $($def.id) (Type: pipeline)"
-            $foundCount++
-        }
-    }
-    
-    Write-Host "`n--------------------------------------------------------"
-    if ($foundCount -eq 0) {
-        Write-Host "This Task Group is not currently used in any Build or Release Pipelines."
-    } else {
-        Write-Host "💡 NEXT STEP: Run this again, paste the ID into the MIGRATE box, and select the correct type!"
-    }
-  displayName: '🔍 Discover Pipeline IDs for Task Group'
-  condition: eq('${{ parameters.PipelineIdToMigrate }}', 'none') 
-
-
-# ==========================================
-# PHASE 2: MIGRATE (Runs if ID is NOT 'none')
-# ==========================================
 - bash: |
     echo "Authenticating GitHub CLI..."
     gh extension install github/gh-actions-importer
     gh actions-importer update
   displayName: 'Install GitHub Actions Importer'
-  condition: ne('${{ parameters.PipelineIdToMigrate }}', 'none') 
   env:
     GH_TOKEN: $(GH_PAT) 
 
 - bash: |
     CLEAN_ADO_ORG="$(ADO_Org)"
     CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
-    PIPELINE_ID="${{ parameters.PipelineIdToMigrate }}"
-    TYPE="${{ parameters.PipelineType }}"
-    TARGET_REPO="${{ parameters.TargetGitHubRepo }}"
+    CONFIG_FILE="migration-config.json"
 
-    if [ -z "$TARGET_REPO" ]; then
-      echo "Running Dry-Run Migration (No Target Repo Provided)..."
-      gh actions-importer dry-run azure-devops $TYPE \
-        --pipeline-id $PIPELINE_ID \
-        --azure-devops-organization $CLEAN_ADO_ORG \
-        --azure-devops-project $(ADO_Project) \
-        --azure-devops-access-token $(ADO_PAT) \
-        --output-dir dry-run-results
-    else
-      echo "Running FULL MIGRATION to GitHub Repo: $TARGET_REPO ..."
+    if [ ! -f "$CONFIG_FILE" ]; then
+      echo "Error: $CONFIG_FILE not found in the repository."
+      exit 1
+    fi
+
+    echo "Found $CONFIG_FILE! Starting bulk migration..."
+
+    # Read the JSON file and loop through each item
+    jq -c '.[]' $CONFIG_FILE | while read item; do
+      PIPELINE_ID=$(echo $item | jq -r '.pipelineId')
+      TYPE=$(echo $item | jq -r '.type')
+      TARGET_REPO=$(echo $item | jq -r '.targetRepo')
+      
+      echo "=========================================================="
+      echo "🚀 Migrating $TYPE ID: $PIPELINE_ID to $TARGET_REPO"
+      echo "=========================================================="
+      
       gh actions-importer migrate azure-devops $TYPE \
         --pipeline-id $PIPELINE_ID \
         --target-url $TARGET_REPO \
@@ -153,20 +48,10 @@ steps:
         --azure-devops-project $(ADO_Project) \
         --azure-devops-access-token $(ADO_PAT) \
         --github-access-token $(GH_PAT) \
-        --output-dir migrate-results
-    fi
-
-  displayName: 'Run GitHub Actions Importer (Dry-Run or Migrate)'
-  condition: ne('${{ parameters.PipelineIdToMigrate }}', 'none') 
+        --output-dir "migrate-results-$PIPELINE_ID"
+        
+    done
+  displayName: 'Bulk Migrate using JSON Config'
   env:
     GH_TOKEN: $(GH_PAT)
     GITHUB_ACCESS_TOKEN: $(GH_PAT)
-
-# Only publish the artifact if it was a dry run (if TargetGitHubRepo is empty)
-- task: PublishBuildArtifacts@1
-  inputs:
-    PathtoPublish: 'dry-run-results'
-    ArtifactName: 'Generated_GitHub_YAML'
-    publishLocation: 'Container'
-  displayName: 'Publish Generated YAML Code'
-  condition: and(ne('${{ parameters.PipelineIdToMigrate }}', 'none'), eq('${{ parameters.TargetGitHubRepo }}', ''))
