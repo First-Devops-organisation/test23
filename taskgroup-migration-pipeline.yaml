@@ -152,7 +152,7 @@ steps:
         --azure-devops-organization $CLEAN_ADO_ORG \
         --azure-devops-project $(ADO_Project) \
         --azure-devops-access-token $(ADO_PAT) \
-        --github-access-token $(GH_PAT)
+        --github-access-token $(GH_PAT) \
         --output-dir migrate-results
     fi
 
