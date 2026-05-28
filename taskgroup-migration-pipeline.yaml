@@ -23,28 +23,39 @@ steps:
 # 2. Run the Audit (Discovery Phase)
 - bash: |
     echo "Running Audit on Azure DevOps..."
+    
+    # This automatically strips the URL prefix from the variable
+    CLEAN_ADO_ORG="$(ADO_Org)"
+    CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
+    echo "Cleaned Organization Name: $CLEAN_ADO_ORG"
+
     gh actions-importer audit azure-devops \
-      --azure-devops-organization $(ADO_Org) \
+      --azure-devops-organization $CLEAN_ADO_ORG \
       --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
       --output-dir audit-results
   displayName: 'Discover (Audit) Task Groups & Pipelines'
   env:
     GH_TOKEN: $(GH_PAT)
-    GITHUB_ACCESS_TOKEN: $(GH_PAT) # FIXED: Added specifically for the Importer
+    GITHUB_ACCESS_TOKEN: $(GH_PAT)
 
 # 3. Run the Dry-Run (Generates the GitHub YAML)
 - bash: |
     echo "Running Dry-Run Migration..."
+    
+    # Clean the org name here as well
+    CLEAN_ADO_ORG="$(ADO_Org)"
+    CLEAN_ADO_ORG="${CLEAN_ADO_ORG#https://dev.azure.com/}"
+
     gh actions-importer dry-run azure-devops \
-      --azure-devops-organization $(ADO_Org) \
+      --azure-devops-organization $CLEAN_ADO_ORG \
       --azure-devops-project $(ADO_Project) \
       --azure-devops-access-token $(ADO_PAT) \
       --output-dir dry-run-results
   displayName: 'Generate GitHub Actions YAML (Dry-Run)'
   env:
     GH_TOKEN: $(GH_PAT)
-    GITHUB_ACCESS_TOKEN: $(GH_PAT) # FIXED: Added specifically for the Importer
+    GITHUB_ACCESS_TOKEN: $(GH_PAT)
 
 # 4. Publish Audit Report Artifact
 - task: PublishBuildArtifacts@1
