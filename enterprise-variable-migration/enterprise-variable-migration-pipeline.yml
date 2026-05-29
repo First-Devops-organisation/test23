@@ -1,10 +1,4 @@
-Viewed enterprise-variable-migration-pipeline.yml:1-215
 
-Here is the complete, perfectly formatted YAML file containing everything (Discovery, Migration, and the fully fixed Secrets Migration). 
-
-You can copy and paste this entire block into your Azure DevOps pipeline!
-
-```yaml
 trigger: none
 
 pool: linux
