@@ -167,10 +167,10 @@ stages:
     variables:
     - group: repo-migration-discove
     - group: repo-migration-migrate
-    - group: 'repo-migration-discove-uat_i'
+    - group: 'log'
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: repo-migration-discove-uat_i'
+      displayName: 'Secrets: log'
       inputs:
         targetType: 'inline'
         pwsh: true
