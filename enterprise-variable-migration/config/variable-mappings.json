@@ -1,6 +1,7 @@
 {
   "targetGitHubOrg": "First-Devops-organisation",
   "variableGroups": [
+
     {
       "adoGroupName": "log",
       "action": "migrate",
@@ -10,14 +11,5 @@
       "isKeyVaultLinked": false,
       "keyVaultName": ""
     }
-//     {
-//       "adoGroupName": "repo-migration-discove-uat_i",
-//       "action": "migrate",
-//       "targetScope": "environment",
-//       "targetRepo": "test1",
-//       "targetEnvironment": "uat_i",
-//       "isKeyVaultLinked": false,
-//       "keyVaultName": ""
-//     }
-//   ]
- }
+  ]
+}
