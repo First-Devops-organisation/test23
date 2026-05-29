@@ -1,11 +1,11 @@
 trigger: none
 
-pool: linux
-  
+pool:
+  name: 'linux'
 
 parameters:
 - name: RunDiscovery
-  displayName: "Run Phase 1: Discovery (Generates Report)"
+  displayName: 'Run Phase 1: Discovery (Generates Report)'
   type: boolean
   default: true
 
@@ -18,6 +18,8 @@ parameters:
   displayName: "Run Phase 3: Migrate Secrets & Key Vault Groups to GitHub"
   type: boolean
   default: false
+
+
 variables:
 - group: repo-migration-discove
 - group: repo-migration-migrate
@@ -88,13 +90,13 @@ stages:
         artifact: 'Migration-Summary-CSV'
         publishLocation: 'pipeline'
 
-    # - task: PublishPipelineArtifact@1
-    #   displayName: 'Publish Generated Phase 3 YAML'
-    #   condition: always()
-    #   inputs:
-    #     targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/phase3-secrets-migration.yml'
-    #     artifact: 'Phase3-Secrets-Pipeline-YAML'
-    #     publishLocation: 'pipeline'
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Generated Phase 3 YAML'
+      condition: always()
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/phase3-secrets-migration.yml'
+        artifact: 'Phase3-Secrets-Pipeline-YAML'
+        publishLocation: 'pipeline'
 
 # ==============================================================================
 # PHASE 3: SECRETS & KEY VAULT MIGRATION (Unified)
@@ -116,54 +118,7 @@ stages:
   condition: and(always(), eq('${{ parameters.RunSecrets }}', true))
   displayName: 'Phase 3: Migrate Secrets & Key Vault Groups'
   jobs:
-
-  - job: Migrate_Secrets_repo_migration_discove_release
-    variables:
-    - group: repo-migration-discove
-    - group: repo-migration-migrate
-    - group: 'repo-migration-discove-release'
-    steps:
-    - task: PowerShell@2
-      displayName: 'Secrets: repo-migration-discove-release'
-      inputs:
-        targetType: 'inline'
-        pwsh: true
-        script: |
-          # [CHECK MAPPINGS] Check if this group is marked for migration
-          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discove-release' }
-          if (-not $mapping -or $mapping.action -ne 'migrate') {
-              Write-Host "##[warning] SKIPPED: 'repo-migration-discove-release' is not marked for migration in variable-mappings.json."
-              exit 0
-          }
-          # Check if GH_PAT is present, fallback to Git_pat
-          $token = $env:MY_GH_PAT
-          if ([string]::IsNullOrWhiteSpace($token)) {
-              $token = $env:MY_GIT_PAT
-          }
-          if ([string]::IsNullOrWhiteSpace($token)) {
-              Write-Host "##[error] Neither GH_PAT nor Git_pat were found in your variable groups!"
-              exit 1
-          }
-          $env:GH_TOKEN = $token
-          
-          $targetOrg = "$(GH_Org)"
-          $targetRepo = $mapping.targetRepo
-          $targetEnv = $mapping.targetEnvironment
-          $targetScope = $mapping.targetScope
-          
-          if ($targetScope -eq 'environment') {
-              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --repo "$targetOrg/$targetRepo" --env "$targetEnv"
-          } elseif ($targetScope -eq 'repository') {
-              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --repo "$targetOrg/$targetRepo"
-          } elseif ($targetScope -eq 'organization') {
-              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --org "$targetOrg" --visibility private
-          }
-      env:
-        MY_GH_PAT: $(GH_PAT)
-        MY_GIT_PAT: $(Git_pat)
-        MY_ADO_PAT: $(ADO_PAT)
-
-  - job: Migrate_Secrets_repo_migration_discove_uat_i
+  - job: Migrate_Secrets_log
     variables:
     - group: repo-migration-discove
     - group: repo-migration-migrate
@@ -176,21 +131,21 @@ stages:
         pwsh: true
         script: |
           # [CHECK MAPPINGS] Check if this group is marked for migration
-          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discove-uat_i' }
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'log' }
           if (-not $mapping -or $mapping.action -ne 'migrate') {
-              Write-Host "##[warning] SKIPPED: 'repo-migration-discove-uat_i' is not marked for migration in variable-mappings.json."
+              Write-Host "##[warning] SKIPPED: 'log' is not marked for migration in variable-mappings.json."
               exit 0
           }
           # Check if GH_PAT is present, fallback to Git_pat
           $token = $env:MY_GH_PAT
-          if ([string]::IsNullOrWhiteSpace($token)) {
+          if ($token -eq '$(GH_PAT)' -or [string]::IsNullOrWhiteSpace($token)) {
               $token = $env:MY_GIT_PAT
           }
-          if ([string]::IsNullOrWhiteSpace($token)) {
+          if ($token -eq '$(Git_pat)' -or [string]::IsNullOrWhiteSpace($token)) {
               Write-Host "##[error] Neither GH_PAT nor Git_pat were found in your variable groups!"
               exit 1
           }
-          $env:GH_TOKEN = $token
+          $env:GH_TOKEN = $token.Trim()
           
           $targetOrg = "$(GH_Org)"
           $targetRepo = $mapping.targetRepo
