@@ -84,6 +84,14 @@ stages:
         artifact: 'Migration-Summary-CSV'
         publishLocation: 'pipeline'
 
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Generated Phase 3 YAML'
+      condition: always()
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/phase3-secrets-migration.yml'
+        artifact: 'Phase3-Secrets-Pipeline-YAML'
+        publishLocation: 'pipeline'
+
 # ==============================================================================
 # PHASE 3: SECRETS MIGRATION
 # ==============================================================================
