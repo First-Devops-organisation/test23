@@ -118,22 +118,22 @@ stages:
   condition: and(always(), eq('${{ parameters.RunSecrets }}', true))
   displayName: 'Phase 3: Migrate Secrets & Key Vault Groups'
   jobs:
-  - job: Migrate_Secrets_log
+  - job: Migrate_Secrets_repo-migration-discove-uat_i
     variables:
     - group: repo-migration-discove
     - group: repo-migration-migrate
-    - group: 'log'
+    - group: 'repo-migration-discove-uat_i'
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: log'
+      displayName: 'Secrets: repo-migration-discove-uat_i'
       inputs:
         targetType: 'inline'
         pwsh: true
         script: |
           # [CHECK MAPPINGS] Check if this group is marked for migration
-          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'log' }
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discove-uat_i' }
           if (-not $mapping -or $mapping.action -ne 'migrate') {
-              Write-Host "##[warning] SKIPPED: 'log' is not marked for migration in variable-mappings.json."
+              Write-Host "##[warning] SKIPPED: 'repo-migration-discove-uat_i' is not marked for migration in variable-mappings.json."
               exit 0
           }
           
