@@ -9,7 +9,7 @@
       "targetEnvironment": "",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
-    },
+    }
 //     {
 //       "adoGroupName": "repo-migration-discove-uat_i",
 //       "action": "migrate",
