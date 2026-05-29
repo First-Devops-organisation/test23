@@ -1,7 +1,7 @@
 trigger: none
 
-pool: linux
-  
+pool:
+  vmImage: ubuntu-latest
 
 parameters:
 - name: RunDiscovery
@@ -14,10 +14,13 @@ parameters:
   type: boolean
   default: false
 
+- name: RunSecrets
+  displayName: "Run Phase 3: Migrate Secrets & Key Vault Groups to GitHub"
+  type: boolean
+  default: false
 
 variables:
-- group: repo-migration-discove
-- group: repo-migration-migrate
+- group: DevOpsConfig # Contains Pat, Git_pat, Organization, Project
 
 stages:
 
@@ -34,7 +37,7 @@ stages:
       displayName: 'Run Discovery Script'
       inputs:
         filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/discover-variable-usage.ps1'
-        arguments: '-Organization "$(ADO_Org)" -Project "$(ADO_Project)" -Pat "$(ADO_PAT)"'
+        arguments: '-Organization "$(Organization)" -Project "$(Project)" -Pat "$(Pat)"'
         pwsh: true
         workingDirectory: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover'
 
@@ -56,8 +59,7 @@ stages:
 # PHASE 2: MIGRATION
 # ==============================================================================
 - stage: Migration
-  dependsOn: Discovery
-  condition: and(always(), eq('${{ parameters.RunMigration }}', true))
+  condition: eq('${{ parameters.RunMigration }}', true)
   displayName: 'Phase 2: Migrate Variables'
   jobs:
   - job: MigrateVariables
@@ -66,7 +68,7 @@ stages:
       displayName: 'Run Migration Script'
       inputs:
         filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/migrate-variables.ps1'
-        arguments: '-Organization "$(ADO_Org)" -Project "$(ADO_Project)" -AdoPat "$(ADO_PAT)" -GhPat "$(GH_PAT)" -ConfigPath "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json"'
+        arguments: '-Organization "$(Organization)" -Project "$(Project)" -AdoPat "$(Pat)" -GhPat "$(Git_pat)" -ConfigPath "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json"'
         pwsh: true
 
     - task: PublishPipelineArtifact@1
@@ -85,12 +87,697 @@ stages:
         artifact: 'Migration-Summary-CSV'
         publishLocation: 'pipeline'
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Generated Phase 3 YAML'
-      condition: always()
+# ==============================================================================
+# PHASE 3: SECRETS & KEY VAULT MIGRATION (Unified)
+#
+# Regular Secrets:  ADO decrypts the value → $(VAR) resolves → gh secret set
+# KV-Linked Groups: ADO fetches from Key Vault at runtime → $(VAR) resolves → gh secret set
+#
+# Both use the EXACT same mechanism — declare the variable group in YAML,
+# the ADO agent injects the value, then GitHub CLI pushes it to GitHub Secrets.
+#
+# ADO REQUIREMENT: Each variable group needs its OWN job so ADO can authorize
+# them at YAML parse time. Groups cannot be bound dynamically at runtime.
+#
+# KV groups use continueOnError: true — if a vault is unreachable (e.g. deleted),
+# that job fails gracefully without blocking the rest of the stage.
+# ==============================================================================
+- stage: Secrets
+  condition: eq('${{ parameters.RunSecrets }}', true)
+  displayName: 'Phase 3: Migrate Secrets & Key Vault Groups'
+  jobs:
+
+  - job: Migrate_Secrets_ankit_adotogit
+    variables:
+    - group: DevOpsConfig
+    - group: 'ankit-adotogit'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: ankit-adotogit'
       inputs:
-        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/phase3-secrets-migration.yml'
-        artifact: 'Phase3-Secrets-Pipeline-YAML'
-        publishLocation: 'pipeline'
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'ankit-adotogit' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'ankit-adotogit' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
+  - job: Migrate_Secrets_artifact_migration
+    variables:
+    - group: DevOpsConfig
+    - group: 'artifact-migration'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: artifact-migration'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'artifact-migration' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'artifact-migration' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "artifact_migration_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "artifact_migration_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
 
+  - job: Migrate_Secrets_BoardMigrationConfig
+    variables:
+    - group: DevOpsConfig
+    - group: 'BoardMigrationConfig'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: BoardMigrationConfig'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'BoardMigrationConfig' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'BoardMigrationConfig' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/Board_migration"
+          gh secret set "GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/Board_migration"
+
+  - job: Migrate_Secrets_boards_migration
+    variables:
+    - group: DevOpsConfig
+    - group: 'boards-migration'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: boards-migration'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'boards-migration' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'boards-migration' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "boards_migration_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "boards_migration_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_DemoApp_Application_API
+    variables:
+    - group: DevOpsConfig
+    - group: 'DemoApp-Application-API'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: DemoApp-Application-API'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'DemoApp-Application-API' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'DemoApp-Application-API' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "projectkey"      --body "$(projectkey)"      --repo "Second-Devops-organisation1/Demoapp-Application-API"
+          gh secret set "ProjectName"     --body "$(ProjectName)"     --repo "Second-Devops-organisation1/Demoapp-Application-API"
+          gh secret set "SonarConnection" --body "$(SonarConnection)" --repo "Second-Devops-organisation1/Demoapp-Application-API"
+
+  - job: Migrate_Secrets_DemoApp_Prod
+    variables:
+    - group: DevOpsConfig
+    - group: 'DemoApp-Application-API-Prod'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: DemoApp-Application-API-Prod'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'DemoApp-Application-API-Prod' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'DemoApp-Application-API-Prod' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "Name"              --body "$(Name)"              --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "production"
+          gh secret set "resourceGroupName" --body "$(resourceGroupName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "production"
+
+  - job: Migrate_Secrets_DemoApp_Test
+    variables:
+    - group: DevOpsConfig
+    - group: 'DemoApp-Application-API-Test'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: DemoApp-Application-API-Test'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'DemoApp-Application-API-Test' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'DemoApp-Application-API-Test' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "Name"              --body "$(Name)"              --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "test"
+          gh secret set "resourceGroupName" --body "$(resourceGroupName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "test"
+          gh secret set "WebAppName"        --body "$(WebAppName)"        --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "test"
+
+  - job: Migrate_Secrets_DemoApp_UAT_E
+    variables:
+    - group: DevOpsConfig
+    - group: 'DemoApp-Application-API-UAT_E'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: DemoApp-Application-API-UAT_E'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'DemoApp-Application-API-UAT_E' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'DemoApp-Application-API-UAT_E' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "Name"              --body "$(Name)"              --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "uat_e"
+          gh secret set "resourceGroupName" --body "$(resourceGroupName)" --repo "Second-Devops-organisation1/Demoapp-Application-API" --env "uat_e"
+
+  - job: Migrate_Secrets_DevOpsConfig
+    variables:
+    - group: DevOpsConfig
+    - group: 'DevOpsConfig'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: DevOpsConfig'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "Git_pat" --body "$(Git_pat)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "Pat"     --body "$(Pat)"     --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_environment_set_up
+    variables:
+    - group: DevOpsConfig
+    - group: 'environment_set_up'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: environment_set_up'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'environment_set_up' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'environment_set_up' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "environment_set_up_GH_PAT" --body "$(GH_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_KeyVaultSnowflake
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'KeyVaultSnowflakeCredentials'  ← ON HOLD: vault unreachable
+    steps:
+    - task: PowerShell@2
+      displayName: '[SKIPPED] KeyVaultSnowflakeCredentials — KV ON HOLD'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "SKIPPED: KeyVaultSnowflakeCredentials is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Resolve Key Vault 'CATSnowflakeCredentials' first."
+          Write-Warning "Secrets affected: SNOWFLAKEACCOUNT, SNOWFLAKEDATABASE, SNOWFLAKEPASSWORD, SNOWFLAKESCHEMA, SNOWFLAKEUSER, SNOWFLAKEWAREHOUSE"
+
+  - job: Migrate_Secrets_kv_demoapp_dev
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'kv-demoapp-dev'  ← ON HOLD
+    steps:
+    - task: PowerShell@2
+      displayName: '[SKIPPED] kv-demoapp-dev — KV ON HOLD'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "SKIPPED: kv-demoapp-dev is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Confirm Key Vault solution first."
+          Write-Warning "Secrets affected: sampleservice-BaseUrl, sampleservice-Password, sampleservice-UserName"
+
+  - job: Migrate_Secrets_kv_demoapp_prd
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'kv-demoapp-prd'  ← ON HOLD
+    steps:
+    - task: PowerShell@2
+      displayName: '[SKIPPED] kv-demoapp-prd — KV ON HOLD'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "SKIPPED: kv-demoapp-prd is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Confirm Key Vault solution first."
+          Write-Warning "Secrets affected: sampleservice-BaseUrl, sampleservice-Password, sampleservice-UserName"
+
+  - job: Migrate_Secrets_kv_demoapp_uate
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'kv-demoapp-uate'  ← ON HOLD
+    steps:
+    - task: PowerShell@2
+      displayName: '[SKIPPED] kv-demoapp-uate — KV ON HOLD'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "SKIPPED: kv-demoapp-uate is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Confirm Key Vault solution first."
+          Write-Warning "Secrets affected: sampleservice-BaseUrl, sampleservice-Password, sampleservice-UserName"
+
+  - job: Migrate_Secrets_log
+    variables:
+    - group: DevOpsConfig
+    - group: 'log'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: log (Org-level)'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'log' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'log' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "ADO_PAT" --body "$(ADO_PAT)" --org "Second-Devops-organisation1" --visibility private
+          gh secret set "GH_PAT"  --body "$(GH_PAT)"  --org "Second-Devops-organisation1" --visibility private
+
+  - job: Migrate_Secrets_metadata
+    variables:
+    - group: DevOpsConfig
+    - group: 'metadata'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: metadata'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'metadata' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'metadata' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "AZURE_DEVOPS_EXT_PAT" --body "$(AZURE_DEVOPS_EXT_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_migration_branch_policies
+    variables:
+    - group: DevOpsConfig
+    - group: 'migration-branch-policies'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: migration-branch-policies'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'migration-branch-policies' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'migration-branch-policies' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "migration_branch_policies_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "migration_branch_policies_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_MySecretsGroup
+    variables:
+    - group: DevOpsConfig
+    - group: 'MySecretsGroup'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: MySecretsGroup (TEST - fake repo)'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'MySecretsGroup' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'MySecretsGroup' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "clientSecret"   --body "$(clientSecret)"   --repo "Second-Devops-organisation1/Fake-Repo-Does-Not-Exist"
+          gh secret set "storageKey"     --body "$(storageKey)"     --repo "Second-Devops-organisation1/Fake-Repo-Does-Not-Exist"
+          gh secret set "tenantId"       --body "$(tenantId)"       --repo "Second-Devops-organisation1/Fake-Repo-Does-Not-Exist"
+          gh secret set "ServerPassword" --body "$(ServerPassword)" --repo "Second-Devops-organisation1/Fake-Repo-Does-Not-Exist"
+
+  - job: Migrate_Secrets_pipeline_migration
+    variables:
+    - group: DevOpsConfig
+    - group: 'pipeline-migration'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: pipeline-migration'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'pipeline-migration' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'pipeline-migration' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "pipeline_migration_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "pipeline_migration_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_Repo_migration
+    variables:
+    - group: DevOpsConfig
+    - group: 'Repo_migration'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: Repo_migration'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'Repo_migration' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'Repo_migration' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ado-to-github-migration"
+          gh secret set "GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ado-to-github-migration"
+
+  - job: Migrate_Secrets_repo_migration_discove
+    variables:
+    - group: DevOpsConfig
+    - group: 'repo-migration-discove'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: repo-migration-discove'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discove' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-discove' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "repo_migration_discove_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_repo_migration_discover
+    variables:
+    - group: DevOpsConfig
+    - group: 'repo-migration-discover'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: repo-migration-discover'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discover' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-discover' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "repo_migration_discover_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "repo_migration_discover_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_repo_migration_discoverB
+    variables:
+    - group: DevOpsConfig
+    - group: 'repo-migration-discoverB'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: repo-migration-discoverB'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discoverB' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-discoverB' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "repo_migration_discoverB_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_repo_migration_migrate
+    variables:
+    - group: DevOpsConfig
+    - group: 'repo-migration-migrate'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: repo-migration-migrate'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-migrate' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-migrate' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "repo_migration_migrate_GH_PAT" --body "$(GH_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_setup_github_org
+    variables:
+    - group: DevOpsConfig
+    - group: 'setup-github-org'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: setup-github-org'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'setup-github-org' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'setup-github-org' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "setup_github_org_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "setup_github_org_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  - job: Migrate_Secrets_SnowflakeCredentials
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    # KV group binding REMOVED — was triggering AzureKeyVault@2 auto-download
+    # - group: 'SnowflakeCredentials'  ← ON HOLD
+    steps:
+    - task: PowerShell@2
+      displayName: '[SKIPPED] SnowflakeCredentials — KV ON HOLD'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "SKIPPED: SnowflakeCredentials is a Key Vault-linked group."
+          Write-Warning "Migration is ON HOLD. Confirm Key Vault solution first."
+          Write-Warning "Secrets affected: SNOWFLAKE_ACCOUNT, SNOWFLAKE_PASSWORD"
+
+  - job: Migrate_Secrets_urvashi_adotogit_Copy
+    variables:
+    - group: DevOpsConfig
+    - group: 'urvashi-adotogit - Copy'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: urvashi-adotogit - Copy'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'urvashi-adotogit - Copy' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'urvashi-adotogit - Copy' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          echo "$(Git_pat)" | gh auth login --with-token
+          gh secret set "urvashi_adotogit___Copy_ADO_PAT" --body "$(ADO_PAT)" --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+          gh secret set "urvashi_adotogit___Copy_GH_PAT"  --body "$(GH_PAT)"  --repo "Second-Devops-organisation1/ADO_To_GHAS_Migration"
+
+  # ============================================================================
+  # KEY VAULT-LINKED GROUPS — WARNING ONLY, NO MIGRATION ATTEMPTED
+  #
+  # These ADO variable groups are linked to Azure Key Vault.
+  # Migration is ON HOLD until a proper solution is decided.
+  #
+  # Affected groups:
+  #   1. KeyVaultSnowflakeCredentials  (KV: CATSnowflakeCredentials)
+  #   2. kv-demoapp-dev                (KV: kv-demoapp-dev)
+  #   3. kv-demoapp-prd                (KV: kv-demoapp-prd)
+  #   4. kv-demoapp-uate               (KV: kv-demoapp-uate)
+  #   5. SnowflakeCredentials          (KV: SnowflakeCredentials)
+  #
+  # Next step: Confirm vault status in Azure Portal, then decide:
+  #   - Migrate secrets into GitHub Secrets (one-time copy), OR
+  #   - Integrate Key Vault directly in GitHub Actions workflows
+  # ============================================================================
+
+  - job: KV_Warning_KeyVaultSnowflakeCredentials
+    displayName: '[KV - ON HOLD] KeyVaultSnowflakeCredentials'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : KeyVaultSnowflakeCredentials"
+          Write-Warning " Linked KV   : CATSnowflakeCredentials"
+          Write-Warning " Variables   : SNOWFLAKEACCOUNT, SNOWFLAKEDATABASE,"
+          Write-Warning "               SNOWFLAKEPASSWORD, SNOWFLAKESCHEMA,"
+          Write-Warning "               SNOWFLAKEUSER, SNOWFLAKEWAREHOUSE"
+          Write-Warning " Target Repo : Second-Devops-organisation1/snowflake-database"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Check if vault 'CATSnowflakeCredentials'"
+          Write-Warning " exists in Azure Portal before migrating."
+          Write-Warning "============================================================"
+
+  - job: KV_Warning_kv_demoapp_dev
+    displayName: '[KV - ON HOLD] kv-demoapp-dev'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : kv-demoapp-dev"
+          Write-Warning " Variables   : sampleservice-BaseUrl, sampleservice-Password,"
+          Write-Warning "               sampleservice-UserName"
+          Write-Warning " Target      : Demoapp-Application-API (env: dev)"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Confirm Key Vault solution before migrating."
+          Write-Warning "============================================================"
+
+  - job: KV_Warning_kv_demoapp_prd
+    displayName: '[KV - ON HOLD] kv-demoapp-prd'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : kv-demoapp-prd"
+          Write-Warning " Variables   : sampleservice-BaseUrl, sampleservice-Password,"
+          Write-Warning "               sampleservice-UserName"
+          Write-Warning " Target      : Demoapp-Application-API (env: production)"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Confirm Key Vault solution before migrating."
+          Write-Warning "============================================================"
+
+  - job: KV_Warning_kv_demoapp_uate
+    displayName: '[KV - ON HOLD] kv-demoapp-uate'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : kv-demoapp-uate"
+          Write-Warning " Variables   : sampleservice-BaseUrl, sampleservice-Password,"
+          Write-Warning "               sampleservice-UserName"
+          Write-Warning " Target      : Demoapp-Application-API (env: uate)"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Confirm Key Vault solution before migrating."
+          Write-Warning "============================================================"
+
+  - job: KV_Warning_SnowflakeCredentials
+    displayName: '[KV - ON HOLD] SnowflakeCredentials'
+    continueOnError: true
+    variables:
+    - group: DevOpsConfig
+    steps:
+    - task: PowerShell@2
+      displayName: 'WARNING: Key Vault group — migration skipped'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          Write-Warning "============================================================"
+          Write-Warning " KEY VAULT GROUP DETECTED — MIGRATION NOT ATTEMPTED"
+          Write-Warning "============================================================"
+          Write-Warning " Group Name  : SnowflakeCredentials"
+          Write-Warning " Variables   : SNOWFLAKE_ACCOUNT, SNOWFLAKE_PASSWORD"
+          Write-Warning " Target Repo : Second-Devops-organisation1/snowflake-database"
+          Write-Warning "------------------------------------------------------------"
+          Write-Warning " ACTION NEEDED: Confirm Key Vault solution before migrating."
+          Write-Warning "============================================================"
