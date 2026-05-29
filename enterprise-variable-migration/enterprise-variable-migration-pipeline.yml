@@ -211,4 +211,3 @@ stages:
         MY_GH_PAT: $(GH_PAT)
         MY_GIT_PAT: $(Git_pat)
         MY_ADO_PAT: $(ADO_PAT)
-```
