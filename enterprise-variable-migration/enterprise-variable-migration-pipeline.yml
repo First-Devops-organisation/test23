@@ -100,6 +100,18 @@ stages:
 
 # ==============================================================================
 # PHASE 3: SECRETS & KEY VAULT MIGRATION (Unified)
+#
+# Regular Secrets:  ADO decrypts the value → $(VAR) resolves → gh secret set
+# KV-Linked Groups: ADO fetches from Key Vault at runtime → $(VAR) resolves → gh secret set
+#
+# Both use the EXACT same mechanism — declare the variable group in YAML,
+# the ADO agent injects the value, then GitHub CLI pushes it to GitHub Secrets.
+#
+# ADO REQUIREMENT: Each variable group needs its OWN job so ADO can authorize
+# them at YAML parse time. Groups cannot be bound dynamically at runtime.
+#
+# KV groups use continueOnError: true — if a vault is unreachable (e.g. deleted),
+# that job fails gracefully without blocking the rest of the stage.
 # ==============================================================================
 - stage: Secrets
   dependsOn: Migration
@@ -125,26 +137,26 @@ stages:
               exit 0
           }
           
-          # DEBUG: Let's see what ADO is actually passing
-          Write-Host "DEBUG - Length of MY_GH_PAT: $($env:MY_GH_PAT.Length)"
-          Write-Host "DEBUG - Is MY_GH_PAT the literal string? $($env:MY_GH_PAT -eq '$(GH_PAT)')"
-          Write-Host "DEBUG - Length of MY_ADO_PAT: $($env:MY_ADO_PAT.Length)"
+          # ADO macro expansion trap fix: construct check strings dynamically
+          # so Azure DevOps doesn't aggressively replace them before the script runs.
+          $ghPatMacro = "$" + "(GH_PAT)"
+          $gitPatMacro = "$" + "(Git_pat)"
+          $ghOrgMacro = "$" + "(GH_Org)"
+          $gitHubOrgMacro = "$" + "(GitHub_Org)"
           
-          # Check if GH_PAT is present, fallback to Git_pat
           $token = $env:MY_GH_PAT
-          if ($token -eq '$(GH_PAT)' -or [string]::IsNullOrWhiteSpace($token)) {
+          if ($token -eq $ghPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
               $token = $env:MY_GIT_PAT
           }
-          if ($token -eq '$(Git_pat)' -or [string]::IsNullOrWhiteSpace($token)) {
-              Write-Host "##[error] Azure DevOps failed to inject GH_PAT! Please check the variable name for spaces and ensure the group is authorized."
+          if ($token -eq $gitPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
+              Write-Host "##[error] Azure DevOps failed to inject GH_PAT or Git_pat! Please check your variable group."
               exit 1
           }
           $env:GH_TOKEN = $token.Trim()
           
-          # Fixed: Fallback to GitHub_Org if GH_Org is missing
-          $targetOrg = "$(GH_Org)"
-          if ($targetOrg -eq '$(GH_Org)' -or [string]::IsNullOrWhiteSpace($targetOrg)) {
-              $targetOrg = "$(GitHub_Org)"
+          $targetOrg = $env:MY_GH_ORG
+          if ($targetOrg -eq $ghOrgMacro -or [string]::IsNullOrWhiteSpace($targetOrg)) {
+              $targetOrg = $env:MY_GITHUB_ORG
           }
           
           $targetRepo = $mapping.targetRepo
@@ -166,3 +178,5 @@ stages:
         MY_GH_PAT: $(GH_PAT)
         MY_GIT_PAT: $(Git_pat)
         MY_ADO_PAT: $(ADO_PAT)
+        MY_GH_ORG: $(GH_Org)
+        MY_GITHUB_ORG: $(GitHub_Org)
