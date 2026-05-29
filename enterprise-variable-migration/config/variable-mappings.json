@@ -1,7 +1,6 @@
 {
   "targetGitHubOrg": "First-Devops-organisation",
   "variableGroups": [
-
     {
       "adoGroupName": "log",
       "action": "migrate",
