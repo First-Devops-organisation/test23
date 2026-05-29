@@ -161,7 +161,7 @@ jobs:
             
             # Map the exact secret dynamically
             $safeEnvVar = "MY_SEC_" + ($origName -replace "[^a-zA-Z0-9]","_").ToUpper()
-            $envMappings += "        $safeEnvVar: `$$($origName)`n"
+            $envMappings += "        ${safeEnvVar}: `$$($origName)`n"
             
             $cmd = ""
             if ($secScope -eq "organization") {
