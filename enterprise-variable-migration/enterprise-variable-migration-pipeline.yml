@@ -118,7 +118,7 @@ stages:
   condition: and(always(), eq('${{ parameters.RunSecrets }}', true))
   displayName: 'Phase 3: Migrate Secrets & Key Vault Groups'
   jobs:
-  - job: Migrate_Secrets_repo-migration-discove-uat_i
+  - job: Migrate_Secrets_repo-migration-discove-uat-i
     variables:
     - group: repo-migration-discove
     - group: repo-migration-migrate
