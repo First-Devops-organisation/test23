@@ -1,93 +1,69 @@
 trigger: none
-
 pool:
-  name: 'linux'
-
-parameters:
-- name: RunDiscovery
-  displayName: 'Run Phase 1: Discovery (Generates Report)'
-  type: boolean
-  default: true
-
-- name: RunMigration
-  displayName: "Run Phase 2: Migration (Variables to GitHub)"
-  type: boolean
-  default: false
-
+  vmImage: ubuntu-latest
 variables:
 - group: repo-migration-discove
 - group: repo-migration-migrate
-
-stages:
-
-# ==============================================================================
-# PHASE 1: DISCOVERY
-# ==============================================================================
-- stage: Discovery
-  condition: eq('${{ parameters.RunDiscovery }}', true)
-  displayName: 'Phase 1: Discover Usage'
-  jobs:
-  - job: DiscoverVariableGroups
+jobs:
+  - job: Migrate_Secrets_DemoApp_Application_API_UAT_E
+    variables:
+    - group: repo-migration-discove
+    - group: repo-migration-migrate
+    - group: 'DemoApp-Application-API-UAT_E'
     steps:
     - task: PowerShell@2
-      displayName: 'Run Discovery Script'
+      displayName: 'Migrate Secrets for DemoApp-Application-API-UAT_E'
       inputs:
-        filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/discover-variable-usage.ps1'
-        arguments: '-Organization "$(ADO_Org)" -Project "$(ADO_Project)" -Pat "$(ADO_PAT)"'
+        targetType: 'inline'
         pwsh: true
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover'
+        script: |
+          $ghPatMacro = "$" + "(GH_PAT)"
+          $gitPatMacro = "$" + "(Git_pat)"
+          $token = $env:MY_GH_PAT
+          if ($token -eq $ghPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
+              $token = $env:MY_GIT_PAT
+          }
+          if ($token -eq $gitPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
+              Write-Host "##[error] Azure DevOps failed to inject GH_PAT or Git_pat!"
+              exit 1
+          }
+          $env:GH_TOKEN = $token.Trim()
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Discovery CSV Report'
-      inputs:
-        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/VariableGroup-Usage-Report.csv'
-        artifact: 'VariableGroup-Mapping-CSV'
-        publishLocation: 'pipeline'
+          gh secret set "Name" --body "$env:MY_SEC_NAME" --repo "First-Devops-organisation/sample2" --env "uat_e"
+          gh secret set "resourceGroupName" --body "$env:MY_SEC_RESOURCEGROUPNAME" --repo "First-Devops-organisation/sample2" --env "uat_e"
+      env:
+        MY_GH_PAT: $(GH_PAT)
+        MY_GIT_PAT: $(Git_pat)
+        MY_SEC_NAME: $(Name)
+        MY_SEC_RESOURCEGROUPNAME: $(resourceGroupName)
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Discovery JSON Template'
-      inputs:
-        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/variable-mappings-template.json'
-        artifact: 'VariableGroup-Mapping-JSON'
-        publishLocation: 'pipeline'
-
-# ==============================================================================
-# PHASE 2: MIGRATION (Generates Phase 3 Automatically!)
-# ==============================================================================
-- stage: Migration
-  dependsOn: Discovery
-  condition: and(always(), eq('${{ parameters.RunMigration }}', true))
-  displayName: 'Phase 2: Migrate Variables'
-  jobs:
-  - job: MigrateVariables
+  - job: Migrate_Secrets_owsap
+    variables:
+    - group: repo-migration-discove
+    - group: repo-migration-migrate
+    - group: 'owsap'
     steps:
     - task: PowerShell@2
-      displayName: 'Run Migration Script'
+      displayName: 'Migrate Secrets for owsap'
       inputs:
-        filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/migrate-variables.ps1'
-        arguments: '-Organization "$(ADO_Org)" -Project "$(ADO_Project)" -AdoPat "$(ADO_PAT)" -GhPat "$(GH_PAT)" -ConfigPath "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json"'
+        targetType: 'inline'
         pwsh: true
+        script: |
+          $ghPatMacro = "$" + "(GH_PAT)"
+          $gitPatMacro = "$" + "(Git_pat)"
+          $token = $env:MY_GH_PAT
+          if ($token -eq $ghPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
+              $token = $env:MY_GIT_PAT
+          }
+          if ($token -eq $gitPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
+              Write-Host "##[error] Azure DevOps failed to inject GH_PAT or Git_pat!"
+              exit 1
+          }
+          $env:GH_TOKEN = $token.Trim()
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Migration Dashboard'
-      condition: always()
-      inputs:
-        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/Migration-Dashboard.md'
-        artifact: 'Migration-Dashboard'
-        publishLocation: 'pipeline'
+          gh secret set "nvdApiKey" --body "$env:MY_SEC_NVDAPIKEY" --repo "First-Devops-organisation/test2"
+      env:
+        MY_GH_PAT: $(GH_PAT)
+        MY_GIT_PAT: $(Git_pat)
+        MY_SEC_NVDAPIKEY: $(nvdApiKey)
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Migration Summary CSV'
-      condition: always()
-      inputs:
-        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/Migration-Summary.csv'
-        artifact: 'Migration-Summary-CSV'
-        publishLocation: 'pipeline'
-
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Generated Phase 3 YAML'
-      condition: always()
-      inputs:
-        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/phase3-secrets-migration.yml'
-        artifact: 'Phase3-Secrets-Pipeline-YAML'
-        publishLocation: 'pipeline'
