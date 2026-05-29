@@ -231,8 +231,10 @@ stages:
           
           Write-Host "Secrets migrated successfully!"
       env:
-        nvdApiKey: $(nvdApiKey)
+        MY_GH_PAT: $(GH_PAT)
         MY_GIT_PAT: $(Git_pat)
+        nvdApiKey: $(nvdApiKey)
+        
 
   # -------------------------------------------------------------------------
   # GROUP 3: DemoApp-Application-API-UAT_E
