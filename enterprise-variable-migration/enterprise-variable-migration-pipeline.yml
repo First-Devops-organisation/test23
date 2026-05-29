@@ -182,11 +182,11 @@ stages:
               exit 0
           }
           # Check if GH_PAT is present, fallback to Git_pat
-          $token = "$(GH_PAT)"
-          if ($token -eq "`$(GH_PAT)" -or [string]::IsNullOrWhiteSpace($token)) {
-              $token = "$(Git_pat)"
+          $token = $env:MY_GH_PAT
+          if ([string]::IsNullOrWhiteSpace($token)) {
+              $token = $env:MY_GIT_PAT
           }
-          if ($token -eq "`$(Git_pat)" -or [string]::IsNullOrWhiteSpace($token)) {
+          if ([string]::IsNullOrWhiteSpace($token)) {
               Write-Host "##[error] Neither GH_PAT nor Git_pat were found in your variable groups!"
               exit 1
           }
@@ -198,9 +198,13 @@ stages:
           $targetScope = $mapping.targetScope
           
           if ($targetScope -eq 'environment') {
-              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "$targetOrg/$targetRepo" --env "$targetEnv"
+              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --repo "$targetOrg/$targetRepo" --env "$targetEnv"
           } elseif ($targetScope -eq 'repository') {
-              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --repo "$targetOrg/$targetRepo"
+              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --repo "$targetOrg/$targetRepo"
           } elseif ($targetScope -eq 'organization') {
-              gh secret set "ADO_PAT" --body "$(ADO_PAT)" --org "$targetOrg" --visibility private
+              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --org "$targetOrg" --visibility private
           }
+      env:
+        MY_GH_PAT: $(GH_PAT)
+        MY_GIT_PAT: $(Git_pat)
+        MY_ADO_PAT: $(ADO_PAT)
