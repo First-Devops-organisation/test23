@@ -231,11 +231,7 @@ stages:
           
           Write-Host "Secrets migrated successfully!"
       env:
-        MY_GH_PAT: $(GH_PAT)
-        MY_GIT_PAT: $(Git_pat)
-        MY_ADO_PAT: $(ADO_PAT)
-        MY_GH_ORG: $(GH_Org)
-        MY_GITHUB_ORG: $(GitHub_Org)
+        nvdApiKey: $(nvdApiKey)
 
   # -------------------------------------------------------------------------
   # GROUP 3: DemoApp-Application-API-UAT_E
