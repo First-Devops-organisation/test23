@@ -2,11 +2,38 @@
   "targetGitHubOrg": "First-Devops-organisation",
   "variableGroups": [
     {
-      "adoGroupName": "repo-migration-discove-uat_i",
+      "adoGroupName": "Sampleproject-AppConfiguration-Dev",
       "action": "migrate",
       "targetScope": "organization",
       "targetRepo": "",
       "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "owsap",
+      "action": "migrate",
+      "targetScope": "repository",
+      "targetRepo": "test2",
+      "targetEnvironment": "",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+    {
+      "adoGroupName": "DemoApp-Application-API-UAT_E",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "sample2",
+      "targetEnvironment": "uat_e",
+      "isKeyVaultLinked": false,
+      "keyVaultName": ""
+    },
+   {
+      "adoGroupName": "DemoApp-Application-API-Dev",
+      "action": "migrate",
+      "targetScope": "environment",
+      "targetRepo": "sample2",
+      "targetEnvironment": "dev",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
     }
