@@ -135,7 +135,11 @@ stages:
               Write-Host "##[warning] SKIPPED: 'repo-migration-discove-release' is not marked for migration in variable-mappings.json."
               exit 0
           }
-          echo "$(GH_PAT)" | gh auth login --with-token
+          # Check if GH_PAT is present
+          if (-not "$(GH_PAT)") {
+              Write-Host "##[error] GH_PAT is empty or not resolving!"
+              exit 1
+          }
           
           $targetOrg = "$(GH_Org)"
           $targetRepo = $mapping.targetRepo
@@ -149,6 +153,8 @@ stages:
           } elseif ($targetScope -eq 'organization') {
               gh secret set "ADO_PAT" --body "$(ADO_PAT)" --org "$targetOrg" --visibility private
           }
+      env:
+        GH_TOKEN: $(GH_PAT)
 
   - job: Migrate_Secrets_repo_migration_discove_uat_i
     variables:
@@ -168,7 +174,11 @@ stages:
               Write-Host "##[warning] SKIPPED: 'repo-migration-discove-uat_i' is not marked for migration in variable-mappings.json."
               exit 0
           }
-          echo "$(GH_PAT)" | gh auth login --with-token
+          # Check if GH_PAT is present
+          if (-not "$(GH_PAT)") {
+              Write-Host "##[error] GH_PAT is empty or not resolving!"
+              exit 1
+          }
           
           $targetOrg = "$(GH_Org)"
           $targetRepo = $mapping.targetRepo
@@ -182,3 +192,5 @@ stages:
           } elseif ($targetScope -eq 'organization') {
               gh secret set "ADO_PAT" --body "$(ADO_PAT)" --org "$targetOrg" --visibility private
           }
+      env:
+        GH_TOKEN: $(GH_PAT)
