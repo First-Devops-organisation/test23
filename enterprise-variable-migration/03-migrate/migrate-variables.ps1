@@ -12,10 +12,10 @@ $Organization = $Organization.Replace("https://dev.azure.com/", "")
 Write-Host "Authenticating with GitHub CLI..."
 echo "$GhPat" | gh auth login --with-token
 
-# Helper: Upsert a GitHub variable
+# Helper: Upsert a GitHub variable (POST then PATCH on 409)
 function Set-GitHubVariable {
     param(
-        [string]$Scope,
+        [string]$Scope,      # organization / repository / environment
         [string]$Org,
         [string]$Repo,
         [string]$Env,
@@ -49,27 +49,73 @@ $ghOrg = $config.targetGitHubOrg
 $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$AdoPat"))
 $headers = @{Authorization=("Basic {0}" -f $base64AuthInfo)}
 $varGroupsUrl = "https://dev.azure.com/$Organization/$Project/_apis/distributedtask/variablegroups?api-version=7.1-preview.2"
+Write-Host "Fetching variable groups from ADO: $varGroupsUrl"
 $response = Invoke-RestMethod -Uri $varGroupsUrl -Method Get -Headers $headers
 $allAdoGroups = $response.value
+Write-Host "Successfully fetched $($allAdoGroups.Count) variable groups from Azure DevOps."
 
 $summaryReport = @()
 $migratedVariableTracker = @{} 
 $secretsByGroup = @{}
 
+if (-not $config.variableGroups) {
+    Write-Warning "No 'variableGroups' array found in the configuration JSON!"
+} else {
+    Write-Host "Loaded $($config.variableGroups.Count) mappings from config."
+}
+
+$migrateCount = 0
 foreach ($mapping in $config.variableGroups) {
-    if ($mapping.action -ne "migrate") { continue }
+    if ($mapping.action -ne "migrate") {
+        Write-Host "Skipping mapping for group '$($mapping.adoGroupName)' because action is '$($mapping.action)'"
+        continue
+    }
+    $migrateCount++
+    Write-Host "Processing migration for group: $($mapping.adoGroupName)"
 
     $adoGroup = $allAdoGroups | Where-Object { $_.name -eq $mapping.adoGroupName }
-    if (-not $adoGroup) { continue }
-    if ($adoGroup.type -eq "AzureKeyVault") { continue }
+    if (-not $adoGroup) {
+        Write-Warning "Variable group '$($mapping.adoGroupName)' not found in Azure DevOps!"
+        $summaryReport += [PSCustomObject]@{
+            AdoGroup    = $mapping.adoGroupName
+            Variable    = "ALL VARIABLES"
+            Type        = "N/A"
+            Scope       = $mapping.targetScope
+            Destination = $mapping.targetRepo
+            Status      = "Group Not Found in ADO"
+        }
+        continue
+    }
+
+    # AUTO-DETECT: Key Vault-linked groups cannot be read via API — skip automatically
+    if ($adoGroup.type -eq "AzureKeyVault") {
+        $kvName = $adoGroup.providerData.vault
+        Write-Warning "SKIPPED (Key Vault Linked): '$($mapping.adoGroupName)' is linked to vault '$kvName'. Migration ON HOLD — resolve vault access first."
+        $summaryReport += [PSCustomObject]@{
+            AdoGroup    = $mapping.adoGroupName
+            Variable    = "ALL VARIABLES"
+            Type        = "N/A"
+            Scope       = $mapping.targetScope
+            Destination = $mapping.targetRepo
+            Status      = "SKIPPED — Key Vault Linked (Vault: $kvName)"
+        }
+        continue
+    }
 
     $targetScope = $mapping.targetScope
     $targetRepos = @($mapping.targetRepo -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
     $targetEnv = $mapping.targetEnvironment
 
-    if ($targetRepos.Count -eq 0 -and $targetScope -ne "organization") { $targetScope = "organization" }
-    if ($targetScope -eq "organization") { $targetRepos = @("ORG_LEVEL") }
+    # REQUIREMENT 2: If action is migrate but no repo, fallback to Organization
+    if ($targetRepos.Count -eq 0 -and $targetScope -ne "organization") {
+        $targetScope = "organization"
+    }
+    
+    if ($targetScope -eq "organization") {
+        $targetRepos = @("ORG_LEVEL")
+    }
 
+    # REQUIREMENT 3: Loop through comma-separated multiple repos
     foreach ($targetRepo in $targetRepos) {
         $scopeKey = if ($targetScope -eq "organization") { "org" } elseif ($targetScope -eq "environment") { "env:{0}:{1}" -f $targetRepo, $targetEnv } else { "repo:{0}" -f $targetRepo }
         if (-not $migratedVariableTracker.ContainsKey($scopeKey)) { $migratedVariableTracker[$scopeKey] = @() }
@@ -78,13 +124,19 @@ foreach ($mapping in $config.variableGroups) {
             $varObj = $adoGroup.variables.$varNameRaw
             $varName = $varNameRaw
 
-            if ($varName -match "(?i)^GITHUB_(.*)") { $varName = "GIT_$($matches[1])" }
+            # REQUIREMENT 5 (Reserved Names): Rename GITHUB_
+            if ($varName -match "(?i)^GITHUB_(.*)") {
+                $varName = "GIT_$($matches[1])"
+            }
+
+            # REQUIREMENT 4 (Name Collisions): Prefix if variable already exists in this scope
             if ($migratedVariableTracker[$scopeKey] -contains $varName) {
                 $safeGroupName = $mapping.adoGroupName -replace "[^a-zA-Z0-9]","_"
                 $varName = "${safeGroupName}_${varName}"
             }
             $migratedVariableTracker[$scopeKey] += $varName
 
+            # REQUIREMENT 5 (Secrets): Store for Phase 3 dynamic pipeline
             if ($varObj.isSecret -eq $true) {
                 if (-not $secretsByGroup.ContainsKey($mapping.adoGroupName)) {
                     $secretsByGroup[$mapping.adoGroupName] = @()
@@ -96,18 +148,47 @@ foreach ($mapping in $config.variableGroups) {
                     TargetRepo   = if ($targetScope -eq "organization") { "" } else { $targetRepo }
                     TargetEnv    = $targetEnv
                 }
+
+                $summaryReport += [PSCustomObject]@{
+                    AdoGroup = $mapping.adoGroupName
+                    Variable = $varName
+                    Type = "Secret"
+                    Scope = $targetScope
+                    Destination = if($targetScope -eq "organization"){"Org"}elseif($targetScope -eq "environment"){"{0} ({1})" -f $targetRepo, $targetEnv}else{$targetRepo}
+                    Status = "Queued for Phase 3"
+                }
                 continue
             }
 
             if ([string]::IsNullOrWhiteSpace($varObj.value)) { continue }
-            Set-GitHubVariable -Scope $targetScope -Org $ghOrg -Repo $targetRepo -Env $targetEnv -Name $varName -Value $varObj.value
+
+            $varValue = $varObj.value
+            $status = "Failed"
+
+            try {
+                $result = Set-GitHubVariable -Scope $targetScope -Org $ghOrg -Repo $targetRepo -Env $targetEnv -Name $varName -Value $varValue
+                if ($result -match "404|Not Found|error|failed") {
+                    $status = "Error: $result"
+                } else {
+                    $status = "Success"
+                }
+            } catch {
+                $status = "Error: $_"
+            }
+
+            $summaryReport += [PSCustomObject]@{
+                AdoGroup = $mapping.adoGroupName
+                Variable = $varName
+                Type = "Variable"
+                Scope = $targetScope
+                Destination = if($targetScope -eq "organization"){"Org"}elseif($targetScope -eq "environment"){"{0} ({1})" -f $targetRepo, $targetEnv}else{$targetRepo}
+                Status = $status
+            }
         }
     }
 }
 
-# -------------------------------------------------------------
-# DYNAMIC PHASE 3 YAML GENERATION FOR SECRETS
-# -------------------------------------------------------------
+# Phase 3 YAML Generation for Secrets
 if ($secretsByGroup.Keys.Count -gt 0) {
     Write-Host "Generating Phase 3 Pipeline for Secrets..."
     $yamlPath = Join-Path $PSScriptRoot "phase3-secrets-migration.yml"
@@ -161,7 +242,7 @@ jobs:
             
             # Map the exact secret dynamically
             $safeEnvVar = "MY_SEC_" + ($origName -replace "[^a-zA-Z0-9]","_").ToUpper()
-            $envMappings += "        ${safeEnvVar}: `$$($origName)`n"
+            $envMappings += "        ${safeEnvVar}: `$($origName)`n"
             
             $cmd = ""
             if ($secScope -eq "organization") {
@@ -175,7 +256,9 @@ jobs:
         }
         $yamlContent += $envMappings
     }
+    
     Set-Content -Path $yamlPath -Value $yamlContent
+    Write-Host "Generated phase3-secrets-migration.yml"
 } else {
     Write-Host "No secrets found to migrate. Generating placeholder Phase 3 YAML."
     $yamlPath = Join-Path $PSScriptRoot "phase3-secrets-migration.yml"
@@ -196,7 +279,6 @@ foreach ($row in $summaryReport) {
     $mdContent += "| $($row.AdoGroup) | $($row.Variable) | $($row.Type) | $($row.Scope) | $($row.Destination) | $($row.Status) |`n"
 }
 Set-Content -Path $mdPath -Value $mdContent
-
 Write-Host "Dashboard generated at: $mdPath"
 Write-Host "======================================================"
 Write-Host "Phase 2 Migration Complete!" -ForegroundColor Green
