@@ -2,7 +2,7 @@
   "targetGitHubOrg": "First-Devops-organisation",
   "variableGroups": [
     {
-      "adoGroupName": "log",
+      "adoGroupName": "repo-migration-discove-uat_i",
       "action": "migrate",
       "targetScope": "organization",
       "targetRepo": "",
