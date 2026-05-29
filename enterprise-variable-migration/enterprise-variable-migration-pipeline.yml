@@ -125,7 +125,7 @@ stages:
     - group: 'repo-migration-discove-uat_i'
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: repo-migration-discove-uat_i'
+      displayName: 'Secrets: repo-migration-discove-uat-i'
       inputs:
         targetType: 'inline'
         pwsh: true
