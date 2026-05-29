@@ -1,3 +1,10 @@
+Viewed enterprise-variable-migration-pipeline.yml:1-215
+
+Here is the complete, perfectly formatted YAML file containing everything (Discovery, Migration, and the fully fixed Secrets Migration). 
+
+You can copy and paste this entire block into your Azure DevOps pipeline!
+
+```yaml
 trigger: none
 
 pool: linux
@@ -18,6 +25,8 @@ parameters:
   displayName: "Run Phase 3: Migrate Secrets & Key Vault Groups to GitHub"
   type: boolean
   default: false
+
+
 variables:
 - group: repo-migration-discove
 - group: repo-migration-migrate
@@ -117,14 +126,14 @@ stages:
   displayName: 'Phase 3: Migrate Secrets & Key Vault Groups'
   jobs:
 
-  - job: log
+  - job: Migrate_Secrets_repo_migration_discove_release
     variables:
     - group: repo-migration-discove
     - group: repo-migration-migrate
-    - group: 'log'
+    - group: 'repo-migration-discove-release'
     steps:
     - task: PowerShell@2
-      displayName: 'Secrets: log'
+      displayName: 'Secrets: repo-migration-discove-release'
       inputs:
         targetType: 'inline'
         pwsh: true
@@ -137,14 +146,14 @@ stages:
           }
           # Check if GH_PAT is present, fallback to Git_pat
           $token = $env:MY_GH_PAT
-          if ([string]::IsNullOrWhiteSpace($token)) {
+          if ($token -eq '$(GH_PAT)' -or [string]::IsNullOrWhiteSpace($token)) {
               $token = $env:MY_GIT_PAT
           }
-          if ([string]::IsNullOrWhiteSpace($token)) {
+          if ($token -eq '$(Git_pat)' -or [string]::IsNullOrWhiteSpace($token)) {
               Write-Host "##[error] Neither GH_PAT nor Git_pat were found in your variable groups!"
               exit 1
           }
-          $env:GH_TOKEN = $token
+          $env:GH_TOKEN = $token.Trim()
           
           $targetOrg = "$(GH_Org)"
           $targetRepo = $mapping.targetRepo
@@ -163,48 +172,49 @@ stages:
         MY_GIT_PAT: $(Git_pat)
         MY_ADO_PAT: $(ADO_PAT)
 
-  # - job: Migrate_Secrets_repo_migration_discove_uat_i
-  #   variables:
-  #   - group: repo-migration-discove
-  #   - group: repo-migration-migrate
-  #   - group: 'repo-migration-discove-uat_i'
-  #   steps:
-  #   - task: PowerShell@2
-  #     displayName: 'Secrets: repo-migration-discove-uat_i'
-  #     inputs:
-  #       targetType: 'inline'
-  #       pwsh: true
-  #       script: |
-  #         # [CHECK MAPPINGS] Check if this group is marked for migration
-  #         $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discove-uat_i' }
-  #         if (-not $mapping -or $mapping.action -ne 'migrate') {
-  #             Write-Host "##[warning] SKIPPED: 'repo-migration-discove-uat_i' is not marked for migration in variable-mappings.json."
-  #             exit 0
-  #         }
-  #         # Check if GH_PAT is present, fallback to Git_pat
-  #         $token = $env:MY_GH_PAT
-  #         if ([string]::IsNullOrWhiteSpace($token)) {
-  #             $token = $env:MY_GIT_PAT
-  #         }
-  #         if ([string]::IsNullOrWhiteSpace($token)) {
-  #             Write-Host "##[error] Neither GH_PAT nor Git_pat were found in your variable groups!"
-  #             exit 1
-  #         }
-  #         $env:GH_TOKEN = $token
+  - job: Migrate_Secrets_repo_migration_discove_uat_i
+    variables:
+    - group: repo-migration-discove
+    - group: repo-migration-migrate
+    - group: 'repo-migration-discove-uat_i'
+    steps:
+    - task: PowerShell@2
+      displayName: 'Secrets: repo-migration-discove-uat_i'
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          # [CHECK MAPPINGS] Check if this group is marked for migration
+          $mapping = Get-Content "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json" | ConvertFrom-Json | Select-Object -ExpandProperty variableGroups | Where-Object { $_.adoGroupName -eq 'repo-migration-discove-uat_i' }
+          if (-not $mapping -or $mapping.action -ne 'migrate') {
+              Write-Host "##[warning] SKIPPED: 'repo-migration-discove-uat_i' is not marked for migration in variable-mappings.json."
+              exit 0
+          }
+          # Check if GH_PAT is present, fallback to Git_pat
+          $token = $env:MY_GH_PAT
+          if ($token -eq '$(GH_PAT)' -or [string]::IsNullOrWhiteSpace($token)) {
+              $token = $env:MY_GIT_PAT
+          }
+          if ($token -eq '$(Git_pat)' -or [string]::IsNullOrWhiteSpace($token)) {
+              Write-Host "##[error] Neither GH_PAT nor Git_pat were found in your variable groups!"
+              exit 1
+          }
+          $env:GH_TOKEN = $token.Trim()
           
-  #         $targetOrg = "$(GH_Org)"
-  #         $targetRepo = $mapping.targetRepo
-  #         $targetEnv = $mapping.targetEnvironment
-  #         $targetScope = $mapping.targetScope
+          $targetOrg = "$(GH_Org)"
+          $targetRepo = $mapping.targetRepo
+          $targetEnv = $mapping.targetEnvironment
+          $targetScope = $mapping.targetScope
           
-  #         if ($targetScope -eq 'environment') {
-  #             gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --repo "$targetOrg/$targetRepo" --env "$targetEnv"
-  #         } elseif ($targetScope -eq 'repository') {
-  #             gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --repo "$targetOrg/$targetRepo"
-  #         } elseif ($targetScope -eq 'organization') {
-  #             gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --org "$targetOrg" --visibility private
-  #         }
-  #     env:
-  #       MY_GH_PAT: $(GH_PAT)
-  #       MY_GIT_PAT: $(Git_pat)
-  #       MY_ADO_PAT: $(ADO_PAT)
+          if ($targetScope -eq 'environment') {
+              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --repo "$targetOrg/$targetRepo" --env "$targetEnv"
+          } elseif ($targetScope -eq 'repository') {
+              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --repo "$targetOrg/$targetRepo"
+          } elseif ($targetScope -eq 'organization') {
+              gh secret set "ADO_PAT" --body "$env:MY_ADO_PAT" --org "$targetOrg" --visibility private
+          }
+      env:
+        MY_GH_PAT: $(GH_PAT)
+        MY_GIT_PAT: $(Git_pat)
+        MY_ADO_PAT: $(ADO_PAT)
+```
