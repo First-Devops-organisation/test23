@@ -177,6 +177,28 @@ jobs:
     }
     Set-Content -Path $yamlPath -Value $yamlContent
 } else {
-    Set-Content -Path (Join-Path $PSScriptRoot "phase3-secrets-migration.yml") -Value "# No secrets found."
+    Write-Host "No secrets found to migrate. Generating placeholder Phase 3 YAML."
+    $yamlPath = Join-Path $PSScriptRoot "phase3-secrets-migration.yml"
+    Set-Content -Path $yamlPath -Value "# No secrets were found in the variable groups marked for migration. Phase 3 is not required."
 }
+
+# -------------------------------------------------------------
+# Generate Summary Dashboard & CSV
+# -------------------------------------------------------------
+$csvPath = Join-Path $PSScriptRoot "Migration-Summary.csv"
+$summaryReport | Export-Csv -Path $csvPath -NoTypeInformation
+
+$mdPath = Join-Path $PSScriptRoot "Migration-Dashboard.md"
+$mdContent = "# Enterprise Migration Summary Dashboard`n`n"
+$mdContent += "| ADO Group | Variable | Type | Target Scope | Destination | Status |`n"
+$mdContent += "|---|---|---|---|---|---|`n"
+foreach ($row in $summaryReport) {
+    $mdContent += "| $($row.AdoGroup) | $($row.Variable) | $($row.Type) | $($row.Scope) | $($row.Destination) | $($row.Status) |`n"
+}
+Set-Content -Path $mdPath -Value $mdContent
+
+Write-Host "Dashboard generated at: $mdPath"
+Write-Host "======================================================"
+Write-Host "Phase 2 Migration Complete!" -ForegroundColor Green
+Write-Host "======================================================"
 exit 0
