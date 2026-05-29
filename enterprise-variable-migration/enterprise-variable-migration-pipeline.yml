@@ -117,7 +117,7 @@ stages:
   displayName: 'Phase 3: Migrate Secrets & Key Vault Groups'
   jobs:
 
-  - job: Migrate_Secrets_repo_migration_discove_release
+  - job: log
     variables:
     - group: repo-migration-discove
     - group: repo-migration-migrate
