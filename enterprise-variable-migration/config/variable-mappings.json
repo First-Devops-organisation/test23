@@ -2,22 +2,22 @@
   "targetGitHubOrg": "First-Devops-organisation",
   "variableGroups": [
     {
-      "adoGroupName": "repo-migration-discove-release",
+      "adoGroupName": "log",
       "action": "migrate",
-      "targetScope": "environment",
-      "targetRepo": "test1",
-      "targetEnvironment": "release",
+      "targetScope": "organization",
+      "targetRepo": "",
+      "targetEnvironment": "",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
     },
-    {
-      "adoGroupName": "repo-migration-discove-uat_i",
-      "action": "migrate",
-      "targetScope": "environment",
-      "targetRepo": "test1",
-      "targetEnvironment": "uat_i",
-      "isKeyVaultLinked": false,
-      "keyVaultName": ""
-    }
-  ]
-}
+//     {
+//       "adoGroupName": "repo-migration-discove-uat_i",
+//       "action": "migrate",
+//       "targetScope": "environment",
+//       "targetRepo": "test1",
+//       "targetEnvironment": "uat_i",
+//       "isKeyVaultLinked": false,
+//       "keyVaultName": ""
+//     }
+//   ]
+// }
