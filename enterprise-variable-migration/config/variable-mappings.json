@@ -1,41 +1,41 @@
 {
   "targetGitHubOrg": "First-Devops-organisation",
   "variableGroups": [
+    // {
+    //   "adoGroupName": "Sampleproject-AppConfiguration-Dev",
+    //   "action": "migrate",
+    //   "targetScope": "organization",
+    //   "targetRepo": "",
+    //   "targetEnvironment": "",
+    //   "isKeyVaultLinked": false,
+    //   "keyVaultName": ""
+    // },
+    // {
+    //   "adoGroupName": "owsap",
+    //   "action": "migrate",
+    //   "targetScope": "repository",
+    //   "targetRepo": "test2",
+    //   "targetEnvironment": "",
+    //   "isKeyVaultLinked": false,
+    //   "keyVaultName": ""
+    // },
     {
-      "adoGroupName": "Sampleproject-AppConfiguration-Dev",
+      "adoGroupName": "SnowflakeCredentials",
       "action": "migrate",
-      "targetScope": "organization",
-      "targetRepo": "",
-      "targetEnvironment": "",
-      "isKeyVaultLinked": false,
-      "keyVaultName": ""
-    },
-    {
-      "adoGroupName": "owsap",
-      "action": "migrate",
-      "targetScope": "repository",
+      "targetScope": "environment",
       "targetRepo": "test2",
-      "targetEnvironment": "",
-      "isKeyVaultLinked": false,
-      "keyVaultName": ""
-    },
-    {
-      "adoGroupName": "DemoApp-Application-API-UAT_E",
-      "action": "migrate",
-      "targetScope": "environment",
-      "targetRepo": "sample2",
-      "targetEnvironment": "uat_e",
-      "isKeyVaultLinked": false,
-      "keyVaultName": ""
-    },
-   {
-      "adoGroupName": "DemoApp-Application-API-Dev",
-      "action": "migrate",
-      "targetScope": "environment",
-      "targetRepo": "sample2",
-      "targetEnvironment": "dev",
+      "targetEnvironment": "Dev",
       "isKeyVaultLinked": false,
       "keyVaultName": ""
     }
+  //  {
+  //     "adoGroupName": "DemoApp-Application-API-Dev",
+  //     "action": "migrate",
+  //     "targetScope": "environment",
+  //     "targetRepo": "sample2",
+  //     "targetEnvironment": "dev",
+  //     "isKeyVaultLinked": false,
+  //     "keyVaultName": ""
+  //   }
   ]
 }
