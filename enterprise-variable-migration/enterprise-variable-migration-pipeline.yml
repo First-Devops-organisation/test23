@@ -1,69 +1,108 @@
 trigger: none
+
 pool:
-  vmImage: ubuntu-latest
+  name: 'linux'
+
+parameters:
+- name: RunDiscovery
+  displayName: 'Run Phase 1: Discovery (Generates Report)'
+  type: boolean
+  default: true
+
+- name: RunMigration
+  displayName: "Run Phase 2: Migration (Variables to GitHub)"
+  type: boolean
+  default: false
+
+- name: RunSecrets
+  displayName: "Run Phase 3: Migrate Secrets & Key Vault Groups to GitHub"
+  type: boolean
+  default: false
+
+
 variables:
 - group: repo-migration-discove
 - group: repo-migration-migrate
-jobs:
-  - job: Migrate_Secrets_DemoApp_Application_API_UAT_E
-    variables:
-    - group: repo-migration-discove
-    - group: repo-migration-migrate
-    - group: 'DemoApp-Application-API-UAT_E'
+
+stages:
+
+# ==============================================================================
+# PHASE 1: DISCOVERY
+# ==============================================================================
+- stage: Discovery
+  condition: eq('${{ parameters.RunDiscovery }}', true)
+  displayName: 'Phase 1: Discover Usage'
+  jobs:
+  - job: DiscoverVariableGroups
     steps:
     - task: PowerShell@2
-      displayName: 'Migrate Secrets for DemoApp-Application-API-UAT_E'
+      displayName: 'Run Discovery Script'
       inputs:
-        targetType: 'inline'
+        filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/discover-variable-usage.ps1'
+        arguments: '-Organization "$(ADO_Org)" -Project "$(ADO_Project)" -Pat "$(ADO_PAT)"'
         pwsh: true
-        script: |
-          $ghPatMacro = "$" + "(GH_PAT)"
-          $gitPatMacro = "$" + "(Git_pat)"
-          $token = $env:MY_GH_PAT
-          if ($token -eq $ghPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
-              $token = $env:MY_GIT_PAT
-          }
-          if ($token -eq $gitPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
-              Write-Host "##[error] Azure DevOps failed to inject GH_PAT or Git_pat!"
-              exit 1
-          }
-          $env:GH_TOKEN = $token.Trim()
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover'
 
-          gh secret set "Name" --body "$env:MY_SEC_NAME" --repo "First-Devops-organisation/sample2" --env "uat_e"
-          gh secret set "resourceGroupName" --body "$env:MY_SEC_RESOURCEGROUPNAME" --repo "First-Devops-organisation/sample2" --env "uat_e"
-      env:
-        MY_GH_PAT: $(GH_PAT)
-        MY_GIT_PAT: $(Git_pat)
-        MY_SEC_NAME: $(Name)
-        MY_SEC_RESOURCEGROUPNAME: $(resourceGroupName)
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Discovery CSV Report'
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/VariableGroup-Usage-Report.csv'
+        artifact: 'VariableGroup-Mapping-CSV'
+        publishLocation: 'pipeline'
 
-  - job: Migrate_Secrets_owsap
-    variables:
-    - group: repo-migration-discove
-    - group: repo-migration-migrate
-    - group: 'owsap'
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Discovery JSON Template'
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/01-discover/variable-mappings-template.json'
+        artifact: 'VariableGroup-Mapping-JSON'
+        publishLocation: 'pipeline'
+
+# ==============================================================================
+# PHASE 2: MIGRATION
+# ==============================================================================
+- stage: Migration
+  dependsOn: Discovery
+  condition: and(always(), eq('${{ parameters.RunMigration }}', true))
+  displayName: 'Phase 2: Migrate Variables'
+  jobs:
+  - job: MigrateVariables
     steps:
     - task: PowerShell@2
-      displayName: 'Migrate Secrets for owsap'
+      displayName: 'Run Migration Script'
       inputs:
-        targetType: 'inline'
+        filePath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/migrate-variables.ps1'
+        arguments: '-Organization "$(ADO_Org)" -Project "$(ADO_Project)" -AdoPat "$(ADO_PAT)" -GhPat "$(GH_PAT)" -ConfigPath "$(System.DefaultWorkingDirectory)/enterprise-variable-migration/config/variable-mappings.json"'
         pwsh: true
-        script: |
-          $ghPatMacro = "$" + "(GH_PAT)"
-          $gitPatMacro = "$" + "(Git_pat)"
-          $token = $env:MY_GH_PAT
-          if ($token -eq $ghPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
-              $token = $env:MY_GIT_PAT
-          }
-          if ($token -eq $gitPatMacro -or [string]::IsNullOrWhiteSpace($token)) {
-              Write-Host "##[error] Azure DevOps failed to inject GH_PAT or Git_pat!"
-              exit 1
-          }
-          $env:GH_TOKEN = $token.Trim()
 
-          gh secret set "nvdApiKey" --body "$env:MY_SEC_NVDAPIKEY" --repo "First-Devops-organisation/test2"
-      env:
-        MY_GH_PAT: $(GH_PAT)
-        MY_GIT_PAT: $(Git_pat)
-        MY_SEC_NVDAPIKEY: $(nvdApiKey)
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Migration Dashboard'
+      condition: always()
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/Migration-Dashboard.md'
+        artifact: 'Migration-Dashboard'
+        publishLocation: 'pipeline'
 
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Migration Summary CSV'
+      condition: always()
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/Migration-Summary.csv'
+        artifact: 'Migration-Summary-CSV'
+        publishLocation: 'pipeline'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Generated Phase 3 YAML'
+      condition: always()
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/enterprise-variable-migration/03-migrate/phase3-secrets-migration.yml'
+        artifact: 'Phase3-Secrets-Pipeline-YAML'
+        publishLocation: 'pipeline'
+
+# ==============================================================================
+# PHASE 3: SECRETS & KEY VAULT MIGRATION (Unified)
+#
+# Regular Secrets:  ADO decrypts the value → $(VAR) resolves → gh secret set
+# KV-Linked Groups: ADO fetches from Key Vault at runtime → $(VAR) resolves → gh secret set
+#
+# Both use the EXACT same mechanism — declare the variable group in YAML,
+        publishLocation: 'pipeline'
