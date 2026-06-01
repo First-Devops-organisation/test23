@@ -105,4 +105,4 @@ stages:
 # KV-Linked Groups: ADO fetches from Key Vault at runtime → $(VAR) resolves → gh secret set
 #
 # Both use the EXACT same mechanism — declare the variable group in YAML,
-        publishLocation: 'pipeline'
+        # publishLocation: 'pipeline'
