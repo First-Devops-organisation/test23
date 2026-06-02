@@ -12,7 +12,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "ADO_To_GHAS_Migration",
+    "singleRepo": "SSPM",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
