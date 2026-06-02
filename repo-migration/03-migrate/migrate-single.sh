@@ -492,7 +492,7 @@ else
           echo -e "$folderSummaryMd" > "$auditDir/gh-folder-summary-default.md"
 
           safeBranch=$(echo "$defaultBranch" | sed 's/[/\\]/--/g')
-          branchFileMd="# Files in branch: $defaultBranch"
+          branchFileMd="# Files in branch: $defaultBranch\n\n"
           
           mapfile -t paths < <(echo "$blobEntries" | jq -r '.[].path')
           declare -A grouped_files
@@ -505,14 +505,14 @@ else
           done
 
           for dir in "${!grouped_files[@]}"; do
-            branchFileMd="${branchFileMd}## $dir/"
+            branchFileMd="${branchFileMd}## $dir/\n"
             sorted_f=$(echo -n "${grouped_files[$dir]}" | sort)
             while read -r file; do
               if [ -n "$file" ]; then
-                branchFileMd="${branchFileMd}- $file"
+                branchFileMd="${branchFileMd}- $file\n"
               fi
             done <<< "$sorted_f"
-            branchFileMd="${branchFileMd}"
+            branchFileMd="${branchFileMd}\n"
           done
           echo -e "$branchFileMd" > "$folderDir/gh-files-$safeBranch.md"
         fi
