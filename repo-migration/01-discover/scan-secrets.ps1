@@ -70,20 +70,70 @@ if (-not $gl) {
     Write-Error "gitleaks not found. Install: https://github.com/gitleaks/gitleaks/releases or run 02-prep\install-tools.ps1"
 }
 
+function Get-RepoNamesFromConfigEntry($repo) {
+    if ($null -eq $repo) { return $null }
+    
+    $adoRepo = $null
+    $ghRepo = $null
+    
+    if ($repo -is [string]) {
+        $adoRepo = $repo.Trim()
+        $ghRepo = $adoRepo
+    }
+    elseif ($repo.PSObject -and $repo.PSObject.Properties) {
+        # Check source/adoRepo/name properties
+        if ($repo.PSObject.Properties['source']) { $adoRepo = $repo.PSObject.Properties['source'].Value }
+        elseif ($repo.PSObject.Properties['name']) { $adoRepo = $repo.PSObject.Properties['name'].Value }
+        elseif ($repo.PSObject.Properties['adoRepo']) { $adoRepo = $repo.PSObject.Properties['adoRepo'].Value }
+        
+        # Check target/rename/ghRepo properties
+        if ($repo.PSObject.Properties['target']) { $ghRepo = $repo.PSObject.Properties['target'].Value }
+        elseif ($repo.PSObject.Properties['rename']) { $ghRepo = $repo.PSObject.Properties['rename'].Value }
+        elseif ($repo.PSObject.Properties['ghRepo']) { $ghRepo = $repo.PSObject.Properties['ghRepo'].Value }
+    }
+    else {
+        $adoRepo = $repo.ToString().Trim()
+        $ghRepo = $adoRepo
+    }
+    
+    if ([string]::IsNullOrWhiteSpace($adoRepo)) { return $null }
+    $adoRepo = $adoRepo.Trim()
+    
+    # "if want change not make empty" -> if target is empty, use source name
+    if ([string]::IsNullOrWhiteSpace($ghRepo)) {
+        $ghRepo = $adoRepo
+    } else {
+        $ghRepo = $ghRepo.Trim()
+    }
+    
+    return [PSCustomObject]@{
+        ADORepo = $adoRepo
+        GHRepo  = $ghRepo
+    }
+}
+
 # ── Identify repos to scan ───────────────────────────────────────────────────
 $reposToScan = @()
 if ($MigrationMode -ieq 'Single') {
     # Fallback: If SingleRepoName is blank, try reading from config.json
     if ([string]::IsNullOrWhiteSpace($SingleRepoName) -and $config.migration -and $config.migration.singleRepo) {
-        $SingleRepoName = $config.migration.singleRepo
-        Write-Host "Filter: SingleRepoName was blank — using default from config: $SingleRepoName" -ForegroundColor Gray
+        $names = Get-RepoNamesFromConfigEntry $config.migration.singleRepo
+        if ($names -and $names.ADORepo) {
+            $SingleRepoName = $names.ADORepo
+            Write-Host "Filter: SingleRepoName was blank - using default from config: $SingleRepoName" -ForegroundColor Gray
+        }
+    } else {
+        $names = Get-RepoNamesFromConfigEntry $SingleRepoName
+        if ($names -and $names.ADORepo) {
+            $SingleRepoName = $names.ADORepo
+        }
     }
     if (-not [string]::IsNullOrWhiteSpace($SingleRepoName)) {
-        $reposToScan += $SingleRepoName.Trim()
+        $reposToScan += $SingleRepoName
     }
 } 
 else {
-    # Batch mode — load all repos from the requested batch (or all batches)
+    # Batch mode - load all repos from the requested batch (or all batches)
     $targetBatches = $config.batches
     $batchFilter = $SingleRepoName.Trim() # Pipeline passes BatchName here
     if (-not [string]::IsNullOrWhiteSpace($batchFilter)) {
@@ -91,7 +141,12 @@ else {
     }
     foreach ($batch in $targetBatches) {
         if ($null -ne $batch.repos) {
-            $reposToScan += @($batch.repos)
+            foreach ($repo in $batch.repos) {
+                $names = Get-RepoNamesFromConfigEntry $repo
+                if ($names -and $names.ADORepo) {
+                    $reposToScan += $names.ADORepo
+                }
+            }
         }
     }
 }
@@ -154,17 +209,17 @@ if ($emptyRepos.Count -gt 0) {
 $totalCount = ($repos | Measure-Object).Count
 if ($SizeFilter -eq 'Small') {
     $repos = @($repos | Where-Object { $_.SizeMB -lt $SizeThresholdMB })
-    Write-Host "Filter: Small repos only (< ${SizeThresholdMB} MB) — $($repos.Count) of $totalCount repos" -ForegroundColor Gray
+    Write-Host "Filter: Small repos only (< ${SizeThresholdMB} MB) - $($repos.Count) of $totalCount repos" -ForegroundColor Gray
 }
 elseif ($SizeFilter -eq 'Large') {
     $repos = @($repos | Where-Object { $_.SizeMB -ge $SizeThresholdMB })
-    Write-Host "Filter: Large repos only (>= ${SizeThresholdMB} MB) — $($repos.Count) of $totalCount repos" -ForegroundColor Gray
+    Write-Host "Filter: Large repos only (>= ${SizeThresholdMB} MB) - $($repos.Count) of $totalCount repos" -ForegroundColor Gray
 }
 
 # Sort repos smallest-first so most repos complete quickly
 $repos = @($repos | Sort-Object { $_.SizeMB })
 
-# ── Batch splitting (for matrix strategy — multiple agents) ──────────────────
+# ── Batch splitting (for matrix strategy - multiple agents) ──────────────────
 if ($BatchTotal -gt 1) {
     $batchedRepos = @()
     for ($i = 0; $i -lt $repos.Count; $i++) {
@@ -200,7 +255,7 @@ $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $allFindings = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 $repoSummary = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 
-# ── Parallel scan (full clone — complete history for 100% secret coverage) ───
+# ── Parallel scan (full clone - complete history for 100% secret coverage) ───
 $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
     $repo = $_
     $cloneDir = $using:cloneDir
@@ -215,18 +270,18 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
 
     # If repo is completely empty (0 Bytes), mark as CLEAN and skip clone/scan
     if ($repo.SizeBytes -eq 0) {
-        Write-Host "  CLEAN (Empty) — $repoLabel" -ForegroundColor Green
+        Write-Host "  CLEAN (Empty) - $repoLabel" -ForegroundColor Green
         $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = 0; Status = "CLEAN" })
         return
     }
 
-    # Clone — full bare clone with header auth; skip LFS (binaries can't contain text secrets)
+    # Clone - full bare clone with header auth; skip LFS (binaries can't contain text secrets)
     $cloneUrl = $repo.RemoteUrl -replace '://[^@]+@', '://'
     $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("pat:${adoPat}"))
 
     try {
         $env:GIT_LFS_SKIP_SMUDGE = '1'
-        Write-Host "  Cloning $repoLabel — full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
+        Write-Host "  Cloning $repoLabel - full history ($($repo.SizeMB) MB)" -ForegroundColor Gray
         $cloneArgs = @('-c', "http.extraHeader=Authorization: Basic $base64Auth",
             '-c', 'lfs.fetchexclude=*',
             'clone', '--bare', '--quiet', $cloneUrl, $clonePath)
@@ -252,12 +307,12 @@ $repos | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         Write-Warning "  gitleaks exception for ${repoLabel}: $_"
     }
 
-    # Debug output — helps diagnose scan issues
+    # Debug output - helps diagnose scan issues
     Write-Host "  [DEBUG] gitleaks exit=$exitCode, reportExists=$(Test-Path $reportFile -ErrorAction SilentlyContinue), clone=$clonePath" -ForegroundColor DarkGray
     if ($glOutput) { Write-Host "  [DEBUG] gitleaks output: $($glOutput | Out-String)" -ForegroundColor DarkGray }
 
     if ($exitCode -eq 0) {
-        Write-Host "  CLEAN — $repoLabel" -ForegroundColor Green
+        Write-Host "  CLEAN - $repoLabel" -ForegroundColor Green
         $summary.Add([PSCustomObject]@{ Project = $repo.Project; Name = $repo.Name; SizeMB = $repo.SizeMB; FindingsCount = 0; Status = "CLEAN" })
     }
     elseif ($exitCode -eq 1 -and (Test-Path $reportFile)) {
