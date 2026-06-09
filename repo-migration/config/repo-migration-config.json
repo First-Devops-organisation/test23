@@ -12,7 +12,10 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "dashboard-testing",
+    "singleRepo":  {
+        "source": "dashboard-testing",
+        "target": "dashboard-testing-renamed"
+    },
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
