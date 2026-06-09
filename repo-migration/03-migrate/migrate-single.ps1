@@ -25,20 +25,20 @@
 .PARAMETER TargetRepoVisibility
     GitHub repo visibility after migration: private, internal, or public (default: private)
 .PARAMETER SkipAudit
-    If set, skips the branch-wise audit (Step 4) — useful for large repos
+    If set, skips the branch-wise audit (Step 4) - useful for large repos
 .PARAMETER DryRun
     If set, prints the GEI command but does not execute it
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $false)] [string]$ADOOrg,
-    [Parameter(Mandatory = $false)] [string]$ADOProject,
+    [Parameter(Mandatory = $true)]  [string]$ADOOrg,
+    [Parameter(Mandatory = $true)]  [string]$ADOProject,
     [Parameter(Mandatory = $false)] 
     [AllowEmptyString()]
     [string]$ADORepo,
-    [Parameter(Mandatory = $false)] [string]$GHOrg,
+    [Parameter(Mandatory = $true)]  [string]$GHOrg,
     [Parameter(Mandatory = $false)] [string]$GHRepo     = $ADORepo,
-    [Parameter(Mandatory = $false)] [string]$ConfigPath,
+    [Parameter(Mandatory = $false)] [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json",
     [Parameter(Mandatory = $false)] [string]$OutputDir  = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)]
     [ValidateSet('private', 'internal', 'public')]
@@ -50,106 +50,21 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Helper to resolve environment variables from config placeholders ──────────
-function Expand-ConfigValue([string]$value) {
-    if ([string]::IsNullOrWhiteSpace($value)) { return $value }
-    
-    # Resolve $(VAR_NAME) syntax
-    if ($value -match '^\$\(([^)]+)\)$') {
-        $envName = $Matches[1]
-        $envVal = [System.Environment]::GetEnvironmentVariable($envName)
-        if (-not [string]::IsNullOrWhiteSpace($envVal)) { return $envVal }
-    }
-    
-    # Resolve %VAR_NAME% syntax
-    if ($value -match '^%([^%]+)%$') {
-        $envName = $Matches[1]
-        $envVal = [System.Environment]::GetEnvironmentVariable($envName)
-        if (-not [string]::IsNullOrWhiteSpace($envVal)) { return $envVal }
-    }
-    
-    # Resolve $env:VAR_NAME syntax
-    if ($value -match '^\$env:(\w+)$') {
-        $envName = $Matches[1]
-        $envVal = [System.Environment]::GetEnvironmentVariable($envName)
-        if (-not [string]::IsNullOrWhiteSpace($envVal)) { return $envVal }
-    }
-
-    return $value
-}
-
-# ── Load Configuration JSON if available ──────────────────────────────────────
-if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
-    $ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json"
-}
-$ConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
-
-$config = $null
-if (Test-Path $ConfigPath) {
-    try {
-        $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-    } catch {
-        Write-Warning "Failed to parse config file at '$ConfigPath': $($_.Exception.Message)"
-    }
-}
-
-# ── Fallback: Retrieve parameters from config ──────────────────────────────────
-if ($config) {
-    if ($config.PSObject.Properties['source']) {
-        if ([string]::IsNullOrWhiteSpace($ADOOrg) -and $config.source.PSObject.Properties['organization']) {
-            $ADOOrg = Expand-ConfigValue $config.source.organization
-        }
-        if ([string]::IsNullOrWhiteSpace($ADOProject) -and $config.source.PSObject.Properties['project']) {
-            $ADOProject = Expand-ConfigValue $config.source.project
-        }
-    }
-    if ($config.PSObject.Properties['target']) {
-        if ([string]::IsNullOrWhiteSpace($GHOrg) -and $config.target.PSObject.Properties['organization']) {
-            $GHOrg = Expand-ConfigValue $config.target.organization
-        }
-    }
-}
-
-# ── Validate that parameters are now populated ─────────────────────────────────
-if ([string]::IsNullOrWhiteSpace($ADOOrg)) {
-    Write-Error "ADOOrg is required. Provide it as a parameter or configure 'source.organization' in '$ConfigPath'."
-}
-if ([string]::IsNullOrWhiteSpace($ADOProject)) {
-    Write-Error "ADOProject is required. Provide it as a parameter or configure 'source.project' in '$ConfigPath'."
-}
-if ([string]::IsNullOrWhiteSpace($GHOrg)) {
-    Write-Error "GHOrg is required. Provide it as a parameter or configure 'target.organization' in '$ConfigPath'."
-}
-
-# ── Trim whitespace from string parameters ────────────────────────────────────
-$ADOOrg     = $ADOOrg.Trim()
+# ── Trim whitespace from all string parameters ─────────────────────────────────────────────
+$ADOOrg    = $ADOOrg.Trim()
 $ADOProject = $ADOProject.Trim()
-$GHOrg      = $GHOrg.Trim()
-
-# ── Load visibility from config if not explicitly passed ──────────────────────
-if (-not $PSBoundParameters.ContainsKey('TargetRepoVisibility') -and $config -and $config.PSObject.Properties['migration'] -and $config.migration.PSObject.Properties['targetRepoVisibility']) {
-    $TargetRepoVisibility = Expand-ConfigValue $config.migration.targetRepoVisibility
-}
+$GHOrg     = $GHOrg.Trim()
 
 # ── Fallback: if ADORepo is empty, try to read from config.json ───────────────
 if ([string]::IsNullOrWhiteSpace($ADORepo)) {
-    Write-Host "  ADORepo parameter is empty — checking config.json..."
-    if ($config -and $config.migration -and $config.migration.singleRepo) {
-        $singleRepo = $config.migration.singleRepo
-        if ($singleRepo -is [System.Management.Automation.PSCustomObject]) {
-            if ($singleRepo.source -and $singleRepo.target) {
-                $ADORepo = $singleRepo.source.ToString().Trim()
-                $GHRepo  = $singleRepo.target.ToString().Trim()
-            } elseif ($singleRepo.adoRepo -and $singleRepo.githubRepo) {
-                $ADORepo = $singleRepo.adoRepo.ToString().Trim()
-                $GHRepo  = $singleRepo.githubRepo.ToString().Trim()
-            } else {
-                $ADORepo = $singleRepo.ToString().Trim()
-            }
-        } else {
-            $ADORepo = $singleRepo.ToString().Trim()
+    Write-Host "  ADORepo parameter is empty - checking config.json..."
+    $cfgPath = "$PSScriptRoot\..\config\repo-migration-config.json"
+    if (Test-Path $cfgPath) {
+        $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+        if ($cfg.migration -and $cfg.migration.singleRepo) {
+            $ADORepo = $cfg.migration.singleRepo.Trim()
+            Write-Host "  Found default repo in config: $ADORepo" -ForegroundColor Green
         }
-        Write-Host "  Found default repo in config: $ADORepo" -ForegroundColor Green
     }
 }
 
@@ -163,45 +78,30 @@ $GHRepo    = $GHRepo.Trim()
 
 # ── Fallback: if GHRepo is empty after trimming, default to ADORepo ──────────
 if ([string]::IsNullOrWhiteSpace($GHRepo)) {
-    Write-Host "  GHRepo was empty — defaulting to ADORepo: '$ADORepo'"
+    Write-Host "  GHRepo was empty - defaulting to ADORepo: '$ADORepo'"
     $GHRepo = $ADORepo
 }
 
 # Now that we have the final GHRepo name, set the state file path
 $stateFile = "$OutputDir\logs\migration-state-$GHRepo.txt"
 
-# ── Normalize ADOOrg — strip full URL if user set it as https://dev.azure.com/<org> ──
+# ── Normalize ADOOrg - strip full URL if user set it as https://dev.azure.com/<org> ──
 if ($ADOOrg -match '^https?://dev\.azure\.com/([^/]+)/?$') {
     Write-Host "  Normalising ADOOrg: stripping URL prefix → '$($Matches[1])'"
     $ADOOrg = $Matches[1]
 }
 
-# ── Normalize GHOrg — strip full URL if user set it as https://github.com/<org> ──
+# ── Normalize GHOrg - strip full URL if user set it as https://github.com/<org> ──
 if ($GHOrg -match '^https?://github\.com/([^/]+)/?$') {
     Write-Host "  Normalising GHOrg: stripping URL prefix → '$($Matches[1])'"
     $GHOrg = $Matches[1]
 }
 
-# ── Validate/Resolve PATs ────────────────────────────────────────────────────
+# ── Validate PATs ────────────────────────────────────────────────────────────
 $ghPat  = $env:GH_PAT
 $adoPat = $env:ADO_PAT
-
-if ([string]::IsNullOrWhiteSpace($ghPat) -and $config) {
-    if ($config.PSObject.Properties['target'] -and $config.target.PSObject.Properties['pat']) {
-        $ghPat = Expand-ConfigValue $config.target.pat
-    }
-}
-if ([string]::IsNullOrWhiteSpace($adoPat) -and $config) {
-    if ($config.PSObject.Properties['source'] -and $config.source.PSObject.Properties['pat']) {
-        $adoPat = Expand-ConfigValue $config.source.pat
-    }
-}
-
-if ([string]::IsNullOrWhiteSpace($ghPat))  { Write-Error "GH_PAT is required. Set GH_PAT environment variable or configure 'target.pat' in '$ConfigPath'." }
-if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "ADO_PAT is required. Set ADO_PAT environment variable or configure 'source.pat' in '$ConfigPath'." }
-
-$env:GH_PAT  = $ghPat
-$env:ADO_PAT = $adoPat
+if ([string]::IsNullOrWhiteSpace($ghPat))  { Write-Error "Set GH_PAT environment variable" }
+if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
 
 # ── ADO REST API auth header (for branch comparison in Step 4) ────────────────
 $adoBase64   = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
@@ -244,10 +144,10 @@ Write-Host "  DryRun: $DryRun"
 Write-Host "============================================"
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 1 – Authenticate & install ado2gh extension
+# STEP 1 - Authenticate & install ado2gh extension
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 1] Authenticate GitHub CLI..." -ForegroundColor Cyan
-# GH_TOKEN is already set once at script init — gh CLI uses it directly.
+# GH_TOKEN is already set once at script init - gh CLI uses it directly.
 Write-Host "  Authenticating via GH_TOKEN environment variable."
 $ErrorActionPreference = 'SilentlyContinue'
 gh auth status 2>&1 | ForEach-Object { Write-Host "  $_" }
@@ -265,7 +165,7 @@ if ($installedExts -notmatch 'ado2gh') {
 gh extension list
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 2 – Pre-check: does the GitHub repo already exist?
+# STEP 2 - Pre-check: does the GitHub repo already exist?
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 2] Pre-check repo existence in GitHub..." -ForegroundColor Cyan
 $repoStatus = "NOT_EXISTS"
@@ -293,15 +193,15 @@ $repoStatus | Out-File $precheckFile -Encoding utf8
 Write-Host "  Status: $repoStatus"
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 3 – Migrate repo via GEI
+# STEP 3 - Migrate repo via GEI
 # ════════════════════════════════════════════════════════════════════════════
 if ($repoStatus -eq "ALREADY_EXISTS") {
-    Write-Host "`n[Step 3] SKIPPED — repo already exists in GitHub." -ForegroundColor Yellow
+    Write-Host "`n[Step 3] SKIPPED - repo already exists in GitHub." -ForegroundColor Yellow
     $migState = "SKIPPED"
     $migState | Out-File $stateFile -Encoding utf8
 }
 elseif ($DryRun) {
-    Write-Host "`n[Step 3] DRY RUN — GEI command that would run:" -ForegroundColor DarkYellow
+    Write-Host "`n[Step 3] DRY RUN - GEI command that would run:" -ForegroundColor DarkYellow
     Write-Host "  gh ado2gh migrate-repo --ado-org `"$ADOOrg`" --ado-team-project `"$ADOProject`" --ado-repo `"$ADORepo`" --github-org `"$GHOrg`" --github-repo `"$GHRepo`" --target-repo-visibility $TargetRepoVisibility"
     $migState = "DRY_RUN"
     $migState | Out-File $stateFile -Encoding utf8
@@ -355,7 +255,7 @@ else {
         }
         # Case 2: Already Queued (Handled by Polling)
         elseif (($migOutput -join "") -match "already been queued") {
-            Write-Host "  Migration already queued — polling until repo appears..." -ForegroundColor Yellow
+            Write-Host "  Migration already queued - polling until repo appears..." -ForegroundColor Yellow
             $migState = "WAITING"
             $migState | Out-File $stateFile -Encoding utf8
             $found = $false
@@ -405,7 +305,7 @@ else {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 3.5 – Branch Exclusions Cleanup
+# STEP 3.5 - Branch Exclusions Cleanup
 # ════════════════════════════════════════════════════════════════════════════
 if ($migState -eq "COMPLETE" -and -not $DryRun) {
     Write-Host "`n" + ("=" * 60) -ForegroundColor Cyan
@@ -459,13 +359,13 @@ if ($migState -eq "COMPLETE" -and -not $DryRun) {
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 4 – Branch-wise post-migration audit
+# STEP 4 - Branch-wise post-migration audit
 # ════════════════════════════════════════════════════════════════════════════
 if ($SkipAudit) {
-    Write-Host "`n[Step 4] SKIPPED (–SkipAudit flag set)." -ForegroundColor Yellow
+    Write-Host "`n[Step 4] SKIPPED (-SkipAudit flag set)." -ForegroundColor Yellow
 }
 elseif ($migState -in @("FAILED", "DRY_RUN", "UNKNOWN")) {
-    Write-Host "`n[Step 4] SKIPPED — migration state is '$migState', no repo to audit." -ForegroundColor Yellow
+    Write-Host "`n[Step 4] SKIPPED - migration state is '$migState', no repo to audit." -ForegroundColor Yellow
 }
 else {
     Write-Host "`n[Step 4] Post-migration audit (API-only, no clone)..." -ForegroundColor Cyan
@@ -483,14 +383,14 @@ else {
         return $all
     }
 
-    # ── 4a. Repo metadata (default branch + size) — single API call ────────
+    # ── 4a. Repo metadata (default branch + size) - single API call ────────
     Write-Host "  Fetching repo metadata..."
     $repoInfoRaw = gh api "repos/$GHOrg/$GHRepo" 2>$null
     $repoInfo = $null
     if ($repoInfoRaw) { $repoInfo = $repoInfoRaw | ConvertFrom-Json }
 
     if (-not $repoInfo) {
-        Write-Warning "  Could not fetch repo info via API — skipping audit."
+        Write-Warning "  Could not fetch repo info via API - skipping audit."
     }
     else {
         $defaultBranch = $repoInfo.default_branch
@@ -520,7 +420,7 @@ else {
             Write-Host "  Branches (ADO): $($adoBranches.Count)"
         }
         catch {
-            Write-Warning "  Could not fetch ADO branches: $_ — comparison will be skipped."
+            Write-Warning "  Could not fetch ADO branches: $_ - comparison will be skipped."
             $adoBranches = @()
         }
 
@@ -643,11 +543,11 @@ else {
                 if ($treeData.PSObject.Properties['truncated']) { $isTruncated = $treeData.truncated }
 
                 if ($isTruncated) {
-                    Write-Host "    WARNING: Tree truncated (100K+ files) — skipping folder enumeration"
+                    Write-Host "    WARNING: Tree truncated (100K+ files) - skipping folder enumeration"
                     $bFolderCount = "100K+ (API limit)"
                 }
                 elseif ($bFileCount -gt 50000) {
-                    Write-Host "    WARNING: $bFileCount files exceeds 50K cap — skipping folder enumeration"
+                    Write-Host "    WARNING: $bFileCount files exceeds 50K cap - skipping folder enumeration"
                     $bFolderCount = "50K+ (skipped)"
                 }
                 else {
@@ -831,7 +731,7 @@ else {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 5 – Download GEI migration log
+# STEP 5 - Download GEI migration log
 # ════════════════════════════════════════════════════════════════════════════
 if ($migState -in @("SKIPPED","DRY_RUN","FAILED")) {
     Write-Host "`n[Step 5] Skipping log download (state: $migState)." -ForegroundColor Yellow
@@ -869,7 +769,7 @@ else {
 
     if (-not $success) {
         "Log download failed" | Out-File $migLogFile -Encoding utf8
-        Write-Warning "  Logs unavailable (non-critical — migration data is complete)."
+        Write-Warning "  Logs unavailable (non-critical - migration data is complete)."
     }
     elseif (-not $migLogUrl) {
         Write-Host "  Log saved: $migLogFile" -ForegroundColor Green
@@ -877,11 +777,11 @@ else {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
-# STEP 6 – Generate HTML dashboard + Markdown summary
+# STEP 6 - Generate HTML dashboard + Markdown summary
 # ════════════════════════════════════════════════════════════════════════════
 Write-Host "`n[Step 6] Generating HTML dashboard..." -ForegroundColor Cyan
 
-# Use in-memory audit data (populated in Step 4) — no file re-reads
+# Use in-memory audit data (populated in Step 4) - no file re-reads
 $branchCount   = $auditData.BranchCount
 $tagCount      = $auditData.TagCount
 $commitCount   = $auditData.CommitCount
@@ -1011,7 +911,7 @@ $html += "</div><div class='pr-pills' style='margin-top:14px;'><span class='pr-p
 $html += "<div class='card'><h2>&#x1F511; Key Branches</h2><table><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:right;'>Commits</th></tr></thead><tbody>$topBranchHtml</tbody></table></div>" + $nl
 # All branches
 $totalBranchCount = $branchCount + $missingInGH.Count
-$branchSummary = if ($missingInGH.Count -gt 0) { "$totalBranchCount — $branchCount in GitHub, $($missingInGH.Count) missing from ADO" } else { "$branchCount" }
+$branchSummary = if ($missingInGH.Count -gt 0) { "$totalBranchCount - $branchCount in GitHub, $($missingInGH.Count) missing from ADO" } else { "$branchCount" }
 $html += "<div class='card'><h2>&#x1F33F; All Branches ($branchSummary)</h2><details><summary>Click to expand all branches</summary><table style='margin-top:10px;'><thead><tr><th style='text-align:center;'>#</th><th>Branch</th><th style='text-align:center;'>Status</th></tr></thead><tbody>$allBranchHtml</tbody></table></details></div>" + $nl
 # Audit & Artifacts
 $html += "<div class='card'><h2>&#x1F4E6; Audit &amp; Artifacts</h2>" + $nl
@@ -1033,9 +933,9 @@ Write-Host "  HTML saved: $dashDir\migration-report-$GHRepo.html" -ForegroundCol
 $emojiCheck = [char]::ConvertFromUtf32(0x2705)
 $emojiWarn  = [char]::ConvertFromUtf32(0x26A0) + [char]::ConvertFromUtf32(0xFE0F)
 $emojiCross = [char]::ConvertFromUtf32(0x274C)
-if     ($migResult -eq "Already Exists") { $mdStatus = "$emojiWarn Skipped — Repository Already Exists" }
-elseif ($migResult -eq "Success")        { $mdStatus = "$emojiCheck Completed — Migration Successful" }
-else                                     { $mdStatus = "$emojiCross Failed — Migration Error" }
+if     ($migResult -eq "Already Exists") { $mdStatus = "$emojiWarn Skipped - Repository Already Exists" }
+elseif ($migResult -eq "Success")        { $mdStatus = "$emojiCheck Completed - Migration Successful" }
+else                                     { $mdStatus = "$emojiCross Failed - Migration Error" }
 
 $md  = "# " + [char]::ConvertFromUtf32(0x1F680) + " ADO " + [char]::ConvertFromUtf32(0x2192) + " GitHub Migration Report`n`n"
 $md += "> Status: $mdStatus`n`n"
@@ -1055,8 +955,3 @@ Write-Host "  Status:   $migResult"
 Write-Host "  Branches: $branchCount | Tags: $tagCount | Commits: $commitCount"
 Write-Host "  PRs:      $prCount (Open:$prOpen Merged:$prMerged Closed:$prClosed)"
 Write-Host "============================================"
-
-
-
-
-
