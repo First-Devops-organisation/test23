@@ -24,7 +24,7 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "Advanced-Security",
-        { "source": "Demoapp-Application-API", "target": "Demoapp-Application-API-renamed" },
+        { "source": "Demoapp-Application-API", "target": "Demoapp-Application-API-renamed2" },
         { "source": "SSPM", "target": "" },
         { "source": "ADO-githubcopilot-repo" }
       ]
