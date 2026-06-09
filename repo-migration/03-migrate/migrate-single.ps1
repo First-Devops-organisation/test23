@@ -31,14 +31,14 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]  [string]$ADOOrg,
-    [Parameter(Mandatory = $true)]  [string]$ADOProject,
+    [Parameter(Mandatory = $false)] [string]$ADOOrg,
+    [Parameter(Mandatory = $false)] [string]$ADOProject,
     [Parameter(Mandatory = $false)] 
     [AllowEmptyString()]
     [string]$ADORepo,
-    [Parameter(Mandatory = $true)]  [string]$GHOrg,
+    [Parameter(Mandatory = $false)] [string]$GHOrg,
     [Parameter(Mandatory = $false)] [string]$GHRepo     = $ADORepo,
-    [Parameter(Mandatory = $false)] [string]$ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json",
+    [Parameter(Mandatory = $false)] [string]$ConfigPath,
     [Parameter(Mandatory = $false)] [string]$OutputDir  = "$PSScriptRoot\..\output",
     [Parameter(Mandatory = $false)]
     [ValidateSet('private', 'internal', 'public')]
@@ -50,21 +50,106 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Trim whitespace from all string parameters ─────────────────────────────────────────────
-$ADOOrg    = $ADOOrg.Trim()
+# ── Helper to resolve environment variables from config placeholders ──────────
+function Expand-ConfigValue([string]$value) {
+    if ([string]::IsNullOrWhiteSpace($value)) { return $value }
+    
+    # Resolve $(VAR_NAME) syntax
+    if ($value -match '^\$\(([^)]+)\)$') {
+        $envName = $Matches[1]
+        $envVal = [System.Environment]::GetEnvironmentVariable($envName)
+        if (-not [string]::IsNullOrWhiteSpace($envVal)) { return $envVal }
+    }
+    
+    # Resolve %VAR_NAME% syntax
+    if ($value -match '^%([^%]+)%$') {
+        $envName = $Matches[1]
+        $envVal = [System.Environment]::GetEnvironmentVariable($envName)
+        if (-not [string]::IsNullOrWhiteSpace($envVal)) { return $envVal }
+    }
+    
+    # Resolve $env:VAR_NAME syntax
+    if ($value -match '^\$env:(\w+)$') {
+        $envName = $Matches[1]
+        $envVal = [System.Environment]::GetEnvironmentVariable($envName)
+        if (-not [string]::IsNullOrWhiteSpace($envVal)) { return $envVal }
+    }
+
+    return $value
+}
+
+# ── Load Configuration JSON if available ──────────────────────────────────────
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = "$PSScriptRoot\..\config\repo-migration-config.json"
+}
+$ConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
+
+$config = $null
+if (Test-Path $ConfigPath) {
+    try {
+        $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+    } catch {
+        Write-Warning "Failed to parse config file at '$ConfigPath': $($_.Exception.Message)"
+    }
+}
+
+# ── Fallback: Retrieve parameters from config ──────────────────────────────────
+if ($config) {
+    if ($config.PSObject.Properties['source']) {
+        if ([string]::IsNullOrWhiteSpace($ADOOrg) -and $config.source.PSObject.Properties['organization']) {
+            $ADOOrg = Expand-ConfigValue $config.source.organization
+        }
+        if ([string]::IsNullOrWhiteSpace($ADOProject) -and $config.source.PSObject.Properties['project']) {
+            $ADOProject = Expand-ConfigValue $config.source.project
+        }
+    }
+    if ($config.PSObject.Properties['target']) {
+        if ([string]::IsNullOrWhiteSpace($GHOrg) -and $config.target.PSObject.Properties['organization']) {
+            $GHOrg = Expand-ConfigValue $config.target.organization
+        }
+    }
+}
+
+# ── Validate that parameters are now populated ─────────────────────────────────
+if ([string]::IsNullOrWhiteSpace($ADOOrg)) {
+    Write-Error "ADOOrg is required. Provide it as a parameter or configure 'source.organization' in '$ConfigPath'."
+}
+if ([string]::IsNullOrWhiteSpace($ADOProject)) {
+    Write-Error "ADOProject is required. Provide it as a parameter or configure 'source.project' in '$ConfigPath'."
+}
+if ([string]::IsNullOrWhiteSpace($GHOrg)) {
+    Write-Error "GHOrg is required. Provide it as a parameter or configure 'target.organization' in '$ConfigPath'."
+}
+
+# ── Trim whitespace from string parameters ────────────────────────────────────
+$ADOOrg     = $ADOOrg.Trim()
 $ADOProject = $ADOProject.Trim()
-$GHOrg     = $GHOrg.Trim()
+$GHOrg      = $GHOrg.Trim()
+
+# ── Load visibility from config if not explicitly passed ──────────────────────
+if (-not $PSBoundParameters.ContainsKey('TargetRepoVisibility') -and $config -and $config.PSObject.Properties['migration'] -and $config.migration.PSObject.Properties['targetRepoVisibility']) {
+    $TargetRepoVisibility = Expand-ConfigValue $config.migration.targetRepoVisibility
+}
 
 # ── Fallback: if ADORepo is empty, try to read from config.json ───────────────
 if ([string]::IsNullOrWhiteSpace($ADORepo)) {
     Write-Host "  ADORepo parameter is empty — checking config.json..."
-    $cfgPath = "$PSScriptRoot\..\config\repo-migration-config.json"
-    if (Test-Path $cfgPath) {
-        $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
-        if ($cfg.migration -and $cfg.migration.singleRepo) {
-            $ADORepo = $cfg.migration.singleRepo.Trim()
-            Write-Host "  Found default repo in config: $ADORepo" -ForegroundColor Green
+    if ($config -and $config.migration -and $config.migration.singleRepo) {
+        $singleRepo = $config.migration.singleRepo
+        if ($singleRepo -is [System.Management.Automation.PSCustomObject]) {
+            if ($singleRepo.source -and $singleRepo.target) {
+                $ADORepo = $singleRepo.source.ToString().Trim()
+                $GHRepo  = $singleRepo.target.ToString().Trim()
+            } elseif ($singleRepo.adoRepo -and $singleRepo.githubRepo) {
+                $ADORepo = $singleRepo.adoRepo.ToString().Trim()
+                $GHRepo  = $singleRepo.githubRepo.ToString().Trim()
+            } else {
+                $ADORepo = $singleRepo.ToString().Trim()
+            }
+        } else {
+            $ADORepo = $singleRepo.ToString().Trim()
         }
+        Write-Host "  Found default repo in config: $ADORepo" -ForegroundColor Green
     }
 }
 
@@ -97,11 +182,26 @@ if ($GHOrg -match '^https?://github\.com/([^/]+)/?$') {
     $GHOrg = $Matches[1]
 }
 
-# ── Validate PATs ────────────────────────────────────────────────────────────
+# ── Validate/Resolve PATs ────────────────────────────────────────────────────
 $ghPat  = $env:GH_PAT
 $adoPat = $env:ADO_PAT
-if ([string]::IsNullOrWhiteSpace($ghPat))  { Write-Error "Set GH_PAT environment variable" }
-if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "Set ADO_PAT environment variable" }
+
+if ([string]::IsNullOrWhiteSpace($ghPat) -and $config) {
+    if ($config.PSObject.Properties['target'] -and $config.target.PSObject.Properties['pat']) {
+        $ghPat = Expand-ConfigValue $config.target.pat
+    }
+}
+if ([string]::IsNullOrWhiteSpace($adoPat) -and $config) {
+    if ($config.PSObject.Properties['source'] -and $config.source.PSObject.Properties['pat']) {
+        $adoPat = Expand-ConfigValue $config.source.pat
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($ghPat))  { Write-Error "GH_PAT is required. Set GH_PAT environment variable or configure 'target.pat' in '$ConfigPath'." }
+if ([string]::IsNullOrWhiteSpace($adoPat)) { Write-Error "ADO_PAT is required. Set ADO_PAT environment variable or configure 'source.pat' in '$ConfigPath'." }
+
+$env:GH_PAT  = $ghPat
+$env:ADO_PAT = $adoPat
 
 # ── ADO REST API auth header (for branch comparison in Step 4) ────────────────
 $adoBase64   = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$adoPat"))
@@ -955,3 +1055,8 @@ Write-Host "  Status:   $migResult"
 Write-Host "  Branches: $branchCount | Tags: $tagCount | Commits: $commitCount"
 Write-Host "  PRs:      $prCount (Open:$prOpen Merged:$prMerged Closed:$prClosed)"
 Write-Host "============================================"
+
+
+
+
+
