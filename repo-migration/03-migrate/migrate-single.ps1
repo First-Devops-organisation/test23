@@ -55,6 +55,48 @@ $ADOOrg    = $ADOOrg.Trim()
 $ADOProject = $ADOProject.Trim()
 $GHOrg     = $GHOrg.Trim()
 
+function Get-RepoNamesFromConfigEntry($repo) {
+    if ($null -eq $repo) { return $null }
+    
+    $adoRepo = $null
+    $ghRepo = $null
+    
+    if ($repo -is [string]) {
+        $adoRepo = $repo.Trim()
+        $ghRepo = $adoRepo
+    }
+    elseif ($repo.PSObject -and $repo.PSObject.Properties) {
+        # Check source/adoRepo/name properties
+        if ($repo.PSObject.Properties['source']) { $adoRepo = $repo.PSObject.Properties['source'].Value }
+        elseif ($repo.PSObject.Properties['name']) { $adoRepo = $repo.PSObject.Properties['name'].Value }
+        elseif ($repo.PSObject.Properties['adoRepo']) { $adoRepo = $repo.PSObject.Properties['adoRepo'].Value }
+        
+        # Check target/rename/ghRepo properties
+        if ($repo.PSObject.Properties['target']) { $ghRepo = $repo.PSObject.Properties['target'].Value }
+        elseif ($repo.PSObject.Properties['rename']) { $ghRepo = $repo.PSObject.Properties['rename'].Value }
+        elseif ($repo.PSObject.Properties['ghRepo']) { $ghRepo = $repo.PSObject.Properties['ghRepo'].Value }
+    }
+    else {
+        $adoRepo = $repo.ToString().Trim()
+        $ghRepo = $adoRepo
+    }
+    
+    if ([string]::IsNullOrWhiteSpace($adoRepo)) { return $null }
+    $adoRepo = $adoRepo.Trim()
+    
+    # "if want change not make empty" -> if target is empty, use source name
+    if ([string]::IsNullOrWhiteSpace($ghRepo)) {
+        $ghRepo = $adoRepo
+    } else {
+        $ghRepo = $ghRepo.Trim()
+    }
+    
+    return [PSCustomObject]@{
+        ADORepo = $adoRepo
+        GHRepo  = $ghRepo
+    }
+}
+
 # ── Fallback: if ADORepo is empty, try to read from config.json ───────────────
 if ([string]::IsNullOrWhiteSpace($ADORepo)) {
     Write-Host "  ADORepo parameter is empty - checking config.json..."
@@ -62,8 +104,16 @@ if ([string]::IsNullOrWhiteSpace($ADORepo)) {
     if (Test-Path $cfgPath) {
         $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
         if ($cfg.migration -and $cfg.migration.singleRepo) {
-            $ADORepo = $cfg.migration.singleRepo.Trim()
-            Write-Host "  Found default repo in config: $ADORepo" -ForegroundColor Green
+            $names = Get-RepoNamesFromConfigEntry $cfg.migration.singleRepo
+            if ($names -and $names.ADORepo) {
+                $ADORepo = $names.ADORepo
+                if ([string]::IsNullOrWhiteSpace($GHRepo)) {
+                    $GHRepo = $names.GHRepo
+                    Write-Host "  Found rename mapping in config: $ADORepo -> $GHRepo" -ForegroundColor Green
+                } else {
+                    Write-Host "  Found default repo in config: $ADORepo" -ForegroundColor Green
+                }
+            }
         }
     }
 }
