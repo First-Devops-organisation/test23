@@ -12,10 +12,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo":  {
-        "source": "dashboard-testing",
-        "target": "dashboard-testing-renamed"
-    },
+    "singleRepo": { "source": "dashboard-testing", "target": "dashboard-testing-renamed1" },
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
@@ -27,12 +24,9 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "Advanced-Security",
-        "Demoapp-Application-API",
-        "SSPM",
-        "ADO-githubcopilot-repo"
-
-        
-        
+        { "source": "Demoapp-Application-API", "target": "Demoapp-Application-API-renamed" },
+        { "source": "SSPM", "target": "" },
+        { "source": "ADO-githubcopilot-repo" }
       ]
     }
   ],
