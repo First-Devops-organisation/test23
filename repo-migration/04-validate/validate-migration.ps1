@@ -565,7 +565,21 @@ foreach ($entry in $repoList) {
     $ErrorActionPreference = 'SilentlyContinue'
     $bpRaw = gh api "repos/$GHOrg/$ghRepoName/branches/$ghDefault/protection" 2>$null
     $ErrorActionPreference = 'Stop'
+    
+    $isProtected = $false
     if ($LASTEXITCODE -eq 0 -and $bpRaw) {
+        try {
+            $bpJson = $bpRaw | ConvertFrom-Json
+            if ($bpJson -and -not $bpJson.PSObject.Properties['message']) {
+                $isProtected = $true
+            }
+        }
+        catch {
+            $isProtected = $true
+        }
+    }
+    
+    if ($isProtected) {
         Add-Check "Branch Protection" "configured" "configured" $true
     }
     else {
