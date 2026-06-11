@@ -7,7 +7,7 @@ This paper details the design, architecture, and implementation of a declarative
 
 ---
 
-## 1. The Enterprise Migration Challenge
+## 1. The Enterprise Migration Challenge & Environment Configuration
 When moving hundreds of repositories from Azure DevOps to GitHub, manual migration strategies fail. The major hurdles fall into three categories:
 
 1. **Compliance and Security**: Codebases often contain historical secrets (API keys, database credentials) that must be scrubbed *before* migrating to a new platform where global visibility and security controls differ.
@@ -49,6 +49,48 @@ graph TD
         D3[VSO Pipeline Summary]
         D1 --> D2 & D3
     end
+```
+
+### 1.1 Secure Credentials & Variable Groups Configuration
+A key security requirement is that sensitive Personal Access Tokens (PATs) and organizational details must never be hardcoded within the codebase or configuration JSON files. 
+
+The orchestrator utilizes Azure DevOps Variable Groups to inject credentials securely at runtime. The YAML pipeline imports two variable groups:
+*   `repo-migration-discove`: Exposes the source environment credentials (`ADO_ORG`, `ADO_PROJECT`, and `ADO_PAT`).
+*   `repo-migration-migrate`: Exposes the target environment credentials (`GH_ORG` and `GH_PAT`).
+
+```yaml
+variables:
+  - group: repo-migration-discove  # ADO_ORG, ADO_PROJECT, ADO_PAT
+  - group: repo-migration-migrate    # GH_ORG, GH_PAT
+```
+
+### 1.2 Dynamic Runtime Token Substitution
+The migration config file `repo-migration-config.json` contains generic placeholders:
+```json
+{
+  "source": {
+    "organization": "$(ADO_ORG)",
+    "project": "$(ADO_PROJECT)",
+    "pat": "$(ADO_PAT)"
+  },
+  "target": {
+    "organization": "$(GH_ORG)",
+    "pat": "$(GH_PAT)"
+  }
+}
+```
+
+Prior to running any migration stages, the pipeline executes a token replacement task. This task pulls values from the secure variable groups and writes them dynamically to the configuration file on the build agent, ensuring that API calls and scripts execute with valid, authenticated credentials:
+
+```powershell
+$cfg = "$(Build.SourcesDirectory)\repo-migration\config\repo-migration-config.json"
+$c   = Get-Content $cfg -Raw
+$c   = $c -replace '\$\(ADO_ORG\)',     '$(ADO_ORG)'
+$c   = $c -replace '\$\(ADO_PROJECT\)', '$(ADO_PROJECT)'
+$c   = $c -replace '\$\(ADO_PAT\)',     '$(ADO_PAT)'
+$c   = $c -replace '\$\(GH_ORG\)',      '$(GH_ORG)'
+$c   = $c -replace '\$\(GH_PAT\)',      '$(GH_PAT)'
+Set-Content -Path $cfg -Value $c
 ```
 
 ---
@@ -103,7 +145,7 @@ The discovery reports feed into a manual validation checkpoint, serving as a gov
 ```
 
 ### 3.1 History Scrubbing via git-filter-repo
-If the secret scan reveals credentials in the Git history, the repository must be sanitized before proceeding. The engine includes a automated scrubbing script utilizing `git-filter-repo`. 
+If the secret scan reveals credentials in the Git history, the repository must be sanitized before proceeding. The engine includes an automated scrubbing script utilizing `git-filter-repo`. 
 
 ```powershell
 # Core pattern extraction and file-level removal
@@ -225,13 +267,5 @@ Write-Host "##vso[task.uploadsummary]$valSummaryPath"
 
 ---
 
-## 7. Lessons Learned & Best Practices
-
-1. **Scrub Early**: Cleaning history after code has migrated to GitHub is ten times harder than cleaning it at the source. Ensure Phase 1 and Phase 2 are strictly enforced.
-2. **GraphQL is Mandatory**: Standard REST APIs are too slow for large-scale Git audits. GraphQL query batching reduces verification times by over 80%.
-3. **Handle Redirection**: GitHub redirects renamed repositories. Checking repo existence must check the *actual name* returned by the payload to prevent attempting to overwrite a redirected path.
-
----
-
-## 8. Conclusion
+## 7. Conclusion
 Moving repositories to GitHub is a critical step in modernizing developer workflows. By wrapping the migration in a structured, four-stage automated lifecycle, organizations can eliminate human error, guarantee compliance, and deliver mathematical proof that codebases were moved securely and completely.
