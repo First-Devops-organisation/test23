@@ -129,7 +129,7 @@ stages:
             condition: always()
 
           # - task: PublishHtmlReport@1
-          - task: PepsiCoIT-DSTeam.PublishHTMLReports.publishhtmlreport.PublishHtmlReport@1
+          - task: awardedsolutions.azure-pipelines-html-report-awardedsolutions.PublishHtmlReportAwardedSolutions.PublishHtmlReport@1
             displayName: "Show Discovery Report on Pipeline Tab"
             condition: always()
             continueOnError: true
@@ -229,7 +229,7 @@ stages:
               publishLocation: pipeline
       
           # - task: PublishHtmlReport@1
-          - task: PepsiCoIT-DSTeam.PublishHTMLReports.publishhtmlreport.PublishHtmlReport@1
+          - task: awardedsolutions.azure-pipelines-html-report-awardedsolutions.PublishHtmlReportAwardedSolutions.PublishHtmlReport@1
             displayName: "Show Secret Scan Report on Pipeline Tab"
             condition: and(always(), or(eq('${{ parameters.MigrationMode }}', 'Batch'), eq(variables['BATCH_INDEX'], '0')))
             continueOnError: true
@@ -395,7 +395,7 @@ stages:
               publishLocation: pipeline
 
           # - task: PublishHtmlReport@1
-          - task: PepsiCoIT-DSTeam.PublishHTMLReports.publishhtmlreport.PublishHtmlReport@1
+          - task: awardedsolutions.azure-pipelines-html-report-awardedsolutions.PublishHtmlReportAwardedSolutions.PublishHtmlReport@1
             displayName: "Show HTML on Pipeline Tab"
             condition: always()
             inputs:
@@ -714,7 +714,7 @@ stages:
               publishLocation: pipeline
 
           # - task: PublishHtmlReport@1
-          - task: PepsiCoIT-DSTeam.PublishHTMLReports.publishhtmlreport.PublishHtmlReport@1
+          - task: awardedsolutions.azure-pipelines-html-report-awardedsolutions.PublishHtmlReportAwardedSolutions.PublishHtmlReport@1
             displayName: "Show Validation Report on Pipeline Tab"
             condition: always()
             inputs:
@@ -768,7 +768,7 @@ stages:
               pwsh: true
 
           # - task: PublishHtmlReport@1
-          - task: PepsiCoIT-DSTeam.PublishHTMLReports.publishhtmlreport.PublishHtmlReport@1
+          - task: awardedsolutions.azure-pipelines-html-report-awardedsolutions.PublishHtmlReportAwardedSolutions.PublishHtmlReport@1
             displayName: "Show Migration Report on Pipeline Tab"
             condition: always()
             inputs:
