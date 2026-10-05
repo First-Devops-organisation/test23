@@ -25,22 +25,6 @@
         "Azure-DevOpstemplate",
         "eShopOnWeb"
       ]
-    },
-    {
-      "name": "batch-2-core",
-      "scheduledDate": "2026-04-16",
-      "repos": [
-        "Azure-DevOpstemplate",
-        "eShopOnWeb"
-      ]
-    },
-    {
-      "name": "batch-3-apps",
-      "scheduledDate": "2026-04-17",
-      "repos": [
-        "Azure-DevOpstemplate",
-        "eShopOnWeb"
-      ]
     }
   ],
   "exclusions": {
