@@ -11,7 +11,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "eShopOnWeb.git",
+    "singleRepo": "Azure-DevOpstemplate",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
@@ -29,7 +29,9 @@
   ],
   "exclusions": {
     "repos": [],
-    "branches": []
+    "branches": [
+      "tag/*"
+    ]
   },
   "output": {
     "reportDir": "./output/reports",
