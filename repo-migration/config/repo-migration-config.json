@@ -23,15 +23,14 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "Azure-DevOpstemplate",
+        "migrate",
         "trivy-ci-test"
       ]
     }
   ],
   "exclusions": {
     "repos": [],
-    "branches": [
-      "tag"
-    ]
+    "branches": []
   },
   "output": {
     "reportDir": "./output/reports",
