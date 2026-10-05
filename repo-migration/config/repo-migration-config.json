@@ -25,6 +25,14 @@
         "Azure-DevOpstemplate",
         "eShopOnWeb"
       ]
+    },
+    {
+      "name": "Azure-DevOpstemplate",
+      "scheduledDate": "2026-04-15",
+      "repos": [
+        "Azure-DevOpstemplate",
+        "eShopOnWeb"
+      ]
     }
   ],
   "exclusions": {
