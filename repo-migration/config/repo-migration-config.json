@@ -1,4 +1,3 @@
-
 {
   "source": {
     "type": "AzureDevOps",
@@ -7,12 +6,12 @@
     "pat": "$(ADO_PAT)"
   },
   "target": {
-    "organization": "$(GH_ORG)",
+    "organization": "First-Devops-organisation",
     "pat": "$(GH_PAT)"
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "dashboard-testing",
+    "singleRepo": "Azure-DevOpstemplate",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
@@ -23,13 +22,24 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
-        "Advanced-Security",
-        "Demoapp-Application-API",
-        "SSPM",
-        "ADO-githubcopilot-repo"
-
-        
-        
+        "Azure-DevOpstemplate",
+        "eShopOnWeb"
+      ]
+    },
+    {
+      "name": "batch-2-core",
+      "scheduledDate": "2026-04-16",
+      "repos": [
+        "Azure-DevOpstemplate",
+        "eShopOnWeb"
+      ]
+    },
+    {
+      "name": "batch-3-apps",
+      "scheduledDate": "2026-04-17",
+      "repos": [
+        "Azure-DevOpstemplate",
+        "eShopOnWeb"
       ]
     }
   ],
