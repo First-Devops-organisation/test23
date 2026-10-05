@@ -11,7 +11,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "Azure-DevOpstemplate",
+    "singleRepo": "eShopOnWeb.git",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
