@@ -30,7 +30,7 @@
   "exclusions": {
     "repos": [],
     "branches": [
-      "tag/*"
+      "tag"
     ]
   },
   "output": {
