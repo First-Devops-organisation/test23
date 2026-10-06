@@ -23,6 +23,7 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "Azure-DevOpstemplate",
+        "eShopOnWeb.git",
         "trivy-ci-test"
       ]
     }
