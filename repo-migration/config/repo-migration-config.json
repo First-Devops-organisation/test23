@@ -11,7 +11,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "eShopOnWeb.git",
+    "singleRepo": "Azure-DevOpstemplate",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
@@ -22,7 +22,9 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
+        "Azure-DevOpstemplate",
         "eShopOnWeb.git",
+        "migrate",
         "trivy-ci-test"
       ]
     }
