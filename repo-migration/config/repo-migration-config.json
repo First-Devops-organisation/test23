@@ -11,7 +11,7 @@
   },
   "migration": {
     "cloneTempDir": "./tmp/clones",
-    "singleRepo": "ADO_To_GHAS_Migration",
+    "singleRepo": "APIOPS-poc",
     "targetRepoVisibility": "private",
     "lockSourceRepo": false,
     "retryCount": 3,
@@ -25,6 +25,7 @@
         "ADO_To_GHAS_Migration",
         "APIOPS-poc",
         "dummy-secret",
+        "migration",
         "repomigration"
       ]
     }
