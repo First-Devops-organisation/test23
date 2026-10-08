@@ -24,8 +24,7 @@
       "repos": [
         "ADO_To_GHAS_Migration",
         "APIOPS-poc",
-        "dummy-secret",
-        "migration"
+        "dummy-secret"
       ]
     }
   ],
