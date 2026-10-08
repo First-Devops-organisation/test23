@@ -23,7 +23,8 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "ADO_To_GHAS_Migration",
-        "APIOPS-poc"
+        "APIOPS-poc",
+        "dummy-secret"
       ]
     }
   ],
