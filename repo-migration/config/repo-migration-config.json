@@ -22,8 +22,11 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
+        "APIOPS-poc",
         "dummy-secret",
-        "hellogit"
+        "hellogit",
+        "migration",
+        "repomigration"
       ]
     }
   ],
