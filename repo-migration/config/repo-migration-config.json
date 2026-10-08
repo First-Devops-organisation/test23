@@ -24,9 +24,7 @@
       "repos": [
         "APIOPS-poc",
         "dummy-secret",
-        "hellogit",
-        "migration",
-        "repomigration"
+        "hellogit"
       ]
     }
   ],
