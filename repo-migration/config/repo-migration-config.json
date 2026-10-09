@@ -35,14 +35,14 @@
     "repos": [],
     "branches": [],
     "repoBranches": {
+      "APIOPS-poc": [
+        "main"
+      ],
       "ADO_To_GHAS_Migration": [
         "ankit-*"
       ],
       "hellogit": [
         "fbmaster"
-      ],
-      "APIOPS-poc": [
-        "main"
       ]
     }
   },
