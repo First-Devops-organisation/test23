@@ -37,8 +37,6 @@
     "branches": [],
     "repoBranches": {
       "ADO_To_GHAS_Migration": [
-        "ankit-migration",
-        "ankit-allinone",
         "ankit-endtoend"
       ]
     }
