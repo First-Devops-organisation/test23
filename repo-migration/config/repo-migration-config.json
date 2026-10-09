@@ -26,7 +26,9 @@
         "APIOPS-poc",
         "dummy-secret",
         "hellogit",
-        "hellogitworld.git"
+        "hellogitworld.git",
+        "migration",
+        "repomigration"
       ]
     }
   ],
@@ -34,14 +36,8 @@
     "repos": [],
     "branches": [],
     "repoBranches": {
-      "ADO_To_GHAS_Migration": [
-        "ankit-endtoend"
-      ],
-      "APIOPS-poc": [
-        "main"
-      ],
-      "hellogit": [
-        "fbmaster"
+      "dummy-secret": [
+        "test"
       ]
     }
   },
