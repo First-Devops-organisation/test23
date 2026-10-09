@@ -27,7 +27,8 @@
         "dummy-secret",
         "hellogit",
         "hellogitworld.git",
-        "migration"
+        "migration",
+        "repomigration"
       ]
     }
   ],
@@ -36,15 +37,9 @@
     "branches": [],
     "repoBranches": {
       "ADO_To_GHAS_Migration": [
+        "ankit-migration",
         "ankit-allinone",
-        "ankit-endtoend",
-        "ankit-migration"
-      ],
-      "APIOPS-poc": [
-        "main"
-      ],
-      "hellogit": [
-        "fbmaster"
+        "ankit-endtoend"
       ]
     }
   },
