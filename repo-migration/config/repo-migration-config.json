@@ -26,6 +26,7 @@
         "APIOPS-poc",
         "dummy-secret",
         "hellogit",
+        "hellogitworld.git",
         "migration",
         "repomigration"
       ]
@@ -33,7 +34,15 @@
   ],
   "exclusions": {
     "repos": [],
-    "branches": []
+    "branches": [],
+    "repoBranches": {
+      "hellogit": [
+        "bisect"
+      ],
+      "ADO_To_GHAS_Migration": [
+        "allinone"
+      ]
+    }
   },
   "output": {
     "reportDir": "./output/reports",
