@@ -27,8 +27,7 @@
         "dummy-secret",
         "hellogit",
         "hellogitworld.git",
-        "migration",
-        "repomigration"
+        "migration"
       ]
     }
   ],
@@ -36,11 +35,11 @@
     "repos": [],
     "branches": [],
     "repoBranches": {
-      "hellogit": [
-        "bisect"
-      ],
       "ADO_To_GHAS_Migration": [
         "allinone"
+      ],
+      "hellogit": [
+        "bisect"
       ]
     }
   },
