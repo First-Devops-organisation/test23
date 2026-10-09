@@ -249,6 +249,7 @@ stages:
     jobs:
       - job: ReviewGateJob
         displayName: "Gate: Review Discovery Findings"
+        environment: migration-review-gate
         pool: server
         timeoutInMinutes: 4320
         steps:
