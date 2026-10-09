@@ -242,43 +242,57 @@ stages:
   # ===========================================================================
   # STAGE 2 – REVIEW GATE  (human reviews discovery + scan before migrating)
   # ===========================================================================
+  # - stage: ReviewGate
+  #   displayName: "2. Review Gate"
+  #   dependsOn: Discover
+  #   condition: succeeded()
+  #   jobs:
+  #     - job: ReviewGateJob
+  #       displayName: "Gate: Review Discovery Findings"
+  #       environment: migration-review-gate
+  #       pool: server
+  #       timeoutInMinutes: 4320
+  #       steps:
+  #         - task: ManualValidation@0
+  #           timeoutInMinutes: 4320
+  #           inputs:
+  #             notifyUsers: ""
+  #             instructions: |
+  #               Review the discovery artifacts before proceeding to migration.
+
+  #               Download and check:
+  #                 discovery-reports/repo-inventory.json
+  #                   → confirm which repos to include / exclude
+  #                   → update config/repo-migration-config.json batches and exclusions
+
+  #                 discovery-reports/repo-sizes.json
+  #                   → any repo flagged OVER_LIMIT (> 40 GiB) must be remediated first
+
+  #                 scan-reports-batch*/secret-scan-findings.json
+  #                   → MANDATORY for regulated environment
+  #                   → Critical/High findings must be remediated before migration
+  #                   → if zero findings: safe to proceed
+  #                   → if findings exist: scrub history first (scrub-secrets.ps1)
+
+  #               Populate config/user-mappings.csv with ADO→GitHub username mappings.
+
+  #               Approve to proceed to migration, or Reject to abort.
+  #             onTimeout: reject
   - stage: ReviewGate
     displayName: "2. Review Gate"
     dependsOn: Discover
     condition: succeeded()
     jobs:
-      - job: ReviewGateJob
+      - deployment: ReviewGateJob
         displayName: "Gate: Review Discovery Findings"
         environment: migration-review-gate
-        pool: server
         timeoutInMinutes: 4320
-        steps:
-          - task: ManualValidation@0
-            timeoutInMinutes: 4320
-            inputs:
-              notifyUsers: ""
-              instructions: |
-                Review the discovery artifacts before proceeding to migration.
-
-                Download and check:
-                  discovery-reports/repo-inventory.json
-                    → confirm which repos to include / exclude
-                    → update config/repo-migration-config.json batches and exclusions
-
-                  discovery-reports/repo-sizes.json
-                    → any repo flagged OVER_LIMIT (> 40 GiB) must be remediated first
-
-                  scan-reports-batch*/secret-scan-findings.json
-                    → MANDATORY for regulated environment
-                    → Critical/High findings must be remediated before migration
-                    → if zero findings: safe to proceed
-                    → if findings exist: scrub history first (scrub-secrets.ps1)
-
-                Populate config/user-mappings.csv with ADO→GitHub username mappings.
-
-                Approve to proceed to migration, or Reject to abort.
-              onTimeout: reject
-
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: echo "Review gate approved - proceeding to migration"
+                  displayName: "Gate approved"
   # ===========================================================================
   # STAGE 3A – SINGLE REPO MIGRATION
   # ===========================================================================
