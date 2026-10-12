@@ -23,8 +23,7 @@
       "scheduledDate": "2026-04-15",
       "repos": [
         "hellogit",
-        "hellogitworld.git",
-        "migration"
+        "hellogitworld"
       ]
     }
   ],
