@@ -22,13 +22,9 @@
       "name": "batch-1-pilot",
       "scheduledDate": "2026-04-15",
       "repos": [
-        "ADO_To_GHAS_Migration",
-        "APIOPS-poc",
-        "dummy-secret",
         "hellogit",
         "hellogitworld.git",
-        "migration",
-        "repomigration"
+        "migration"
       ]
     }
   ],
