@@ -27,24 +27,40 @@
     {
       "name": "batch-01-pilot",
       "adoProject": "ProjectA",
-      "repos": ["repo1", "repo2", "repo3"],
+      "repos": [
+        "repo1",
+        "repo2",
+        "repo3"
+      ],
       "migrationWindow": "2026-04-18T22:00:00Z",
-      "teams": ["TeamA"],
+      "teams": [
+        "TeamA"
+      ],
       "priority": 1
     },
     {
       "name": "batch-02",
       "adoProject": "ProjectB",
-      "repos": ["repo4", "repo5", "repo6", "repo7", "repo8"],
+      "repos": [
+        "repo4",
+        "repo5",
+        "repo6",
+        "repo7",
+        "repo8"
+      ],
       "migrationWindow": "2026-04-25T22:00:00Z",
-      "teams": ["TeamB"],
+      "teams": [
+        "TeamB"
+      ],
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [1156],
-  "PIPELINE_REPO_MAP": {"1156": "sample"},
+  "PIPELINE_IDS": [
+    1156
+  ],
+  "PIPELINE_REPO_MAP": {},
   "PIPELINE_TYPE": "build",
-  "MIGRATE_MODE": "migrate",
+  "MIGRATE_MODE": "dry-run",
   "GH_REPO": "",
-  "REUSABLE_PIPELINE_IDS": [1156]
+  "REUSABLE_PIPELINE_IDS": []
 }
