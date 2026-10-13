@@ -452,7 +452,8 @@ stages:
               artifact: "pipeline-audit"
               publishLocation: pipeline
 
-          - task: PublishHtmlReport@1
+          # - task: PublishHtmlReport@1
+          - task: awardedsolutions.azure-pipelines-html-report-awardedsolutions.PublishHtmlReportAwardedSolutions.PublishHtmlReport@1
             displayName: "Audit Dashboard on Pipeline Tab"
             condition: always()
             inputs:
@@ -753,7 +754,8 @@ stages:
               artifact: "pipeline-migrate"
               publishLocation: pipeline
 
-          - task: PublishHtmlReport@1
+          # - task: PublishHtmlReport@1
+          - task: awardedsolutions.azure-pipelines-html-report-awardedsolutions.PublishHtmlReportAwardedSolutions.PublishHtmlReport@1
             displayName: "Migration Dashboard on Pipeline Tab"
             condition: always()
             inputs:
