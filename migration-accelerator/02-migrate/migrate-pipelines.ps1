@@ -176,6 +176,58 @@ function Test-LocalActionRefs {
     return @($files | Select-String -Pattern '^\s*-?\s*uses:\s*"?\./' -ErrorAction SilentlyContinue)
 }
 
+# Commits $SourceDir over a clone of $RepoSlug on a new branch and opens one PR.
+# Returns $true on success (including "nothing changed").
+function Publish-MigrationPr {
+    param(
+        [string]$RepoSlug,
+        [string]$SourceDir,
+        [string]$BranchName,
+        [string]$Title,
+        [string]$Body,
+        [string]$WorkRoot
+    )
+
+    $clone = Join-Path $WorkRoot ($RepoSlug -replace '[^A-Za-z0-9]', '_')
+    if (Test-Path $clone) { Remove-Item $clone -Recurse -Force }
+
+    gh repo clone $RepoSlug $clone -- --quiet 2>&1 | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "    ERROR: could not clone $RepoSlug" -ForegroundColor Red
+        return $false
+    }
+
+    git -C $clone config user.email "actions-importer[bot]@users.noreply.github.com" | Out-Null
+    git -C $clone config user.name  "GitHub Actions Importer" | Out-Null
+    git -C $clone checkout -b $BranchName 2>&1 | Out-Null
+
+    # -Force so dot-directories like .github are enumerated.
+    Get-ChildItem -Path $SourceDir -Force | ForEach-Object {
+        Copy-Item $_.FullName -Destination $clone -Recurse -Force
+    }
+
+    git -C $clone add -A 2>&1 | Out-Null
+    if (-not (git -C $clone status --porcelain)) {
+        Write-Host "    No changes for $RepoSlug -- already up to date." -ForegroundColor Gray
+        return $true
+    }
+
+    git -C $clone commit -m $Title 2>&1 | Out-Null
+    git -C $clone push -u origin $BranchName 2>&1 | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "    ERROR: push failed for $RepoSlug" -ForegroundColor Red
+        return $false
+    }
+
+    gh pr create --repo $RepoSlug --head $BranchName --title $Title --body $Body 2>&1 |
+        ForEach-Object { Write-Host "      $_" }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "    ERROR: PR creation failed for $RepoSlug" -ForegroundColor Red
+        return $false
+    }
+    return $true
+}
+
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
 Write-Host "  Organization: $adoOrgUrl" -ForegroundColor Gray
 Write-Host "  Project:      $AdoProject" -ForegroundColor Gray
@@ -515,25 +567,22 @@ if ($Mode -eq "migrate-reusables") {
         }
     }
 
+    # -----------------------------------------------------------------------
+    # Phase 1 - convert every reusable pipeline locally, creating no PRs.
+    # GEI opens a PR per invocation, so calling it once per pipeline would push
+    # N overlapping copies of the same composite actions into the central repo.
+    # -----------------------------------------------------------------------
     $anyFailure = $false
-    foreach ($pipelineIdItem in $PipelineId) {
-        Write-Host "`n  --- Migrating reusables via consumer pipeline ID: $pipelineIdItem ---" -ForegroundColor Cyan
+    $targets = @()
 
-        # Allow-list gate: only pipelines explicitly listed in REUSABLE_PIPELINE_IDS
-        # are processed here. Everything else is left for the main Migrate job
-        # (otherwise a no-template pipeline like 934 would wrongly get a central PR).
+    foreach ($pipelineIdItem in $PipelineId) {
+        # Allow-list gate: only pipelines in REUSABLE_PIPELINE_IDS belong here.
         if ($script:reusablePipelineIds -and $script:reusablePipelineIds.Count -gt 0 `
                 -and ($script:reusablePipelineIds -notcontains [int]$pipelineIdItem)) {
-            Write-Host "  Pipeline $pipelineIdItem not in REUSABLE_PIPELINE_IDS -- SKIPPING (will be handled by Migrate job into its consumer repo)." -ForegroundColor Yellow
+            Write-Host "  Pipeline $pipelineIdItem not in REUSABLE_PIPELINE_IDS -- SKIPPING (handled by Migrate job)." -ForegroundColor Yellow
             continue
         }
 
-        # Resolve the CONSUMER repo for this pipeline. The root workflow YAML
-        # (the one that calls into the composite actions) must land in the
-        # consumer repo, NOT the central reusables repo. Composite actions
-        # themselves are routed to the central repo by the rewritten
-        # target_url: entries inside config.yml -- that routing is independent
-        # of this --target-url flag.
         $consumerRepo = $null
         if ($pipelineRepoMap.ContainsKey("$pipelineIdItem")) {
             $consumerRepo = $pipelineRepoMap["$pipelineIdItem"]
@@ -545,19 +594,18 @@ if ($Mode -eq "migrate-reusables") {
             $anyFailure = $true
             continue
         }
-        $consumerTargetUrl = "https://github.com/$ghOrg/$consumerRepo"
-        Write-Host "  Consumer target-url: $consumerTargetUrl" -ForegroundColor Gray
-        Write-Host "  Reusables target_url(s) inside config.yml: $reusableTargetUrl" -ForegroundColor DarkGray
+
+        $pipelineOut = Join-Path $OutputDir "reusables/$pipelineIdItem"
+        Write-Host "`n  --- Converting pipeline $pipelineIdItem -> $ghOrg/$consumerRepo ---" -ForegroundColor Cyan
 
         $reusableArgs = @(
-            "actions-importer", "migrate", "azure-devops", "pipeline",
-          
-            "--output-dir",                (Join-Path $OutputDir "reusables/$pipelineIdItem"),
+            "actions-importer", "dry-run", "azure-devops", "pipeline",
+            "--output-dir",                $pipelineOut,
             "--azure-devops-organization", $adoOrgName,
             "--azure-devops-project",      $AdoProject,
             "--pipeline-id",               $pipelineIdItem,
             "--config-file-path",          $ConfigFilePath,
-            "--target-url",                $consumerTargetUrl
+            "--target-url",                "https://github.com/$ghOrg/$consumerRepo"
         )
         if ($CustomTransformersDir -and (Test-Path $CustomTransformersDir)) {
             $reusableArgs += "--custom-transformers"
@@ -567,34 +615,106 @@ if ($Mode -eq "migrate-reusables") {
         Write-Host "  Command: gh $($reusableArgs -join ' ')" -ForegroundColor DarkGray
         gh @reusableArgs 2>&1 | ForEach-Object { Write-Host "    $_" }
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "  Pipeline $pipelineIdItem FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
+            Write-Host "  Pipeline $pipelineIdItem conversion FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
             $anyFailure = $true
-        } else {
-            Write-Host "  Pipeline $pipelineIdItem OK" -ForegroundColor Green
+            continue
         }
+
+        $targets += [PSCustomObject]@{ Id = $pipelineIdItem; Repo = $consumerRepo; OutputDir = $pipelineOut }
     }
 
     if ($anyFailure) {
-        Write-Host "`nOne or more reusable migrations failed. See logs above." -ForegroundColor Red
+        Write-Host "`nOne or more conversions failed; nothing was pushed. See logs above." -ForegroundColor Red
+        exit 1
+    }
+    if ($targets.Count -eq 0) {
+        Write-Host "`nNo pipelines matched REUSABLE_PIPELINE_IDS -- nothing to publish." -ForegroundColor Yellow
+        return
+    }
+
+    # -----------------------------------------------------------------------
+    # Phase 2 - union every generated composite action across all pipelines and
+    # publish them to the central repo as a SINGLE branch/PR.
+    # -----------------------------------------------------------------------
+    $stageRoot = Join-Path $OutputDir "_publish"
+    if (Test-Path $stageRoot) { Remove-Item $stageRoot -Recurse -Force }
+    $centralStage = Join-Path $stageRoot "central"
+    New-Item -ItemType Directory -Path (Join-Path $centralStage ".github/actions") -Force | Out-Null
+
+    $actionFiles = Get-ChildItem -Path (Join-Path $OutputDir "reusables") -Recurse -File -Filter "action.yml" -ErrorAction SilentlyContinue
+    $actionNames = @{}
+    foreach ($af in $actionFiles) {
+        $actionName = $af.Directory.Name
+        $actionNames[$actionName] = $true
+        $dest = Join-Path $centralStage ".github/actions/$actionName"
+        New-Item -ItemType Directory -Path $dest -Force | Out-Null
+        Copy-Item $af.FullName (Join-Path $dest "action.yml") -Force
+    }
+
+    if ($actionNames.Count -eq 0) {
+        Write-Host "`nERROR: no action.yml files were generated under $OutputDir/reusables." -ForegroundColor Red
+        Write-Host "       Check that config.yml lists every template with target_url + path." -ForegroundColor Red
         exit 1
     }
 
-    $localRefs = Test-LocalActionRefs -Path (Join-Path $OutputDir "reusables")
+    $localRefs = Test-LocalActionRefs -Path $centralStage
     if ($localRefs.Count -gt 0) {
         Write-Host "`nERROR: $($localRefs.Count) generated action(s) use a local './' reference:" -ForegroundColor Red
         $localRefs | ForEach-Object { Write-Host "  $($_.Path): $($_.Line.Trim())" -ForegroundColor Red }
-        Write-Host "These resolve against the consumer repo, not $reusableTargetUrl." -ForegroundColor Red
-        Write-Host "The template is missing from config.yml -- re-run audit so every template is listed." -ForegroundColor Red
+        Write-Host "These resolve against the consumer repo, not the central repo. Nothing was pushed." -ForegroundColor Red
         exit 1
     }
 
-    Write-Host "`nReusable workflow / composite action PRs opened per target_url in config.yml." -ForegroundColor Green
+    $centralSlug = $reusableTargetUrl -replace '^https?://github\.com/', ''
+    $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $branch = "actions-importer/reusables-$stamp"
+
+    Write-Host "`n  --- Publishing $($actionNames.Count) composite action(s) -> $centralSlug ---" -ForegroundColor Cyan
+    $actionNames.Keys | Sort-Object | ForEach-Object { Write-Host "    .github/actions/$_" -ForegroundColor Gray }
+
+    gh auth setup-git 2>&1 | Out-Null
+    $ok = Publish-MigrationPr -RepoSlug $centralSlug -SourceDir $centralStage -BranchName $branch `
+            -Title "Add $($actionNames.Count) composite action(s) migrated from Azure DevOps" `
+            -Body  "Migrated from ADO project ``$AdoProject`` for pipeline(s): $($targets.Id -join ', ')." `
+            -WorkRoot $stageRoot
+    if (-not $ok) { exit 1 }
+
+    # -----------------------------------------------------------------------
+    # Phase 3 - one PR per consumer repo carrying only its workflow file.
+    # -----------------------------------------------------------------------
+    foreach ($t in $targets) {
+        $workflows = Get-ChildItem -Path $t.OutputDir -Recurse -File -Include '*.yml','*.yaml' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne 'action.yml' -and $_.Name -ne 'config.yml' }
+        if (-not $workflows) {
+            Write-Host "  WARNING: no workflow generated for pipeline $($t.Id); skipping $($t.Repo)." -ForegroundColor Yellow
+            continue
+        }
+
+        $consumerStage = Join-Path $stageRoot "consumer-$($t.Id)"
+        $wfDir = Join-Path $consumerStage ".github/workflows"
+        New-Item -ItemType Directory -Path $wfDir -Force | Out-Null
+        $workflows | ForEach-Object { Copy-Item $_.FullName (Join-Path $wfDir $_.Name) -Force }
+
+        Write-Host "`n  --- Publishing workflow for pipeline $($t.Id) -> $ghOrg/$($t.Repo) ---" -ForegroundColor Cyan
+        $ok = Publish-MigrationPr -RepoSlug "$ghOrg/$($t.Repo)" -SourceDir $consumerStage `
+                -BranchName "actions-importer/pipeline-$($t.Id)-$stamp" `
+                -Title "Add workflow migrated from Azure DevOps pipeline $($t.Id)" `
+                -Body  "Calls composite actions in ``$centralSlug`` at ``$ReusablesRef``." `
+                -WorkRoot $stageRoot
+        if (-not $ok) { $anyFailure = $true }
+    }
+
+    if ($anyFailure) {
+        Write-Host "`nOne or more consumer PRs failed. The central PR was created." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "`nDone: 1 PR in $centralSlug + $($targets.Count) consumer PR(s)." -ForegroundColor Green
     Write-Host "Next:" -ForegroundColor Yellow
-    Write-Host "  1. Review and merge the PR(s) in the shared repo." -ForegroundColor Gray
+    Write-Host "  1. Merge the $centralSlug PR FIRST -- consumer workflows pin to @$ReusablesRef." -ForegroundColor Gray
     Write-Host "  2. (Private repo) Settings -> Actions -> General -> Access ->" -ForegroundColor Gray
-    Write-Host "     'Accessible from repositories owned by <org>' so consumers can call them." -ForegroundColor Gray
-    Write-Host "  3. Re-run consuming pipelines with the SAME --config-file-path so generated" -ForegroundColor Gray
-    Write-Host "     workflows emit 'uses: <repo>/.github/workflows/<x>.yml@$ReusablesRef'." -ForegroundColor Gray
+    Write-Host "     'Accessible from repositories owned by $ghOrg' so consumers can call them." -ForegroundColor Gray
+    Write-Host "  3. Merge the consumer PR(s)." -ForegroundColor Gray
     return
 }
 
