@@ -56,15 +56,18 @@
     }
   ],
   "PIPELINE_IDS": [
-    1156
+    1156,
+    808
   ],
   "PIPELINE_REPO_MAP": {
+    "808": "my-new-repo",
     "1156": "sample"
   },
   "PIPELINE_TYPE": "build",
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "",
   "REUSABLE_PIPELINE_IDS": [
-    1156
+    1156,
+    808
   ]
 }
