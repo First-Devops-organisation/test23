@@ -69,6 +69,7 @@
   "MIGRATE_MODE": "migrate",
   "GH_REPO": "",
   "REUSABLE_PIPELINE_IDS": [
-    1156
+    1156,
+    808
   ]
 }
