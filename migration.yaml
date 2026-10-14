@@ -385,7 +385,8 @@ pool:
 
 variables:
   - group: pipeline-migration # ADO_ORG, ADO_PROJECT, ADO_PAT
-  
+  - name: REUSABLES_REPO_EFFECTIVE
+    value: $[coalesce(variables['REUSABLES_REPO_OVERRIDE'], variables['REUSABLES_REPO'])]
 
 stages:
   # ===========================================================================
@@ -580,7 +581,8 @@ stages:
       - job: MigrateReusables
         displayName: "2.1.b Migrate Reusable Templates -> Central Repo"
         dependsOn: DryRun
-        condition: and(succeeded(), ne(variables['REUSABLES_REPO'], ''), eq(variables['HAS_REUSABLE_IDS'], 'true'))
+        condition: and(succeeded(), ne(variables['REUSABLES_REPO_EFFECTIVE'], ''), eq(variables['HAS_REUSABLE_IDS'], 'true'))
+        #condition: and(succeeded(), ne(variables['REUSABLES_REPO'], ''), eq(variables['HAS_REUSABLE_IDS'], 'true'))
         steps:
           - checkout: self
             fetchDepth: 0
