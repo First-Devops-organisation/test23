@@ -870,10 +870,11 @@ foreach ($pipeline in $pipelines) {
         $generatedFiles = Get-ChildItem $outputSubDir -Recurse -ErrorAction SilentlyContinue
         $yamlFiles = $generatedFiles | Where-Object { $_.Extension -in '.yml','.yaml' }
 
+        # Exit code is authoritative; scanning the log for "error"/"failed" also
+        # matches benign lines like "0 errors" and mislabels successful runs.
         $status = if ($exitCode -ne 0) { "FAILED" }
-        elseif ($outputStr -match "error|failed") { "FAILED" }
         elseif ($outputStr -match "partially") { "PARTIAL" }
-        elseif ($Mode -eq "dry-run" -and -not $yamlFiles) { "NO_OUTPUT" }
+        elseif (-not $yamlFiles) { "NO_OUTPUT" }
         else { "SUCCESS" }
 
         $results += [PSCustomObject]@{
@@ -1265,6 +1266,11 @@ Write-Host "`nMigration dashboard: $htmlOut" -ForegroundColor Green
 
 Remove-Item Env:\GITHUB_ACCESS_TOKEN -ErrorAction SilentlyContinue
 Remove-Item Env:\AZURE_DEVOPS_ACCESS_TOKEN -ErrorAction SilentlyContinue
+
+if ($failedCount -gt 0) {
+    Write-Host "`n$failedCount pipeline(s) failed -- see the summary above." -ForegroundColor Red
+    exit 1
+}
 
 exit 0
 
