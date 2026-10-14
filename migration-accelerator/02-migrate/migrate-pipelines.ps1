@@ -43,6 +43,11 @@ param(
     # Branch/tag/SHA the consuming pipelines should pin to. Defaults to "main".
     [string]$ReusablesRef = "main",
 
+    # Actions whose name matches this stay in the consumer repo instead of the
+    # central repo, because each application repo has its own version of them
+    # (e.g. DevOps/Build_Pipeline.yaml -> devops_build_pipeline).
+    [string]$AppLocalActionPattern = '^devops_',
+
     # Re-run migration even when the target repo already has open migration PRs.
     [switch]$Force,
 
@@ -175,6 +180,34 @@ function Test-LocalActionRefs {
     $files = Get-ChildItem -Path $Path -Recurse -File -Include '*.yml','*.yaml' -Force -ErrorAction SilentlyContinue
     if (-not $files) { return @() }
     return @($files | Select-String -Pattern '^\s*-?\s*uses:\s*"?\./' -ErrorAction SilentlyContinue)
+}
+
+# Rewrites every "uses: .../.github/actions/<name>" under $Path so actions named in
+# $LocalNames resolve against the consumer repo and all others against the central
+# repo. Handles refs GEI emitted in either local or fully-qualified form.
+function Set-ActionRefs {
+    param(
+        [string]$Path,
+        [string]$CentralSlug,
+        [string]$Ref,
+        [string[]]$LocalNames = @()
+    )
+
+    $pattern = '(?m)(uses:\s*)"?(?:\./|[^\s"''/]+/[^\s"''/]+/)?\.github/actions/([^\s"''@]+)(?:@[^\s"'']+)?"?'
+    $evaluator = {
+        param($m)
+        $name = $m.Groups[2].Value
+        if ($LocalNames -contains $name) { "$($m.Groups[1].Value)./.github/actions/$name" }
+        else { "$($m.Groups[1].Value)$CentralSlug/.github/actions/$name@$Ref" }
+    }
+
+    $changed = 0
+    Get-ChildItem -Path $Path -Recurse -File -Include '*.yml','*.yaml' -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $body = Get-Content $_.FullName -Raw
+        $new  = [regex]::Replace($body, $pattern, $evaluator)
+        if ($new -ne $body) { Set-Content -Path $_.FullName -Value $new -NoNewline; $changed++ }
+    }
+    return $changed
 }
 
 # Commits $SourceDir over a clone of $RepoSlug on a new branch and opens one PR.
@@ -646,57 +679,61 @@ if ($Mode -eq "migrate-reusables") {
     # -Force so the recursion descends into .github (hidden on Linux).
     $actionFiles = Get-ChildItem -Path (Join-Path $OutputDir "reusables") -Recurse -File -Filter "action.yml" -Force -ErrorAction SilentlyContinue
     $actionNames = @{}
+    $appLocalNames = @{}
     foreach ($af in $actionFiles) {
         $actionName = $af.Directory.Name
+
+        # Each application repo has its own copy of these, so centralising them
+        # would let one app silently overwrite another's build/deploy sequence.
+        if ($actionName -match $AppLocalActionPattern) {
+            $appLocalNames[$actionName] = $true
+            continue
+        }
+
         $actionNames[$actionName] = $true
         $dest = Join-Path $centralStage ".github/actions/$actionName"
         New-Item -ItemType Directory -Path $dest -Force | Out-Null
         Copy-Item $af.FullName (Join-Path $dest "action.yml") -Force
     }
 
-    if ($actionNames.Count -eq 0) {
+    if ($actionNames.Count -eq 0 -and $appLocalNames.Count -eq 0) {
         Write-Host "`nERROR: no action.yml files were generated under $OutputDir/reusables." -ForegroundColor Red
         Write-Host "       Check that config.yml lists every template with target_url + path." -ForegroundColor Red
         exit 1
+    }
+
+    if ($appLocalNames.Count -gt 0) {
+        Write-Host "  App-local action(s) staying in their consumer repo: $($appLocalNames.Keys -join ', ')" -ForegroundColor Gray
     }
 
     $centralSlug = $reusableTargetUrl -replace '^https?://github\.com/', ''
     $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
     $branch = "actions-importer/reusables-$stamp"
 
-    # GEI emits a relative "uses: ./.github/actions/x" whenever caller and callee
-    # share a target_url. Inside a composite action that resolves against the
-    # CONSUMER workspace, so rewrite to the fully-qualified central reference.
-    $rewrittenRefs = 0
-    Get-ChildItem -Path $centralStage -Recurse -File -Filter 'action.yml' -Force -ErrorAction SilentlyContinue | ForEach-Object {
-        $body = Get-Content $_.FullName -Raw
-        $new  = [regex]::Replace($body, '(?m)(uses:\s*)"?\./(\.github/actions/[^"''\s]+)"?', "`${1}$centralSlug/`${2}@$ReusablesRef")
-        if ($new -ne $body) {
-            Set-Content -Path $_.FullName -Value $new -NoNewline
-            $rewrittenRefs++
+    if ($actionNames.Count -gt 0) {
+        [void](Set-ActionRefs -Path $centralStage -CentralSlug $centralSlug -Ref $ReusablesRef)
+
+        $localRefs = Test-LocalActionRefs -Path $centralStage
+        if ($localRefs.Count -gt 0) {
+            Write-Host "`nERROR: $($localRefs.Count) generated action(s) still use a local './' reference:" -ForegroundColor Red
+            $localRefs | ForEach-Object { Write-Host "  $($_.Path): $($_.Line.Trim())" -ForegroundColor Red }
+            Write-Host "These resolve against the consumer repo, not the central repo. Nothing was pushed." -ForegroundColor Red
+            exit 1
         }
-    }
-    if ($rewrittenRefs -gt 0) {
-        Write-Host "  Rewrote local './' refs in $rewrittenRefs action(s) -> $centralSlug@$ReusablesRef" -ForegroundColor Yellow
-    }
 
-    $localRefs = Test-LocalActionRefs -Path $centralStage
-    if ($localRefs.Count -gt 0) {
-        Write-Host "`nERROR: $($localRefs.Count) generated action(s) still use a local './' reference:" -ForegroundColor Red
-        $localRefs | ForEach-Object { Write-Host "  $($_.Path): $($_.Line.Trim())" -ForegroundColor Red }
-        Write-Host "These resolve against the consumer repo, not the central repo. Nothing was pushed." -ForegroundColor Red
-        exit 1
+        Write-Host "`n  --- Publishing $($actionNames.Count) composite action(s) -> $centralSlug ---" -ForegroundColor Cyan
+        $actionNames.Keys | Sort-Object | ForEach-Object { Write-Host "    .github/actions/$_" -ForegroundColor Gray }
+
+        gh auth setup-git 2>&1 | Out-Null
+        $ok = Publish-MigrationPr -RepoSlug $centralSlug -SourceDir $centralStage -BranchName $branch `
+                -Title "Add $($actionNames.Count) composite action(s) migrated from Azure DevOps" `
+                -Body  "Migrated from ADO project ``$AdoProject`` for pipeline(s): $($targets.Id -join ', ')." `
+                -WorkRoot $stageRoot
+        if (-not $ok) { exit 1 }
+    } else {
+        Write-Host "`n  No shared actions to publish -- all templates are app-local." -ForegroundColor Yellow
+        gh auth setup-git 2>&1 | Out-Null
     }
-
-    Write-Host "`n  --- Publishing $($actionNames.Count) composite action(s) -> $centralSlug ---" -ForegroundColor Cyan
-    $actionNames.Keys | Sort-Object | ForEach-Object { Write-Host "    .github/actions/$_" -ForegroundColor Gray }
-
-    gh auth setup-git 2>&1 | Out-Null
-    $ok = Publish-MigrationPr -RepoSlug $centralSlug -SourceDir $centralStage -BranchName $branch `
-            -Title "Add $($actionNames.Count) composite action(s) migrated from Azure DevOps" `
-            -Body  "Migrated from ADO project ``$AdoProject`` for pipeline(s): $($targets.Id -join ', ')." `
-            -WorkRoot $stageRoot
-    if (-not $ok) { exit 1 }
 
     # -----------------------------------------------------------------------
     # Phase 3 - one PR per consumer repo carrying only its workflow file.
@@ -715,14 +752,22 @@ if ($Mode -eq "migrate-reusables") {
         New-Item -ItemType Directory -Path $wfDir -Force | Out-Null
         $workflows | ForEach-Object { Copy-Item $_.FullName (Join-Path $wfDir $_.Name) -Force }
 
-        # The actions live in the central repo, so a local ref here never resolves.
-        Get-ChildItem -Path $wfDir -File -Force | ForEach-Object {
-            $body = Get-Content $_.FullName -Raw
-            $new  = [regex]::Replace($body, '(?m)(uses:\s*)"?\./(\.github/actions/[^"''\s]+)"?', "`${1}$centralSlug/`${2}@$ReusablesRef")
-            if ($new -ne $body) { Set-Content -Path $_.FullName -Value $new -NoNewline }
+        # This app's own build/deploy templates ship with its workflow, not centrally.
+        $localActionFiles = Get-ChildItem -Path $t.OutputDir -Recurse -File -Filter 'action.yml' -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Directory.Name -match $AppLocalActionPattern }
+        $localNames = @($localActionFiles | ForEach-Object { $_.Directory.Name } | Sort-Object -Unique)
+        foreach ($la in $localActionFiles) {
+            $dest = Join-Path $consumerStage ".github/actions/$($la.Directory.Name)"
+            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            Copy-Item $la.FullName (Join-Path $dest "action.yml") -Force
         }
 
+        [void](Set-ActionRefs -Path $consumerStage -CentralSlug $centralSlug -Ref $ReusablesRef -LocalNames $localNames)
+
         Write-Host "`n  --- Publishing workflow for pipeline $($t.Id) -> $ghOrg/$($t.Repo) ---" -ForegroundColor Cyan
+        if ($localNames.Count -gt 0) {
+            Write-Host "      + app-local action(s): $($localNames -join ', ')" -ForegroundColor Gray
+        }
         $ok = Publish-MigrationPr -RepoSlug "$ghOrg/$($t.Repo)" -SourceDir $consumerStage `
                 -BranchName "actions-importer/pipeline-$($t.Id)-$stamp" `
                 -Title "Add workflow migrated from Azure DevOps pipeline $($t.Id)" `
