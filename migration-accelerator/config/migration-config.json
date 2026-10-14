@@ -60,7 +60,7 @@
     808
   ],
   "PIPELINE_REPO_MAP": {
-    "808": "my-new-repo",
+    "808": "dummy-secret",
     "1156": "sample"
   },
   "PIPELINE_TYPE": "build",
