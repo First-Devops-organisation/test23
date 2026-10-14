@@ -171,7 +171,8 @@ function Test-LocalActionRefs {
     param([string]$Path)
 
     if (-not (Test-Path $Path)) { return @() }
-    $files = Get-ChildItem -Path $Path -Recurse -File -Include '*.yml','*.yaml' -ErrorAction SilentlyContinue
+    # -Force so the recursion descends into .github (hidden on Linux).
+    $files = Get-ChildItem -Path $Path -Recurse -File -Include '*.yml','*.yaml' -Force -ErrorAction SilentlyContinue
     if (-not $files) { return @() }
     return @($files | Select-String -Pattern '^\s*-?\s*uses:\s*"?\./' -ErrorAction SilentlyContinue)
 }
@@ -642,7 +643,8 @@ if ($Mode -eq "migrate-reusables") {
     $centralStage = Join-Path $stageRoot "central"
     New-Item -ItemType Directory -Path (Join-Path $centralStage ".github/actions") -Force | Out-Null
 
-    $actionFiles = Get-ChildItem -Path (Join-Path $OutputDir "reusables") -Recurse -File -Filter "action.yml" -ErrorAction SilentlyContinue
+    # -Force so the recursion descends into .github (hidden on Linux).
+    $actionFiles = Get-ChildItem -Path (Join-Path $OutputDir "reusables") -Recurse -File -Filter "action.yml" -Force -ErrorAction SilentlyContinue
     $actionNames = @{}
     foreach ($af in $actionFiles) {
         $actionName = $af.Directory.Name
@@ -685,7 +687,7 @@ if ($Mode -eq "migrate-reusables") {
     # -----------------------------------------------------------------------
     foreach ($t in $targets) {
         # GEI emits <out>/pipelines/<project>/<pipeline>/.github/workflows/<name>.yml
-        $workflows = Get-ChildItem -Path $t.OutputDir -Recurse -File -Include '*.yml','*.yaml' -ErrorAction SilentlyContinue |
+        $workflows = Get-ChildItem -Path $t.OutputDir -Recurse -File -Include '*.yml','*.yaml' -Force -ErrorAction SilentlyContinue |
             Where-Object { $_.DirectoryName -replace '\\','/' -match '/\.github/workflows$' }
         if (-not $workflows) {
             Write-Host "  WARNING: no workflow generated for pipeline $($t.Id); skipping $($t.Repo)." -ForegroundColor Yellow
