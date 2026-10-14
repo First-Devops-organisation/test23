@@ -48,9 +48,6 @@ param(
     # (e.g. DevOps/Build_Pipeline.yaml -> devops_build_pipeline).
     [string]$AppLocalActionPattern = '^devops_',
 
-    # Re-run migration even when the target repo already has open migration PRs.
-    [switch]$Force,
-
     [string]$OutputDir = "./output/pipelines"
 )
 
@@ -588,18 +585,6 @@ if ($Mode -eq "migrate-reusables") {
 
     Write-Host "  Ensuring actions-importer image is up to date..." -ForegroundColor Yellow
     gh actions-importer update 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
-
-    # Each GEI call re-opens PRs for the same actions; bail out if a previous run's
-    # PRs are still open so the central repo doesn't accumulate conflicting copies.
-    if (-not $Force -and $ReusablesTargetRepo) {
-        $centralSlug = $reusableTargetUrl -replace '^https?://github\.com/', ''
-        $openPrs = gh pr list --repo $centralSlug --state open --json number --jq 'length' 2>$null
-        if ($LASTEXITCODE -eq 0 -and $openPrs -and [int]$openPrs -gt 0) {
-            Write-Host "`nERROR: $centralSlug already has $openPrs open PR(s) from a previous run." -ForegroundColor Red
-            Write-Host "       Merge or close them first, or re-run with -Force." -ForegroundColor Red
-            exit 1
-        }
-    }
 
     # -----------------------------------------------------------------------
     # Phase 1 - convert every reusable pipeline locally, creating no PRs.
