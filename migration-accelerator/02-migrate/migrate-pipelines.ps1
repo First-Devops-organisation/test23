@@ -684,8 +684,9 @@ if ($Mode -eq "migrate-reusables") {
     # Phase 3 - one PR per consumer repo carrying only its workflow file.
     # -----------------------------------------------------------------------
     foreach ($t in $targets) {
+        # GEI emits <out>/pipelines/<project>/<pipeline>/.github/workflows/<name>.yml
         $workflows = Get-ChildItem -Path $t.OutputDir -Recurse -File -Include '*.yml','*.yaml' -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne 'action.yml' -and $_.Name -ne 'config.yml' }
+            Where-Object { $_.DirectoryName -replace '\\','/' -match '/\.github/workflows$' }
         if (-not $workflows) {
             Write-Host "  WARNING: no workflow generated for pipeline $($t.Id); skipping $($t.Repo)." -ForegroundColor Yellow
             continue
