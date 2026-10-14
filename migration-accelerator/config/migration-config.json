@@ -57,12 +57,12 @@
   ],
   "PIPELINE_IDS": [
     1187,
-    1158,
-    1156
+    1156,
+    808
   ],
   "PIPELINE_REPO_MAP": {
+    "808": "my-new-repo",
     "1156": "sample",
-    "1158": "my-new-repo",
     "1187": "my-new-repo1"
   },
   "PIPELINE_TYPE": "build",
