@@ -460,9 +460,12 @@ stages:
               reportDir: '$(Build.SourcesDirectory)/migration-accelerator/output/pipeline-audit/dashboard'
               tabName: "Pipeline Audit Dashboard"
 
+          # always() so the stage-2 gating variables are still emitted when an
+          # earlier step (audit/list) fails, instead of silently skipping stage 2.
           - task: PowerShell@2
             displayName: "Parse config for pipeline conditions"
             name: checkConfig
+            condition: always()
             inputs:
               targetType: 'inline'
               script: |
@@ -697,14 +700,12 @@ stages:
               GH_TOKEN: $(GH_PAT)
 
           # Pull the rewritten config.yml (4-field entries with `path:`) produced by
-          # MigrateReusables. Without this, `Test-Path output/pipelines/config.yml`
-          # below is false, the script drops --config-file-path, and GEI inlines
-          # every template as a local `./.github/actions/<name>` ref in the
-          # consumer repo. If MigrateReusables was skipped (no REUSABLES_REPO),
-          # this download is a no-op via `continueOnError`.
+          # MigrateReusables. The condition already limits this to runs that have
+          # reusables, so a download failure here is a real error: without config.yml
+          # GEI inlines every template as a local `./.github/actions/<name>` ref in
+          # the consumer repo instead of routing it to the central repo.
           - task: DownloadPipelineArtifact@2
             displayName: "Download rewritten config.yml from MigrateReusables"
-            continueOnError: true
             condition: eq(variables['HAS_REUSABLE_IDS'], 'true')
             inputs:
               artifact: "pipeline-reusables"
