@@ -660,17 +660,33 @@ if ($Mode -eq "migrate-reusables") {
         exit 1
     }
 
+    $centralSlug = $reusableTargetUrl -replace '^https?://github\.com/', ''
+    $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $branch = "actions-importer/reusables-$stamp"
+
+    # GEI emits a relative "uses: ./.github/actions/x" whenever caller and callee
+    # share a target_url. Inside a composite action that resolves against the
+    # CONSUMER workspace, so rewrite to the fully-qualified central reference.
+    $rewrittenRefs = 0
+    Get-ChildItem -Path $centralStage -Recurse -File -Filter 'action.yml' -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $body = Get-Content $_.FullName -Raw
+        $new  = [regex]::Replace($body, '(?m)(uses:\s*)"?\./(\.github/actions/[^"''\s]+)"?', "`${1}$centralSlug/`${2}@$ReusablesRef")
+        if ($new -ne $body) {
+            Set-Content -Path $_.FullName -Value $new -NoNewline
+            $rewrittenRefs++
+        }
+    }
+    if ($rewrittenRefs -gt 0) {
+        Write-Host "  Rewrote local './' refs in $rewrittenRefs action(s) -> $centralSlug@$ReusablesRef" -ForegroundColor Yellow
+    }
+
     $localRefs = Test-LocalActionRefs -Path $centralStage
     if ($localRefs.Count -gt 0) {
-        Write-Host "`nERROR: $($localRefs.Count) generated action(s) use a local './' reference:" -ForegroundColor Red
+        Write-Host "`nERROR: $($localRefs.Count) generated action(s) still use a local './' reference:" -ForegroundColor Red
         $localRefs | ForEach-Object { Write-Host "  $($_.Path): $($_.Line.Trim())" -ForegroundColor Red }
         Write-Host "These resolve against the consumer repo, not the central repo. Nothing was pushed." -ForegroundColor Red
         exit 1
     }
-
-    $centralSlug = $reusableTargetUrl -replace '^https?://github\.com/', ''
-    $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $branch = "actions-importer/reusables-$stamp"
 
     Write-Host "`n  --- Publishing $($actionNames.Count) composite action(s) -> $centralSlug ---" -ForegroundColor Cyan
     $actionNames.Keys | Sort-Object | ForEach-Object { Write-Host "    .github/actions/$_" -ForegroundColor Gray }
@@ -698,6 +714,13 @@ if ($Mode -eq "migrate-reusables") {
         $wfDir = Join-Path $consumerStage ".github/workflows"
         New-Item -ItemType Directory -Path $wfDir -Force | Out-Null
         $workflows | ForEach-Object { Copy-Item $_.FullName (Join-Path $wfDir $_.Name) -Force }
+
+        # The actions live in the central repo, so a local ref here never resolves.
+        Get-ChildItem -Path $wfDir -File -Force | ForEach-Object {
+            $body = Get-Content $_.FullName -Raw
+            $new  = [regex]::Replace($body, '(?m)(uses:\s*)"?\./(\.github/actions/[^"''\s]+)"?', "`${1}$centralSlug/`${2}@$ReusablesRef")
+            if ($new -ne $body) { Set-Content -Path $_.FullName -Value $new -NoNewline }
+        }
 
         Write-Host "`n  --- Publishing workflow for pipeline $($t.Id) -> $ghOrg/$($t.Repo) ---" -ForegroundColor Cyan
         $ok = Publish-MigrationPr -RepoSlug "$ghOrg/$($t.Repo)" -SourceDir $consumerStage `
