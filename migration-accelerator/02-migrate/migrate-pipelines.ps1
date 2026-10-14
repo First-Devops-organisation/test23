@@ -598,14 +598,15 @@ if ($Mode -eq "migrate-reusables") {
         $pipelineOut = Join-Path $OutputDir "reusables/$pipelineIdItem"
         Write-Host "`n  --- Converting pipeline $pipelineIdItem -> $ghOrg/$consumerRepo ---" -ForegroundColor Cyan
 
+        # dry-run has no --target-url (that is migrate-only); routing comes from
+        # the target_url/path entries in config.yml. Phase 3 pushes to $consumerRepo.
         $reusableArgs = @(
             "actions-importer", "dry-run", "azure-devops", "pipeline",
             "--output-dir",                $pipelineOut,
             "--azure-devops-organization", $adoOrgName,
             "--azure-devops-project",      $AdoProject,
             "--pipeline-id",               $pipelineIdItem,
-            "--config-file-path",          $ConfigFilePath,
-            "--target-url",                "https://github.com/$ghOrg/$consumerRepo"
+            "--config-file-path",          $ConfigFilePath
         )
         if ($CustomTransformersDir -and (Test-Path $CustomTransformersDir)) {
             $reusableArgs += "--custom-transformers"
