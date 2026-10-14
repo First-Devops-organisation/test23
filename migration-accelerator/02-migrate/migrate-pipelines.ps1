@@ -43,6 +43,9 @@ param(
     # Branch/tag/SHA the consuming pipelines should pin to. Defaults to "main".
     [string]$ReusablesRef = "main",
 
+    # Re-run migration even when the target repo already has open migration PRs.
+    [switch]$Force,
+
     [string]$OutputDir = "./output/pipelines"
 )
 
@@ -148,6 +151,29 @@ if ($config -and $config.REUSABLE_PIPELINE_IDS) {
 }
 if ($script:reusablePipelineIds.Count -gt 0) {
     Write-Host "Reusable pipeline allow-list: $($script:reusablePipelineIds -join ', ')" -ForegroundColor Cyan
+}
+
+# With reusable templates in play, a missing config.yml is fatal rather than cosmetic:
+# GEI would inline every template into the consumer repo instead of the central repo.
+if ($Mode -eq "migrate" -and $script:reusablePipelineIds.Count -gt 0 `
+        -and $PSBoundParameters.ContainsKey('ConfigFilePath') `
+        -and $ConfigFilePath -and -not (Test-Path $ConfigFilePath)) {
+    Write-Host "ERROR: -ConfigFilePath '$ConfigFilePath' was supplied but does not exist," -ForegroundColor Red
+    Write-Host "       and REUSABLE_PIPELINE_IDS is set. Refusing to run -- GEI would inline" -ForegroundColor Red
+    Write-Host "       every template into the consumer repo as './.github/actions/...' refs." -ForegroundColor Red
+    exit 1
+}
+
+# A generated composite action that references a sibling with "uses: ./..." resolves
+# against the CONSUMER workspace, not the central repo -- the signature of GEI having
+# inlined templates because --config-file-path was missing.
+function Test-LocalActionRefs {
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) { return @() }
+    $files = Get-ChildItem -Path $Path -Recurse -File -Include '*.yml','*.yaml' -ErrorAction SilentlyContinue
+    if (-not $files) { return @() }
+    return @($files | Select-String -Pattern '^\s*-?\s*uses:\s*"?\./' -ErrorAction SilentlyContinue)
 }
 
 Write-Host "=== Pipeline Migration ($Mode) ===" -ForegroundColor Cyan
@@ -362,6 +388,10 @@ if ($Mode -eq "audit") {
 # listed in the GEI-produced config.yml (--config-file-path flow).
 # ---------------------------------------------------------------------------
 if ($Mode -eq "migrate-reusables") {
+    # An undefined variable-group macro arrives as the literal "$(NAME)".
+    if ($ReusablesTargetRepo -match '^\$\(') { $ReusablesTargetRepo = $null }
+    if (-not $ReusablesRef -or $ReusablesRef -match '^\$\(') { $ReusablesRef = "main" }
+
     if (-not $ConfigFilePath -or -not (Test-Path $ConfigFilePath)) {
         Write-Host "ERROR: -ConfigFilePath is required and must point to the config.yml" -ForegroundColor Red
         Write-Host "       produced by 'audit' (e.g. ./output/pipelines/config.yml)." -ForegroundColor Red
@@ -473,6 +503,18 @@ if ($Mode -eq "migrate-reusables") {
     Write-Host "  Ensuring actions-importer image is up to date..." -ForegroundColor Yellow
     gh actions-importer update 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
 
+    # Each GEI call re-opens PRs for the same actions; bail out if a previous run's
+    # PRs are still open so the central repo doesn't accumulate conflicting copies.
+    if (-not $Force -and $ReusablesTargetRepo) {
+        $centralSlug = $reusableTargetUrl -replace '^https?://github\.com/', ''
+        $openPrs = gh pr list --repo $centralSlug --state open --json number --jq 'length' 2>$null
+        if ($LASTEXITCODE -eq 0 -and $openPrs -and [int]$openPrs -gt 0) {
+            Write-Host "`nERROR: $centralSlug already has $openPrs open PR(s) from a previous run." -ForegroundColor Red
+            Write-Host "       Merge or close them first, or re-run with -Force." -ForegroundColor Red
+            exit 1
+        }
+    }
+
     $anyFailure = $false
     foreach ($pipelineIdItem in $PipelineId) {
         Write-Host "`n  --- Migrating reusables via consumer pipeline ID: $pipelineIdItem ---" -ForegroundColor Cyan
@@ -534,6 +576,15 @@ if ($Mode -eq "migrate-reusables") {
 
     if ($anyFailure) {
         Write-Host "`nOne or more reusable migrations failed. See logs above." -ForegroundColor Red
+        exit 1
+    }
+
+    $localRefs = Test-LocalActionRefs -Path (Join-Path $OutputDir "reusables")
+    if ($localRefs.Count -gt 0) {
+        Write-Host "`nERROR: $($localRefs.Count) generated action(s) use a local './' reference:" -ForegroundColor Red
+        $localRefs | ForEach-Object { Write-Host "  $($_.Path): $($_.Line.Trim())" -ForegroundColor Red }
+        Write-Host "These resolve against the consumer repo, not $reusableTargetUrl." -ForegroundColor Red
+        Write-Host "The template is missing from config.yml -- re-run audit so every template is listed." -ForegroundColor Red
         exit 1
     }
 
@@ -737,6 +788,16 @@ $csvFile = Join-Path $OutputDir "pipeline-migration-$(Get-Date -Format 'yyyyMMdd
 $results | Export-Csv -Path $csvFile -NoTypeInformation
 Write-Host "`nResults saved to: $csvFile" -ForegroundColor Green
 
+if ($Mode -eq "migrate") {
+    $localRefs = Test-LocalActionRefs -Path (Join-Path $OutputDir "migrate")
+    if ($localRefs.Count -gt 0) {
+        Write-Host "`nWARNING: $($localRefs.Count) generated action(s) use a local './' reference:" -ForegroundColor Yellow
+        $localRefs | ForEach-Object { Write-Host "  $($_.Path): $($_.Line.Trim())" -ForegroundColor Yellow }
+        Write-Host "GEI inlined these templates into the consumer repo. To centralize them, add the" -ForegroundColor Yellow
+        Write-Host "pipeline to REUSABLE_PIPELINE_IDS and re-run so MigrateReusables handles it." -ForegroundColor Yellow
+    }
+}
+
 # --- Manual Post-Steps ---
 Write-Host "`n=== MANUAL STEPS REQUIRED ===" -ForegroundColor Yellow
 Write-Host @"
@@ -755,15 +816,14 @@ Historical logs remain in Azure DevOps.
 # ===========================================================================
 # HTML Migration Dashboard
 # ===========================================================================
-Add-Type -AssemblyName System.Web
 
 $dashboardDir = Join-Path $OutputDir "dashboard"
 if (-not (Test-Path $dashboardDir)) { New-Item -ItemType Directory -Path $dashboardDir -Force | Out-Null }
 
 $scanDate    = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
-$encOrg      = [System.Web.HttpUtility]::HtmlEncode($adoOrgName)
-$encProj     = [System.Web.HttpUtility]::HtmlEncode($AdoProject)
-$encGhOrg    = [System.Web.HttpUtility]::HtmlEncode($ghOrg)
+$encOrg      = [System.Net.WebUtility]::HtmlEncode($adoOrgName)
+$encProj     = [System.Net.WebUtility]::HtmlEncode($AdoProject)
+$encGhOrg    = [System.Net.WebUtility]::HtmlEncode($ghOrg)
 $totalCount  = $results.Count
 $noOutputCount = ($results | Where-Object { $_.Status -eq "NO_OUTPUT" }).Count
 
@@ -783,8 +843,8 @@ $seg3 = $seg2 + $pctFailed
 # Pipeline detail table rows
 $pipelineTableRows = ""
 foreach ($r in $results | Sort-Object Status, Pipeline) {
-    $encName = [System.Web.HttpUtility]::HtmlEncode($r.Pipeline)
-    $encRepo = [System.Web.HttpUtility]::HtmlEncode($r.TargetRepo)
+    $encName = [System.Net.WebUtility]::HtmlEncode($r.Pipeline)
+    $encRepo = [System.Net.WebUtility]::HtmlEncode($r.TargetRepo)
     $statusBadge = switch ($r.Status) {
         "SUCCESS"   { "<span class='badge-ok'>&#9989; Success</span>" }
         "PARTIAL"   { "<span class='badge-warn'>&#9888;&#65039; Partial</span>" }
@@ -802,8 +862,8 @@ $workflowRows = ""
 $yamlFiles = Get-ChildItem -Path $OutputDir -Recurse -Include "*.yml","*.yaml" -ErrorAction SilentlyContinue
 foreach ($yf in $yamlFiles) {
     $relPath = $yf.FullName.Replace($OutputDir,"").TrimStart("\").TrimStart("/")
-    $name = [System.Web.HttpUtility]::HtmlEncode($yf.BaseName)
-    $dir  = [System.Web.HttpUtility]::HtmlEncode((Split-Path $relPath -Parent))
+    $name = [System.Net.WebUtility]::HtmlEncode($yf.BaseName)
+    $dir  = [System.Net.WebUtility]::HtmlEncode((Split-Path $relPath -Parent))
     $size = "{0:N1} KB" -f ($yf.Length / 1KB)
     $workflowRows += "    <tr><td>$dir</td><td>$name</td><td class='num'>$size</td></tr>`n"
 }
