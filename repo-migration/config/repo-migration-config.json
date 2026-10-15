@@ -36,8 +36,17 @@
     "repos": [],
     "branches": [],
     "repoBranches": {
+      "ADO_To_GHAS_Migration": [
+        "extentionpipeline-migration"
+      ],
       "dummy-secret": [
         "test"
+      ],
+      "APIOPS-poc": [
+        "artifacts-from-portal-build-47555"
+      ],
+      "hellogitworld": [
+        "bisect"
       ]
     }
   },
