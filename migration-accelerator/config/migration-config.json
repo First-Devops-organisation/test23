@@ -55,13 +55,23 @@
       "priority": 2
     }
   ],
-  "PIPELINE_IDS": [],
+  "PIPELINE_IDS": [
+    1259,
+    1257,
+    1156,
+    808
+  ],
   "PIPELINE_REPO_MAP": {
-    "808": "dummy-secret",
-    "1156": "sample"
+    "808": "migration",
+    "1156": "repomigration",
+    "1257": "dummy-secret",
+    "1259": "repomigration"
   },
   "PIPELINE_TYPE": "build",
-  "MIGRATE_MODE": "dry-run",
+  "MIGRATE_MODE": "migrate",
   "GH_REPO": "",
-  "REUSABLE_PIPELINE_IDS": []
+  "REUSABLE_PIPELINE_IDS": [
+    1156,
+    808
+  ]
 }
