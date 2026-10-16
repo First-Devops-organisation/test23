@@ -1,135 +1,22 @@
-// {
-//   "mappings": [
-//     {
-//       "adoProject": "YASH-DevOps-Serverless",
-//       "adoTeam": "YASH-DevOps-Serverless Team",
-//       "githubTeam": "yash-devops-serverless",
-//       "githubTeamDescription": "SME for Serverless Competency",
-//       "parentTeam": null,
-//       "privacy": "closed",
-
-//       "maintainers": ["" ],
-
-//       "members": [
-//         "Akash-com22",
-//         "Urvashi773",
-//         "ankitpanwar1",
-//         "varsha-patilyash"
-//       ],
-
-//       "repositories": [
-//         {
-//           "name": "Demoapp-Application-API",
-//           "permission": "maintain"
-//         },
-//         {
-//           "name": "america-terraform",
-//           "permission": "push"
-//         },
-//         {
-//           "name": "Advanced-Security",
-//           "permission": "pull"
-//         }
-//       ]
-//     }
-//   ],
-
-//   "defaultVisibility": "closed"
-// }
-
-
-
-
 {
   "mappings": [
     {
       "adoProject": "YASH-DevOps-Serverless",
       "adoTeam": "Serverless-Developers",
       "githubTeam": "serverless-developers",
-      "githubTeamDescription": "Development team for the Serverless application",
+      "githubTeamDescription": "Development team for the Serverless application\"",
       "parentTeam": "YASH-Serverless-Master",
       "privacy": "closed",
       "maintainers": [
-        ""
+        "varsha-patilyash"
       ],
       "members": [
         "Akash-com22"
       ],
       "repositories": [
         {
-          "name": "SSPM",
+          "name": "migration",
           "permission": "push"
-        }
-      ]
-    },
-    {
-      "adoProject": "YASH-DevOps-Serverless",
-      "adoTeam": "Serverless-DevOps",
-      "githubTeam": "serverless-devops",
-      "githubTeamDescription": "DevOps and Infrastructure team for Serverless",
-      "parentTeam": "YASH-Serverless-Master",
-      "privacy": "closed",
-      "maintainers": [
-        "varsha-patilyash"
-      ],
-      "members": [
-        "ankitpanwar1",
-        "Urvashi773"
-      ],
-      "repositories": [
-        {
-          "name": "migration_testing",
-          "permission": "maintain"
-        },
-        {
-          "name": "Demoapp-Application-API",
-          "permission": "admin"
-        },
-          {
-          "name": "Advanced-Security",
-          "permission": "pull"
-        }
-      ]
-    },
-    {
-      "adoProject": "YASH-DevOps-Platform",
-      "adoTeam": "Platform-Developers",
-      "githubTeam": "platform-developers",
-      "githubTeamDescription": "Core developers for the Platform team",
-      "parentTeam": "YASH-Platform-Master",
-      "privacy": "closed",
-      "maintainers": [
-        ""
-      ],
-      "members": [
-       
-        "ankitpanwar1"
-      ],
-      "repositories": [
-        {
-          "name": "dummy-secretymigr",
-          "permission": "push"
-        }
-      ]
-    },
-    {
-      "adoProject": "YASH-DevOps-Platform",
-      "adoTeam": "Platform-DevOps",
-      "githubTeam": "platform-devops",
-      "githubTeamDescription": "DevOps and SRE for the Platform",
-      "parentTeam": "YASH-Platform-Master",
-      "privacy": "closed",
-      "maintainers": [
-        "varsha-patilyash"
-      ],
-      "members": [
-        "Urvashi773"
-        
-      ],
-      "repositories": [
-        {
-          "name": "eShopOnWeb",
-          "permission": "pull"
         }
       ]
     }
