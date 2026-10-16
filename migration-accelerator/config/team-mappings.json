@@ -16,7 +16,7 @@
       "repositories": [
         {
           "name": "migration",
-          "permission": "push"
+          "permission": "pull"
         }
       ]
     }
