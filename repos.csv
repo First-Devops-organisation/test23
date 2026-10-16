@@ -15,3 +15,5 @@
 ## ==========================================
 GHRepo,EnvName,BranchName,ReviewerUsernames,WaitTimer
 migration,development,develop,varsha-patilyash,0
+migration,qa,release,ankitpanwar1,15
+migration,production,master,ankitpanwar1|Urvashi773,30
