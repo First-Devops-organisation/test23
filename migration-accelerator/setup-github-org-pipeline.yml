@@ -105,37 +105,51 @@ stages:
   displayName: '2. Manual Approval — Review Export'
   dependsOn: Discovery
   jobs:
-  - job: WaitForApproval
+  - deployment: WaitForApproval
     displayName: 'Wait for Manual Approval'
-    pool: server  # Agentless job — runs on Azure DevOps server
-    steps:
+    environment: 'github-org-setup-approval'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo "Export approved - proceeding to GitHub team sync."
+            displayName: 'Approval recorded'
 
-    - task: ManualValidation@1
-      displayName: 'Review exported teams before sync'
-      timeoutInMinutes: 4320  # 3 days timeout
-      inputs:
-        notifyUsers: ''  # Add approver emails here, e.g. 'varsha.patil@yash.com'
-        instructions: |
-          ╔══════════════════════════════════════════════════════════════╗
-          ║   REVIEW REQUIRED BEFORE GITHUB TEAM SYNC                  ║
-          ╠══════════════════════════════════════════════════════════════╣
-          ║                                                            ║
-          ║  1. Download the 'team-mappings-template' artifact         ║
-          ║     from the Discovery stage above.                        ║
-          ║                                                            ║
-          ║  2. Review the exported teams and members.                 ║
-          ║     - Are all teams correct?                               ║
-          ║     - Are the right members listed?                        ║
-          ║     - Are there unmapped users that need attention?        ║
-          ║                                                            ║
-          ║  3. Update config/team-mappings.json in the repo           ║
-          ║     with ONLY the teams and users you want to sync.        ║
-          ║                                                            ║
-          ║  4. Click 'Resume' to proceed with GitHub sync.            ║
-          ║     Click 'Reject' to cancel — no changes will be made.    ║
-          ║                                                            ║
-          ╚══════════════════════════════════════════════════════════════╝
-        onTimeout: 'reject'  # Auto-reject if nobody approves within timeout
+# - stage: Approval
+#   displayName: '2. Manual Approval — Review Export'
+#   dependsOn: Discovery
+#   jobs:
+#   - job: WaitForApproval
+#     displayName: 'Wait for Manual Approval'
+#     pool: server  # Agentless job — runs on Azure DevOps server
+#     steps:
+
+#     - task: ManualValidation@1
+#       displayName: 'Review exported teams before sync'
+#       timeoutInMinutes: 4320  # 3 days timeout
+#       inputs:
+#         notifyUsers: ''  # Add approver emails here, e.g. 'varsha.patil@yash.com'
+#         instructions: |
+#           ╔══════════════════════════════════════════════════════════════╗
+#           ║   REVIEW REQUIRED BEFORE GITHUB TEAM SYNC                  ║
+#           ╠══════════════════════════════════════════════════════════════╣
+#           ║                                                            ║
+#           ║  1. Download the 'team-mappings-template' artifact         ║
+#           ║     from the Discovery stage above.                        ║
+#           ║                                                            ║
+#           ║  2. Review the exported teams and members.                 ║
+#           ║     - Are all teams correct?                               ║
+#           ║     - Are the right members listed?                        ║
+#           ║     - Are there unmapped users that need attention?        ║
+#           ║                                                            ║
+#           ║  3. Update config/team-mappings.json in the repo           ║
+#           ║     with ONLY the teams and users you want to sync.        ║
+#           ║                                                            ║
+#           ║  4. Click 'Resume' to proceed with GitHub sync.            ║
+#           ║     Click 'Reject' to cancel — no changes will be made.    ║
+#           ║                                                            ║
+#           ╚══════════════════════════════════════════════════════════════╝
+#         onTimeout: 'reject'  # Auto-reject if nobody approves within timeout
 
 # -----------------------------------------------------------------
 # STAGE 3: SYNC — Create & Sync GitHub Teams (Config-Driven)
