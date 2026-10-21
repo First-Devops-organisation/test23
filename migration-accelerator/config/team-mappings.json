@@ -2,25 +2,19 @@
   "mappings": [
     {
       "adoProject": "YASH-DevOps-Serverless",
-      "adoTeam": "Serverless-Developers",
-      "githubTeam": "serverless-developers",
-      "githubTeamDescription": "Development team for the Serverless application",
-      "parentTeam": "YASH-Serverless-Master",
+      "adoTeam": "serverless-devops",
+      "githubTeam": "severless-developers",
+      "githubTeamDescription": "testing",
+      "parentTeam": "YASH-serverless-Master",
       "privacy": "closed",
       "maintainers": [
         "varsha-patilyash"
       ],
-      "members": [
-        "Akash-com22"
-      ],
+      "members": [],
       "repositories": [
         {
           "name": "migration",
           "permission": "pull"
-        },
-        {
-          "name": "repomigration",
-          "permission": "maintain"
         }
       ]
     }
