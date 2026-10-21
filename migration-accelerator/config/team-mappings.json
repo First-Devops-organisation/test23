@@ -4,12 +4,11 @@
       "adoProject": "YASH-DevOps-Serverless",
       "adoTeam": "severless-developers",
       "githubTeam": "serverless-developers",
-      "githubTeamDescription": "testing",
+      "githubTeamDescription": "testing  migration",
       "parentTeam": "YASH-severless-Master",
       "privacy": "closed",
       "maintainers": [
-        "Akash-com22",
-        "ankitpanwar1"
+        "varsha-patilyash"
       ],
       "members": [
         "Akash-com22"
@@ -17,11 +16,11 @@
       "repositories": [
         {
           "name": "migration",
-          "permission": "maintain"
+          "permission": "push"
         },
         {
-          "name": "repomigration",
-          "permission": "push"
+          "name": "sample2",
+          "permission": "triage"
         }
       ]
     }
