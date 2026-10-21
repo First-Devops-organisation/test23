@@ -17,6 +17,10 @@
         {
           "name": "migration",
           "permission": "pull"
+        },
+        {
+          "name": "repomigration",
+          "permission": "maintain"
         }
       ]
     }
