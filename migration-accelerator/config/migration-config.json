@@ -56,13 +56,13 @@
     }
   ],
   "PIPELINE_IDS": [
-    1259
+    1263
   ],
   "PIPELINE_REPO_MAP": {
-    "1259": "hellogit"
+    "1263": "migration"
   },
   "PIPELINE_TYPE": "build",
-  "MIGRATE_MODE": "dry-run",
+  "MIGRATE_MODE": "migrate",
   "GH_REPO": "",
   "REUSABLE_PIPELINE_IDS": []
 }
