@@ -2,10 +2,10 @@
   "mappings": [
     {
       "adoProject": "YASH-DevOps-Serverless",
-      "adoTeam": "Platform-Developers",
-      "githubTeam": "platform-developers",
-      "githubTeamDescription": "Core developers for the Platform team",
-      "parentTeam": "YASH-Platform-Master",
+      "adoTeam": "Serverless-Developers",
+      "githubTeam": "serverless-developers",
+      "githubTeamDescription": "Development team for the Serverless application",
+      "parentTeam": "YASH-Serverless-Master",
       "privacy": "closed",
       "maintainers": [
         "varsha-patilyash"
@@ -20,26 +20,24 @@
         },
         {
           "name": "sample2",
-          "permission": "push"
+          "permission": "admin"
         },
         {
           "name": "dummy-secret",
-          "permission": "pull"
+          "permission": "push"
         }
       ]
     },
     {
       "adoProject": "YASH-DevOps-Serverless",
-      "adoTeam": "Serverless-Developers",
-      "githubTeam": "serverless-developers",
-      "githubTeamDescription": "Development team for the Serverless application",
-      "parentTeam": "YASH-Serverless-Master",
+      "adoTeam": "Platform-Developers",
+      "githubTeam": "platform-developers",
+      "githubTeamDescription": "Core developers for the Platform team",
+      "parentTeam": "YASH-Platform-Master",
       "privacy": "closed",
-      "maintainers": [
-        "varsha-patilyash"
-      ],
+      "maintainers": [],
       "members": [
-        "Akash-com22"
+        "varsha-patilyash"
       ],
       "repositories": [
         {
