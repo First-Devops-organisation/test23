@@ -18,7 +18,7 @@ parameters:
   - name: IncludeReclaimed
     displayName: "Include already-reclaimed mannequins (re-map them)"
     type: boolean
-    default: false 
+    default: true
 
 variables:
   - group: repo-migration-discove    # ADO_ORG, ADO_PROJECT, ADO_PAT
