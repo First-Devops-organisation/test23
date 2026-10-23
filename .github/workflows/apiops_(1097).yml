@@ -1,0 +1,122 @@
+name: YASH-DevOps-Serverless/APIOPS_(1097)
+on:
+  workflow_dispatch:
+    inputs:
+      APIM_INSTANCE_NAME:
+        description: APIM instance name
+        type: string
+        required: true
+      RESOURCE_GROUP_NAME:
+        description: APIM instance resource group name
+        type: string
+        required: true
+      APIM_REPOSITORY_NAME:
+        description: APIM repository for pull request
+        type: string
+        required: true
+      API_MANAGEMENT_SERVICE_OUTPUT_FOLDER_PATH:
+        description: Folder where you want to extract the artifacts
+        type: string
+        required: true
+      TARGET_BRANCH_NAME:
+        description: Target branch for pull request
+        default: main
+        type: string
+        required: false
+      CONFIGURATION_YAML_PATH:
+        description: Optional configuration file
+        type: string
+        required: true
+      API_SPECIFICATION_FORMAT:
+        description: API Specification Format
+        type: string
+        required: true
+env:
+  APIM_NAME: apim-dev-01-env
+  AZURE_DEVOPS_EXT_PAT: 3ozDShb5s2a6mAeDE0ZfUFwlX9IAgaIlM0cQ6BxBswtTBnoXG2KVJQQJ99CDACAAAAABe0SvAAASAZDO4CH7
+  AZURE_SUBSCRIPTION_ID: fd39c7a6-bc2c-4b89-97d5-1e60d7f98aef
+  AZURE_SUBSCRIPTION_ID_OVERRIDE: fd39c7a6-bc2c-4b89-97d5-1e60d7f98aef
+  AppInsightsKey: 3995e52e-687f-453b-8f9c-df1ef605c4de
+  AppInsightsKeyQA: 3995e52e-687f-453b-8f9c-df1ef605c4de
+  BACKUP_STORAGE_ACCOUNT: devapimbackupdemo
+  QA_ENVIRONMENT_URL: test
+  RESOURCE_GROUP_NAME: RG-Serverless
+  RESOURCE_GROUP_NAME_QA: RG-Serverless1
+  SERVICE_CONNECTION_NAME: yash-apiops-conn
+  SERVICE_CONNECTION_NAME_QA: yash-apiops-conn
+  System_Debug: true
+  apiops_release_version: v6.0.1.3
+jobs:
+  create_artifact_from_portal:
+    name: Extract APIM Artifacts
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+    - name: Set extraction variables
+      uses: azure/login@v1.6.0
+      with:
+        creds: "${{ secrets.AZURE_CREDENTIALS }}"
+    - name: Set extraction variables
+      run: |-
+        $ErrorActionPreference = 'stop'
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = "Stop"
+        Write-Host "##vso[task.setvariable issecret=true;variable=AZURE_BEARER_TOKEN]$(az account get-access-token --query accessToken --output tsv)"
+        Write-Host "##vso[task.setvariable issecret=true;variable=AZURE_CLIENT_ID]$env:servicePrincipalId"
+        Write-Host "##vso[task.setvariable issecret=true;variable=AZURE_CLIENT_SECRET]$env:servicePrincipalKey"
+        Write-Host "##vso[task.setvariable issecret=true;variable=AZURE_TENANT_ID]$env:tenantId"
+        Write-Host "##vso[task.setvariable issecret=true;variable=AZURE_SUBSCRIPTION_ID]$(az account show --query id --output tsv)"
+        if ((Test-Path -LiteralPath variable:\LASTEXITCODE)) { exit $LASTEXITCODE }
+      shell: pwsh
+    - name: Download extractor
+      run: |-
+        Set-StrictMode -Version Latest
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = "Stop"
+        $VerbosePreference = "Continue"
+        $InformationPreference = "Continue"
+        Write-Information "Downloading extractor..."
+        $extractorFileName = if ("${{ runner.os }}" -like "*win*") {
+          "extractor.win-x64.exe"
+        } else {
+          "extractor.linux-x64.exe"
+        }
+        $uri = "https://github.com/Azure/apiops/releases/download/${{ env.apiops_release_version }}/$extractorFileName"
+        $destinationFilePath = Join-Path "${{ runner.temp }}" "extractor.exe"
+        Invoke-WebRequest -Uri "$uri" -OutFile "$destinationFilePath"
+        if ("${{ runner.os }}" -like "*linux*")
+        {
+          Write-Information "Setting file permissions..."
+          & chmod +x "$destinationFilePath"
+          if ($LASTEXITCODE -ne 0) { throw "Setting file permissions failed."}
+        }
+        Write-Host "##vso[task.setvariable variable=EXTRACTOR_FILE_PATH]$destinationFilePath"
+        Write-Information "Execution complete."
+      shell: pwsh
+    - name: Run extractor
+      env:
+        AZURE_BEARER_TOKEN: "${{ env.AZURE_BEARER_TOKEN }}"
+        AZURE_CLIENT_ID: "${{ env.AZURE_CLIENT_ID }}"
+        AZURE_CLIENT_SECRET: "${{ env.AZURE_CLIENT_SECRET }}"
+        AZURE_TENANT_ID: "${{ env.AZURE_TENANT_ID }}"
+        AZURE_SUBSCRIPTION_ID: "${{ env.AZURE_SUBSCRIPTION_ID }}"
+        AZURE_RESOURCE_GROUP_NAME: "${{ parameters.RESOURCE_GROUP_NAME }}"
+        API_MANAGEMENT_SERVICE_NAME: "${{ parameters.APIM_INSTANCE_NAME }}"
+        API_MANAGEMENT_SERVICE_OUTPUT_FOLDER_PATH: "${{ runner.temp }}/${{ parameters.API_MANAGEMENT_SERVICE_OUTPUT_FOLDER_PATH }}"
+        API_SPECIFICATION_FORMAT: "${{ parameters.API_SPECIFICATION_FORMAT }}"
+        "${{ IF NE(PARAMETERS['CONFIGURATION_YAML_PATH'], 'EXTRACT ALL') }}":
+          CONFIGURATION_YAML_PATH: "${{ parameters.CONFIGURATION_YAML_PATH }}"
+      run: |-
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = "Stop"
+        & "${{ env.EXTRACTOR_FILE_PATH }}"
+        if ($LASTEXITCODE -ne 0) {
+          throw "Extractor execution failed."
+        }
+      shell: pwsh
+    - name: Publish pipeline artifact
+      uses: actions/upload-artifact@v4.1.0
+      with:
+        name: artifacts-from-portal
+        path: "${{ runner.temp }}"
